@@ -4,8 +4,10 @@ import SwiftUI
 /// No dashboard, no counters, no grid of features.
 struct HomeView: View {
     @EnvironmentObject private var library: Library
-    @EnvironmentObject private var player: AudioPlayer
     @State private var addingPerson = false
+    #if DEBUG
+    @AppStorage(AppConfig.mockDefaultsKey) private var useMockVoices = false
+    #endif
 
     var body: some View {
         NavigationStack {
@@ -18,6 +20,16 @@ struct HomeView: View {
 
                         if let problem = library.storageError {
                             ErrorNote(message: problem)
+                        }
+
+                        // Above the list, not below it. A warning you scroll
+                        // past is a warning nobody reads.
+                        #if DEBUG
+                        if useMockVoices { mockModeBanner }
+                        #endif
+
+                        if !AppConfig.isConfigured {
+                            notConfiguredNote
                         }
 
                         if library.people.isEmpty {
@@ -42,10 +54,6 @@ struct HomeView: View {
                                 .buttonStyle(QuietButtonStyle())
                                 .padding(.top, Theme.Space.xs)
                         }
-
-                        if !AppConfig.isConfigured {
-                            notConfiguredNote
-                        }
                     }
                     .padding(Theme.Space.m)
                     .padding(.bottom, Theme.Space.xl)
@@ -56,6 +64,9 @@ struct HomeView: View {
             }
             .sheet(isPresented: $addingPerson) {
                 AddPersonView()
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) { debugMenu }
             }
         }
     }
@@ -76,6 +87,38 @@ struct HomeView: View {
         .padding(.top, Theme.Space.s)
         .padding(.bottom, Theme.Space.xs)
     }
+
+    /// Empty in Release, so the icon simply is not there.
+    @ViewBuilder private var debugMenu: some View {
+        #if DEBUG
+        Menu {
+            Toggle("Offline test mode", isOn: $useMockVoices)
+        } label: {
+            Image(systemName: "ladybug")
+                .foregroundStyle(Theme.Palette.inkSoft)
+        }
+        #else
+        EmptyView()
+        #endif
+    }
+
+    #if DEBUG
+    /// Loud on purpose. A test mode that looks like the real thing is how a
+    /// cached file ends up being presented as live generation.
+    private var mockModeBanner: some View {
+        Panel {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("OFFLINE TEST MODE")
+                    .font(.system(size: 12, weight: .heavy))
+                    .foregroundStyle(Theme.Palette.danger)
+                Text("Nothing reaches the voice service. Generated audio is a placeholder tone, not a voice. Turn this off before demonstrating.")
+                    .font(Theme.Font.caption)
+                    .foregroundStyle(Theme.Palette.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+    #endif
 
     /// Honest about the build's state rather than failing mysteriously later.
     private var notConfiguredNote: some View {

@@ -77,6 +77,39 @@ cost risk is a loop, not a single call.
 
 ---
 
+### 6. "How do you know it works? Did you test it?"
+
+Be concrete, and lead with what you found rather than what you wrote.
+
+The whole app was put through an adversarial review that turned up thirty
+defects, thirteen of them serious enough to break the demo. Worth naming two,
+because they are genuinely interesting:
+
+- The listening screen called a **toggle** to start playback. If you tapped a
+  clip in the archive and then opened it, the screen you opened to hear it
+  arrived and paused it. Silent player, no error, nothing in the logs.
+- A **corrupt storage index** was handled by starting from an empty list — and
+  the next save then wrote that empty list over the real file. The audio stayed
+  on disk with nothing pointing at it. A recoverable problem was being converted
+  into permanent loss, and the warning message disappeared at the same moment.
+
+There is also a unit-test suite over the parts where being wrong is expensive:
+whether a voice that cannot speak is reported as ready, whether a retelling
+silently drops the family's newer memories while claiming to be their words, and
+whether audio survives a reinstall.
+
+### 7. "Can I see it work with no internet?"
+
+Yes — turn on Airplane Mode. Saved memories play, browsing works, and new
+generation says plainly that it needs a connection instead of hanging or failing
+silently. The app distinguishes what is local from what is not.
+
+There is also a Debug-only offline mode used during development, which never
+reaches the voice service and plays an obvious placeholder tone. It is compiled
+out of Release builds entirely, so it cannot be confused with the real thing —
+that separation is deliberate, because a mock that sounds real is how people end
+up demonstrating a cached file and calling it live.
+
 ### Questions to be ready for that have no answer yet
 
 Do not bluff these. "We haven't measured that yet" is a survivable answer;

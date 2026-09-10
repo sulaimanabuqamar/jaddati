@@ -17,13 +17,23 @@ final class Library: ObservableObject {
     /// silently pretending the save worked.
     @Published var storageError: String?
 
+    /// True when the index existed but could not be decoded. Guards against the
+    /// worst data-loss path there is: read fails, arrays are empty, the next
+    /// save writes empty over the real file and the audio is orphaned forever.
+    private(set) var loadFailed = false
+
     // MARK: Locations
 
     private let root: URL
     private let audioDir: URL
     private var indexURL: URL { root.appendingPathComponent("library.json") }
 
+    /// Only set by tests, so a second Library can be pointed at the same
+    /// directory to prove that what was written is what comes back.
+    var testDirectoryName: String = "Jaddati"
+
     init(directoryName: String = "Jaddati") {
+        testDirectoryName = directoryName
         let support = FileManager.default.urls(for: .applicationSupportDirectory,
                                                in: .userDomainMask)[0]
         root = support.appendingPathComponent(directoryName, isDirectory: true)
@@ -99,6 +109,8 @@ final class Library: ObservableObject {
                     text: String = "",
                     duration: Double = 0,
                     modelId: String? = nil,
+                    provenance: String? = nil,
+                    isSaved: Bool = true,
                     fileExtension: String = "mp3") -> AudioAsset? {
         let name = "\(UUID().uuidString).\(fileExtension)"
         let destination = audioDir.appendingPathComponent(name)
@@ -108,12 +120,14 @@ final class Library: ObservableObject {
             storageError = "Could not save the audio to this phone. \(error.localizedDescription)"
             return nil
         }
-        let asset = AudioAsset(personId: person.id,
+        var asset = AudioAsset(personId: person.id,
                                source: source,
                                filename: name,
                                text: text,
                                durationSeconds: duration,
                                modelId: modelId)
+        asset.isSaved = isSaved
+        asset.provenance = provenance
         assets.append(asset)
         save()
         return asset
@@ -173,9 +187,14 @@ final class Library: ObservableObject {
             assets = index.assets
             notes = index.notes
         } catch {
-            // A corrupt index must not wedge the app on launch. Keep the audio,
-            // surface the problem, start from an empty list.
-            storageError = "Saved memories could not be read. The audio files are still on this phone."
+            // A corrupt index must not wedge the app on launch, and must not be
+            // overwritten by the next save. Move it aside first, so the data is
+            // recoverable, then start from an empty list.
+            loadFailed = true
+            let backup = root.appendingPathComponent(
+                "library.corrupt-\(Int(Date().timeIntervalSince1970)).json")
+            try? FileManager.default.moveItem(at: indexURL, to: backup)
+            storageError = "Saved memories could not be read, so they have been set aside rather than overwritten. The audio files are still on this phone."
         }
     }
 

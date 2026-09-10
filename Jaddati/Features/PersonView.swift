@@ -5,7 +5,6 @@ struct PersonView: View {
     let personId: UUID
 
     @EnvironmentObject private var library: Library
-    @EnvironmentObject private var player: AudioPlayer
     @State private var addingVoice = false
     @State private var confirmingDelete = false
 
@@ -22,6 +21,8 @@ struct PersonView: View {
 
                         if person.hasVoice {
                             intents(person)
+                        } else if person.voicePendingVerification {
+                            pendingVerification
                         } else {
                             noVoiceYet
                         }
@@ -29,9 +30,10 @@ struct PersonView: View {
                         originals(person)
 
                         let memories = library.assets(for: person, source: .generated)
+                            .filter { $0.isSaved }
                         if !memories.isEmpty {
                             NavigationLink {
-                                MemoriesView(personId: person.id)
+                                MemoriesView(personId: person.id, filter: .generated)
                             } label: {
                                 Panel {
                                     HStack {
@@ -94,6 +96,22 @@ struct PersonView: View {
         }
     }
 
+    /// The provider accepted the sample but will not let the voice speak yet.
+    /// Showing "Voice ready" here is exactly how you get a silent demo.
+    private var pendingVerification: some View {
+        Panel {
+            VStack(alignment: .leading, spacing: Theme.Space.s) {
+                Text("Voice created, not yet usable")
+                    .font(Theme.Font.heading)
+                    .foregroundStyle(Theme.Palette.ink)
+                Text("The voice service accepted the recording but is holding the voice for verification. It cannot speak until that clears. Check the voice in your ElevenLabs account.")
+                    .font(Theme.Font.body)
+                    .foregroundStyle(Theme.Palette.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
     private var noVoiceYet: some View {
         Panel {
             VStack(alignment: .leading, spacing: Theme.Space.s) {
@@ -151,8 +169,8 @@ struct PersonView: View {
                     .font(Theme.Font.heading)
                     .foregroundStyle(Theme.Palette.ink)
                 Spacer()
-                if person.hasVoice {
-                    Button("Add") { addingVoice = true }
+                if person.hasVoice || person.voicePendingVerification {
+                    Button("Replace") { addingVoice = true }
                         .font(Theme.Font.caption)
                         .foregroundStyle(Theme.Palette.forest)
                 }
@@ -198,14 +216,20 @@ struct PersonView: View {
 /// A single playable item, used in every list. Always carries its source badge.
 struct AudioRow: View {
     let asset: AudioAsset
+    /// When set, the row shows a disclosure control that opens the full player.
+    /// Passed as a closure rather than wrapping the row in a NavigationLink,
+    /// because a Button inside a link label loses its taps to the link.
+    var onOpen: (() -> Void)? = nil
+
     @EnvironmentObject private var library: Library
     @EnvironmentObject private var player: AudioPlayer
 
     var body: some View {
-        Panel(padding: Theme.Space.s) {
+        let present = library.fileExists(for: asset)   // one stat per pass, not three
+        return Panel(padding: Theme.Space.s) {
             HStack(spacing: Theme.Space.s) {
                 Button {
-                    guard library.fileExists(for: asset) else { return }
+                    guard present else { return }
                     player.play(url: library.url(for: asset), assetId: asset.id)
                 } label: {
                     Image(systemName: player.isPlaying(assetId: asset.id) ? "pause.fill" : "play.fill")
@@ -215,7 +239,7 @@ struct AudioRow: View {
                         .background(Circle().fill(Theme.Palette.forest))
                 }
                 .buttonStyle(.plain)
-                .disabled(!library.fileExists(for: asset))
+                .disabled(!present)
 
                 VStack(alignment: .leading, spacing: 5) {
                     if !asset.text.isEmpty {
@@ -232,8 +256,20 @@ struct AudioRow: View {
                 }
 
                 Spacer(minLength: 0)
+
+                if let onOpen {
+                    Button(action: onOpen) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Theme.Palette.inkSoft)
+                            .frame(width: 44, height: 44)      // full touch target
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Open")
+                }
             }
         }
-        .opacity(library.fileExists(for: asset) ? 1 : 0.5)
+        .opacity(present ? 1 : 0.5)
     }
 }

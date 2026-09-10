@@ -11,6 +11,7 @@ struct JaddatiApp: App {
                 .environmentObject(library)
                 .environmentObject(player)
                 .tint(Theme.Palette.forest)
+                .preferredColorScheme(.light)
         }
     }
 }

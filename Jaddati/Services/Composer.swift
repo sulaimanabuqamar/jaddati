@@ -64,16 +64,19 @@ enum Composer {
     /// Retells what the family wrote, in the first person, without adding facts.
     /// Returns nil when there is nothing to retell — the UI then asks for a
     /// memory instead of inventing one.
-    static func retelling(from notes: [FamilyNote], personName: String) -> String? {
+    static func retelling(from notes: [FamilyNote]) -> String? {
         let lines = notes
             .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         guard !lines.isEmpty else { return nil }
 
+        // Every note goes in. Quietly keeping the four oldest and then closing
+        // with "that is what your family wrote down" would be a false claim, and
+        // the ordering meant the newest memories were the ones dropped.
+        let terminators: Set<Character> = [".", "!", "?", "؟", "…", ":", "؛"]
         var out = "Let me tell you something we remember.\n\n"
-        for line in lines.prefix(4) {
-            let sentence = line.hasSuffix(".") || line.hasSuffix("!") || line.hasSuffix("؟")
-                ? line : line + "."
+        for line in lines {
+            let sentence = terminators.contains(line.last ?? " ") ? line : line + "."
             out += sentence + "\n"
         }
         out += "\nThat is what your family wrote down, in their words."

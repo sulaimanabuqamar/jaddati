@@ -23,9 +23,20 @@ struct AddVoiceView: View {
     @State private var errorText: String?
 
     private var person: Person? { library.person(withId: personId) }
+    private var replacingExistingVoice: Bool {
+        guard let person else { return false }
+        return person.voiceId != nil
+    }
+
+    /// Too short to be worth uploading. The provider asks for about a minute;
+    /// below twenty seconds it will either refuse or produce something thin,
+    /// and either way a voice slot is spent finding that out.
+    private var durationIsUnusable: Bool { pickedDuration > 0 && pickedDuration < 20 }
+    private var durationIsShort: Bool { pickedDuration > 0 && pickedDuration < 45 }
 
     private var canSubmit: Bool {
         pickedURL != nil && consented && !isWorking
+            && !durationIsUnusable && AppConfig.isConfigured
     }
 
     var body: some View {
@@ -35,16 +46,27 @@ struct AddVoiceView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: Theme.Space.m) {
-                        Text(person?.hasVoice == true ? "Add another recording" : "Add their voice")
+                        Text(replacingExistingVoice ? "Replace their voice" : "Add their voice")
                             .font(Theme.Font.title)
                             .foregroundStyle(Theme.Palette.ink)
+
+                        if !AppConfig.isConfigured {
+                            ErrorNote(message: "Voices aren't set up on this build, so a voice can't be created yet.")
+                        }
+
+                        if replacingExistingVoice {
+                            replacementWarning
+                        }
 
                         filePanel
                         guidance
                         consentPanel
 
                         if let errorText {
-                            ErrorNote(message: errorText) { self.errorText = nil }
+                            ErrorNote(message: errorText) {
+                                self.errorText = nil
+                                Task { await createVoice() }
+                            }
                         }
 
                         Button(isWorking ? "Building the voice…" : "Create the voice") {
@@ -68,7 +90,11 @@ struct AddVoiceView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }.disabled(isWorking)
+                    Button("Cancel") {
+                        discardTempFile()
+                        dismiss()
+                    }
+                    .disabled(isWorking)
                 }
             }
             .fileImporter(isPresented: $showingPicker,
@@ -78,9 +104,26 @@ struct AddVoiceView: View {
             }
         }
         .interactiveDismissDisabled(isWorking)
+        .onDisappear(perform: discardTempFile)
     }
 
     // MARK: Panels
+
+    /// Each import creates a NEW voice at the provider and spends a slot. The
+    /// old one is not deleted and keeps occupying the account's quota.
+    private var replacementWarning: some View {
+        Panel {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("This creates a new voice")
+                    .font(Theme.Font.label)
+                    .foregroundStyle(Theme.Palette.ink)
+                Text("The current voice is replaced for this person, but it is not deleted from your ElevenLabs account and keeps using one of its voice slots. Delete it there if you no longer want it.")
+                    .font(Theme.Font.caption)
+                    .foregroundStyle(Theme.Palette.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
 
     private var filePanel: some View {
         Panel {
@@ -166,10 +209,19 @@ struct AddVoiceView: View {
         guard pickedDuration > 0 else { return "Length unknown" }
         let seconds = Int(pickedDuration.rounded())
         let text = seconds >= 60 ? "\(seconds / 60)m \(seconds % 60)s" : "\(seconds)s"
-        return durationIsShort ? "\(text) — shorter than recommended" : text
+        if durationIsUnusable { return "\(text) — too short to build a voice from" }
+        if durationIsShort    { return "\(text) — shorter than recommended" }
+        return text
     }
 
-    private var durationIsShort: Bool { pickedDuration > 0 && pickedDuration < 45 }
+    /// Removes the working copy. Called on cancel, on dismiss, and before
+    /// replacing it with a different pick — otherwise every abandoned import
+    /// leaves a full recording behind in the temp directory.
+    private func discardTempFile() {
+        guard let url = pickedURL else { return }
+        try? FileManager.default.removeItem(at: url)
+        pickedURL = nil
+    }
 
     private func handlePick(_ result: Result<[URL], Error>) {
         switch result {
@@ -177,6 +229,8 @@ struct AddVoiceView: View {
             errorText = "That file could not be opened."
         case .success(let urls):
             guard let url = urls.first else { return }
+            discardTempFile()
+
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
 
@@ -185,9 +239,6 @@ struct AddVoiceView: View {
                 .appendingPathComponent(UUID().uuidString)
                 .appendingPathExtension(url.pathExtension.isEmpty ? "m4a" : url.pathExtension)
             do {
-                if FileManager.default.fileExists(atPath: temp.path) {
-                    try FileManager.default.removeItem(at: temp)
-                }
                 try FileManager.default.copyItem(at: url, to: temp)
             } catch {
                 errorText = "That file could not be read from its location."
@@ -202,40 +253,47 @@ struct AddVoiceView: View {
     }
 
     private func createVoice() async {
-        guard let person, let sampleURL = pickedURL else { return }
+        guard let person, let sampleURL = pickedURL, canSubmit else { return }
         isWorking = true
         errorText = nil
 
-        let service: VoiceService = ElevenLabsClient()
+        let service: VoiceService = AppConfig.voiceService()
         do {
-            let voiceId = try await service.createVoice(name: "Jaddati — \(person.name)",
-                                                        sampleURL: sampleURL)
+            let voice = try await service.createVoice(name: "Jaddati — \(person.name)",
+                                                      sampleURL: sampleURL)
 
             // Keep the original. The archive must always be able to show what
-            // the person actually sounded like, next to anything generated.
+            // the person actually sounded like, next to anything generated —
+            // so a failure here is reported, not swallowed.
+            var originalStored = false
             if let data = try? Data(contentsOf: sampleURL) {
-                library.storeAudio(data: data,
-                                   for: person,
-                                   source: .original,
-                                   text: "",
-                                   duration: pickedDuration,
-                                   fileExtension: sampleURL.pathExtension.isEmpty
-                                       ? "m4a" : sampleURL.pathExtension)
+                let ext = sampleURL.pathExtension.isEmpty ? "m4a" : sampleURL.pathExtension
+                originalStored = library.storeAudio(data: data,
+                                                    for: person,
+                                                    source: .original,
+                                                    duration: pickedDuration,
+                                                    fileExtension: ext) != nil
             }
 
             var updated = person
-            updated.voiceId = voiceId
+            updated.voiceId = voice.id
             updated.voiceCreatedAt = Date()
+            updated.voiceRequiresVerification = voice.requiresVerification
             updated.consentConfirmedAt = Date()
             library.update(updated)
 
-            try? FileManager.default.removeItem(at: sampleURL)
+            discardTempFile()
             isWorking = false
-            dismiss()
+
+            if originalStored {
+                dismiss()
+            } else {
+                errorText = "The voice was created, but the original recording could not be saved to this phone. Import it again from the profile so it appears in the archive."
+            }
         } catch {
             isWorking = false
             errorText = (error as? VoiceServiceError)?.errorDescription
-                ?? "The voice could not be created. \(error.localizedDescription)"
+                ?? "The voice could not be created. Try again."
         }
     }
 }

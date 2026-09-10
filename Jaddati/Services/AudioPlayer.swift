@@ -41,6 +41,15 @@ final class AudioPlayer: NSObject, ObservableObject {
         isPlaying && playingAssetId == assetId
     }
 
+    /// Starts `url` if it is not already the playing asset. Never pauses.
+    /// The listening screen uses this on appear; using the toggle there meant
+    /// opening a clip that was already playing silenced it.
+    func ensurePlaying(url: URL, assetId: UUID) {
+        if playingAssetId == assetId, let existing = player, existing.isPlaying { return }
+        if playingAssetId == assetId, player != nil { resume(); return }
+        play(url: url, assetId: assetId)
+    }
+
     /// Starts `url`. Calling it for the asset already playing toggles pause.
     func play(url: URL, assetId: UUID) {
         if playingAssetId == assetId, let existing = player {
@@ -86,6 +95,11 @@ final class AudioPlayer: NSObject, ObservableObject {
     func resume() {
         guard let player else { return }
         try? AVAudioSession.sharedInstance().setActive(true)
+        // At end-of-file, play() from the current position is unreliable.
+        if player.currentTime >= player.duration - 0.05 {
+            player.currentTime = 0
+            currentTime = 0
+        }
         player.play()
         isPlaying = true
         startTicking()
@@ -106,6 +120,8 @@ final class AudioPlayer: NSObject, ObservableObject {
         currentTime = 0
         duration = 0
         playingAssetId = nil
+        // Release the session so other audio on the phone is not left suppressed.
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
     // MARK: Ticking

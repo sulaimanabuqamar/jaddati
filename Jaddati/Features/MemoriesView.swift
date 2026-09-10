@@ -4,10 +4,16 @@ import SwiftUI
 /// distinguishable at a glance.
 struct MemoriesView: View {
     let personId: UUID
+    @State private var filter: Filter
 
     @EnvironmentObject private var library: Library
     @EnvironmentObject private var player: AudioPlayer
-    @State private var filter: Filter = .all
+    @State private var opened: AudioAsset?
+
+    init(personId: UUID, filter: Filter = .all) {
+        self.personId = personId
+        _filter = State(initialValue: filter)
+    }
 
     enum Filter: String, CaseIterable {
         case all = "All"
@@ -19,10 +25,12 @@ struct MemoriesView: View {
 
     private var items: [AudioAsset] {
         guard let person else { return [] }
+        let all = library.assets(for: person)
+            .filter { $0.source == .original || $0.isSaved }   // unkept drafts stay hidden
         switch filter {
-        case .all:       return library.assets(for: person)
-        case .original:  return library.assets(for: person, source: .original)
-        case .generated: return library.assets(for: person, source: .generated)
+        case .all:       return all
+        case .original:  return all.filter { $0.source == .original }
+        case .generated: return all.filter { $0.source == .generated }
         }
     }
 
@@ -42,21 +50,19 @@ struct MemoriesView: View {
                                   title: "Nothing here yet",
                                   message: "Anything you keep will be waiting here, and it plays without a connection.")
                     } else {
+                        // Deliberately NOT a NavigationLink wrapping the row:
+                        // AudioRow contains its own play button, and a button
+                        // inside a link label loses its taps to the link.
                         ForEach(items) { asset in
-                            NavigationLink {
-                                PlayerView(asset: asset)
-                            } label: {
-                                AudioRow(asset: asset)
-                            }
-                            .buttonStyle(.plain)
-                            .contextMenu {
-                                Button(role: .destructive) {
-                                    if player.playingAssetId == asset.id { player.stop() }
-                                    library.delete(asset)
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
+                            AudioRow(asset: asset) { opened = asset }
+                                .contextMenu {
+                                    Button(role: .destructive) {
+                                        if player.playingAssetId == asset.id { player.stop() }
+                                        library.delete(asset)
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
                                 }
-                            }
                         }
                     }
                 }
@@ -66,5 +72,8 @@ struct MemoriesView: View {
         }
         .navigationTitle(person?.name ?? "Memories")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(item: $opened) { asset in
+            PlayerView(asset: asset)
+        }
     }
 }

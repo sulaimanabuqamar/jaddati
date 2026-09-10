@@ -13,11 +13,20 @@ struct Person: Identifiable, Codable, Equatable, Hashable {
     var voiceId: String? = nil
     var voiceCreatedAt: Date? = nil
 
+    /// The provider can hand back a voice id that is not yet usable. Until this
+    /// is false, the voice exists but cannot speak, and the UI must not claim
+    /// it is ready.
+    var voiceRequiresVerification: Bool? = nil
+
     /// Recorded at the moment of upload. We keep it because the whole product
     /// rests on it — see AddVoiceView.
     var consentConfirmedAt: Date? = nil
 
-    var hasVoice: Bool { voiceId != nil }
+    /// Ready to speak. Deliberately stricter than "a voice id exists".
+    var hasVoice: Bool { voiceId != nil && voiceRequiresVerification != true }
+
+    /// A voice was created but the provider will not let it speak yet.
+    var voicePendingVerification: Bool { voiceId != nil && voiceRequiresVerification == true }
 }
 
 /// Where a piece of audio came from. This distinction is load-bearing:
@@ -49,8 +58,14 @@ struct AudioAsset: Identifiable, Codable, Equatable, Hashable {
     /// Which model produced it. Only meaningful for `.generated`.
     var modelId: String? = nil
 
-    /// Marks the generated pieces the user chose to keep.
+    /// Marks the generated pieces the user chose to keep. Generated audio starts
+    /// unkept and is removed if the listener leaves without saving.
     var isSaved: Bool = true
+
+    /// Where the words came from, stored WITH the audio rather than derived from
+    /// whichever screen happens to be showing it. A fiction label that survives
+    /// only until you reopen the clip from the archive is not a label.
+    var provenance: String? = nil
 
     var isGenerated: Bool { source == .generated }
 }

@@ -7,7 +7,6 @@ struct CreateView: View {
     let intent: Intent
 
     @EnvironmentObject private var library: Library
-    @EnvironmentObject private var player: AudioPlayer
 
     @State private var text: String = ""
     @State private var newNote: String = ""
@@ -15,6 +14,11 @@ struct CreateView: View {
     @State private var errorText: String?
     @State private var generated: AudioAsset?
     @State private var useFastModel = false
+
+    /// The exact string the retelling builder produced, if it was used.
+    /// Provenance is claimed by comparing against this — opening the "memory"
+    /// screen and typing something new must NOT get a family-memory label.
+    @State private var builtRetelling: String?
 
     private var person: Person? { library.person(withId: personId) }
 
@@ -27,6 +31,7 @@ struct CreateView: View {
             && trimmed.count <= AppConfig.maxCharactersPerGeneration
             && !isGenerating
             && person?.hasVoice == true
+            && AppConfig.isConfigured
     }
 
     var body: some View {
@@ -42,6 +47,10 @@ struct CreateView: View {
                         Text(intent.subtitle)
                             .font(Theme.Font.caption)
                             .foregroundStyle(Theme.Palette.inkSoft)
+                    }
+
+                    if !AppConfig.isConfigured {
+                        ErrorNote(message: "Voices aren't set up on this build, so nothing can be generated. Saved memories still play.")
                     }
 
                     switch intent {
@@ -97,7 +106,7 @@ struct CreateView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $generated) { asset in
-            PlayerView(asset: asset, intent: intent)
+            PlayerView(asset: asset)
         }
         .onAppear(perform: seedIfNeeded)
     }
@@ -143,23 +152,35 @@ struct CreateView: View {
                 .foregroundStyle(Theme.Palette.ink)
 
             ForEach(Composer.affirmations) { affirmation in
-                Button {
-                    text = affirmation.english
-                } label: {
-                    Panel(padding: Theme.Space.s) {
-                        VStack(alignment: .leading, spacing: 3) {
+                Panel(padding: Theme.Space.s) {
+                    VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                        Button { text = affirmation.english } label: {
                             Text(affirmation.english)
                                 .font(Theme.Font.body)
                                 .foregroundStyle(Theme.Palette.ink)
                                 .multilineTextAlignment(.leading)
-                            Text(affirmation.arabic)
-                                .font(Theme.Font.caption)
-                                .foregroundStyle(Theme.Palette.inkSoft)
-                                .environment(\.layoutDirection, .rightToLeft)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
+
+                        // The masthead is جدّتي — there has to be a one-tap route
+                        // to Arabic, not just a preview of it.
+                        Button { text = affirmation.arabic } label: {
+                            HStack(spacing: 6) {
+                                Text(affirmation.arabic)
+                                    .font(Theme.Font.caption)
+                                    .environment(\.layoutDirection, .rightToLeft)
+                                Image(systemName: "arrow.up.left.circle")
+                                    .font(.system(size: 10))
+                            }
+                            .foregroundStyle(Theme.Palette.bronze)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
-                .buttonStyle(.plain)
             }
         }
     }
@@ -211,7 +232,9 @@ struct CreateView: View {
                         }
                     }
                     Button("Build the retelling") {
-                        text = Composer.retelling(from: notes, personName: person.name) ?? ""
+                        let built = Composer.retelling(from: notes) ?? ""
+                        text = built
+                        builtRetelling = built
                     }
                     .buttonStyle(QuietButtonStyle())
                 }
@@ -242,26 +265,51 @@ struct CreateView: View {
         if intent == .comfort { text = Composer.affirmations[0].english }
     }
 
+    /// The label stored WITH the audio. It describes what these words actually
+    /// are, not which screen produced them.
+    private func provenanceForCurrentText() -> String? {
+        switch intent {
+        case .saySomething, .comfort:
+            return nil
+        case .storyFiction:
+            return "An invented story. Not a real memory."
+        case .storyFromMemories:
+            // Only claim the family's authority if the family's words are what
+            // is about to be spoken.
+            if let built = builtRetelling, trimmed == built.trimmingCharacters(in: .whitespacesAndNewlines) {
+                return "Retold from memories your family wrote down."
+            }
+            return "Written by you. Not taken from a recorded memory."
+        }
+    }
+
+    /// RIFF header means WAV (the debug mock); anything else is the provider's MP3.
+    static func audioExtension(for data: Data) -> String {
+        data.starts(with: Array("RIFF".utf8)) ? "wav" : "mp3"
+    }
+
     private func speak() async {
         guard let person, let voiceId = person.voiceId, canSpeak else { return }
         isGenerating = true
         errorText = nil
 
         let model = useFastModel ? AppConfig.fastModelId : AppConfig.defaultModelId
-        let service: VoiceService = ElevenLabsClient()
+        let service: VoiceService = AppConfig.voiceService()
+        let words = trimmed
+        let provenance = provenanceForCurrentText()
 
         do {
-            let data = try await service.synthesize(text: trimmed,
-                                                    voiceId: voiceId,
-                                                    modelId: model)
+            let data = try await service.synthesize(text: words, voiceId: voiceId, modelId: model)
             let duration = (try? AVAudioPlayer(data: data))?.duration ?? 0
             let asset = library.storeAudio(data: data,
                                            for: person,
                                            source: .generated,
-                                           text: trimmed,
+                                           text: words,
                                            duration: duration,
                                            modelId: model,
-                                           fileExtension: "mp3")
+                                           provenance: provenance,
+                                           isSaved: false,
+                                           fileExtension: Self.audioExtension(for: data))
             isGenerating = false
             if let asset {
                 generated = asset
@@ -272,7 +320,7 @@ struct CreateView: View {
             isGenerating = false
             // The typed text is deliberately left untouched.
             errorText = (error as? VoiceServiceError)?.errorDescription
-                ?? "Something went wrong. \(error.localizedDescription)"
+                ?? "Something went wrong. Try again."
         }
     }
 }
@@ -282,9 +330,12 @@ struct CreateView: View {
 enum TextDirection {
     static func isArabic(_ string: String) -> Bool {
         for scalar in string.unicodeScalars {
-            if (0x0600...0x06FF).contains(scalar.value) || (0x0750...0x077F).contains(scalar.value) {
-                return true
-            }
+            let v = scalar.value
+            if (0x0600...0x06FF).contains(v)      // Arabic
+                || (0x0750...0x077F).contains(v)  // Arabic Supplement
+                || (0xFB50...0xFDFF).contains(v)  // Presentation Forms-A
+                || (0xFE70...0xFEFF).contains(v)  // Presentation Forms-B
+            { return true }
         }
         return false
     }

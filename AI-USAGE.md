@@ -33,6 +33,42 @@ wrote what.
 
 **Human review status:** not started. No one has yet read this code or built it.
 
+## Session 2 — 10 September 2026, evening
+
+**Tool:** Claude (Opus 5), unattended, with a second Claude instance used as an
+independent reviewer that had not seen the code being written.
+
+**What the review found:** 30 defects across the 15 files, ranked by severity.
+Three critical, ten major. It also cleared several things the brief had
+suspected were wrong — the audio timer has no retain cycle, the security-scoped
+file handling is correct, and the views are properly main-actor isolated.
+
+**Fixed in code (13):** listening screen paused instead of playing; corrupt
+storage index overwritten with an empty one; `requires_verification` ignored so
+an unusable voice reported as ready; credit exhaustion misreported as a bad API
+key; provenance attached to the screen rather than the audio; silent re-cloning
+on re-import; main-thread filesystem churn during playback; retelling dropping
+the newest family notes while claiming completeness; nested button in a
+navigation link; no `preferredColorScheme` against a hardcoded light palette;
+temp-file leaks; a non-functional "Try again"; an unreachable Save control.
+
+**Written:** `MockVoiceService` (Debug-only offline stand-in), 13 unit tests,
+`docs/demo-script.md`.
+
+**Checks actually run:** brace/paren/bracket balance across all 16 Swift files
+after every edit; a stale-reference sweep for call sites left behind by changed
+signatures; a symbol-presence check for every new API.
+
+**Checks NOT run:** compilation. The app has not been rebuilt since these
+changes. Every fix above is unverified until it does.
+
+**Deliberately not done:** the Xcode project file was not touched. Wiring the
+test target and enabling background audio are left as two manual steps in
+`docs/HANDOVER.md`, because breaking a working build while nobody was there to
+fix it was the worse risk.
+
+**Human review status:** not started.
+
 ## How to keep this file honest
 
 Add a row when work happens. Never mark a human review complete without the

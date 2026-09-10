@@ -5,8 +5,7 @@ import Foundation
 /// The key is read from `Secrets.plist`, which is git-ignored and never
 /// committed. It is NOT in source control. It IS in the app bundle on the
 /// phone, which is a development shortcut, not a shipping design — see
-/// README "Known limitations". The `VoiceService` protocol exists so a server
-/// proxy can replace the direct client without touching any view.
+/// README "Known limitations".
 enum AppConfig {
 
     private static let secrets: [String: Any] = {
@@ -19,30 +18,47 @@ enum AppConfig {
         return dict
     }()
 
-    /// Empty string when unset — the app degrades to a clear "not configured"
-    /// state rather than crashing or pretending to work.
     static var elevenLabsKey: String {
         if let env = ProcessInfo.processInfo.environment["ELEVENLABS_API_KEY"], !env.isEmpty {
             return env
         }
-        return (secrets["ELEVENLABS_API_KEY"] as? String) ?? ""
+        let value = (secrets["ELEVENLABS_API_KEY"] as? String) ?? ""
+        return value == "PASTE_YOUR_KEY_HERE" ? "" : value
     }
 
-    static var isConfigured: Bool { !elevenLabsKey.isEmpty }
+    /// Key for the debug-only offline mode. Never consulted in a Release build.
+    static let mockDefaultsKey = "jaddati.useMockVoices"
 
-    /// Arabic-capable and stable on long-form. Confirmed present in the
-    /// ElevenLabs model list; the spike prints what this account can reach.
+    static var isUsingMock: Bool {
+        #if DEBUG
+        return UserDefaults.standard.bool(forKey: mockDefaultsKey)
+        #else
+        return false
+        #endif
+    }
+
+    static var isConfigured: Bool {
+        if isUsingMock { return true }
+        return !elevenLabsKey.isEmpty
+    }
+
+    /// The only place that decides which implementation the app talks to.
+    static func voiceService() -> VoiceService {
+        #if DEBUG
+        if isUsingMock { return MockVoiceService() }
+        #endif
+        return ElevenLabsClient()
+    }
+
+    /// Arabic-capable and stable on long-form.
     static let defaultModelId = "eleven_multilingual_v2"
 
-    /// Half the price and much lower latency. Offered as an option once we
-    /// have measured both against a real cloned voice.
+    /// Half the price and much lower latency.
     static let fastModelId = "eleven_flash_v2_5"
 
-    /// Hard ceiling per generation. Guards against a runaway request eating
-    /// the month's credits — the plan has no automatic overage, so the real
-    /// risk is wasted credits, not a surprise bill.
+    /// Hard ceiling per generation. The plan has no automatic overage, so the
+    /// real risk is wasted credits, not a surprise bill.
     static let maxCharactersPerGeneration = 800
 
-    /// Network calls give up rather than hanging a screen forever.
     static let requestTimeout: TimeInterval = 45
 }

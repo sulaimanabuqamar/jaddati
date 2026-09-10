@@ -8,18 +8,23 @@ import SwiftUI
 /// a decorative shape presented as a waveform would be a lie about the sound.
 struct PlayerView: View {
     let asset: AudioAsset
-    var intent: Intent? = nil
 
     @EnvironmentObject private var library: Library
     @EnvironmentObject private var player: AudioPlayer
     @Environment(\.dismiss) private var dismiss
 
-    @State private var kept = true
+    @State private var kept: Bool
     @State private var scrubbing = false
     @State private var scrubValue: Double = 0
 
+    init(asset: AudioAsset) {
+        self.asset = asset
+        _kept = State(initialValue: asset.isSaved)
+    }
+
     private var isCurrent: Bool { player.playingAssetId == asset.id }
     private var shownProgress: Double { scrubbing ? scrubValue : (isCurrent ? player.progress : 0) }
+    private var fileIsPresent: Bool { library.fileExists(for: asset) }
 
     var body: some View {
         ZStack {
@@ -42,7 +47,9 @@ struct PlayerView: View {
                         .padding(.horizontal, Theme.Space.s)
                 }
 
-                if let note = intent?.provenanceNote {
+                // Read from the asset, not from whichever screen opened it, so a
+                // fiction label still shows when the clip is replayed months later.
+                if let note = asset.provenance, !note.isEmpty {
                     Text(note)
                         .font(Theme.Font.caption)
                         .foregroundStyle(Theme.Palette.bronze)
@@ -51,7 +58,11 @@ struct PlayerView: View {
 
                 Spacer(minLength: 0)
 
-                transport
+                if fileIsPresent {
+                    transport
+                } else {
+                    ErrorNote(message: "The audio file for this memory is no longer on this phone. The text is kept, but there is nothing to play.")
+                }
 
                 if let problem = player.playbackError {
                     ErrorNote(message: problem)
@@ -67,11 +78,18 @@ struct PlayerView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            if library.fileExists(for: asset) {
-                player.play(url: library.url(for: asset), assetId: asset.id)
+            guard fileIsPresent else { return }
+            player.ensurePlaying(url: library.url(for: asset), assetId: asset.id)
+        }
+        .onDisappear {
+            player.stop()
+            // Generated audio arrives unkept. Leaving without keeping it means
+            // it goes, rather than silently accumulating invisible clips that
+            // still cost storage.
+            if asset.isGenerated && !kept {
+                library.delete(asset)
             }
         }
-        .onDisappear { player.stop() }
     }
 
     // MARK: Transport
@@ -90,7 +108,6 @@ struct PlayerView: View {
             .foregroundStyle(Theme.Palette.inkSoft)
 
             Button {
-                guard library.fileExists(for: asset) else { return }
                 player.play(url: library.url(for: asset), assetId: asset.id)
             } label: {
                 Image(systemName: player.isPlaying(assetId: asset.id) ? "pause.fill" : "play.fill")
@@ -114,7 +131,7 @@ struct PlayerView: View {
 
     private var track: some View {
         GeometryReader { geometry in
-            let width = geometry.size.width
+            let width = max(geometry.size.width, 1)   // never divide by zero below
             ZStack(alignment: .leading) {
                 Capsule()
                     .fill(Theme.Palette.ivorySunk)
@@ -133,7 +150,8 @@ struct PlayerView: View {
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
                         scrubbing = true
-                        scrubValue = min(max(value.location.x / width, 0), 1)
+                        let fraction = value.location.x / width
+                        scrubValue = fraction.isFinite ? min(max(fraction, 0), 1) : 0
                     }
                     .onEnded { _ in
                         player.seek(toProgress: scrubValue)
@@ -148,7 +166,7 @@ struct PlayerView: View {
 
     private var keepControls: some View {
         HStack(spacing: Theme.Space.s) {
-            Button(kept ? "Saved to memories" : "Save to memories") {
+            Button(kept ? "Kept" : "Keep this one") {
                 guard !kept else { return }
                 var updated = asset
                 updated.isSaved = true
@@ -161,6 +179,7 @@ struct PlayerView: View {
             Button(role: .destructive) {
                 player.stop()
                 library.delete(asset)
+                kept = true          // already gone; don't delete twice on disappear
                 dismiss()
             } label: {
                 Text("Discard")
