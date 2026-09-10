@@ -64,7 +64,7 @@ enum AppConfig {
 
     /// Hard ceiling per generation. The plan has no automatic overage, so the
     /// real risk is wasted credits, not a surprise bill.
-    static let maxCharactersPerGeneration = 800
+    static let maxCharactersPerGeneration = 2_500
 
     static let requestTimeout: TimeInterval = 45
 }

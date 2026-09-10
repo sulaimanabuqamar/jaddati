@@ -12,6 +12,7 @@ final class Library: ObservableObject {
     @Published private(set) var people: [Person] = []
     @Published private(set) var assets: [AudioAsset] = []
     @Published private(set) var notes: [FamilyNote] = []
+    @Published private(set) var books: [Book] = []
 
     /// Set when loading or saving fails, so the UI can say so rather than
     /// silently pretending the save worked.
@@ -69,10 +70,78 @@ final class Library: ObservableObject {
             .sorted { $0.createdAt > $1.createdAt }
     }
 
+    // MARK: Books
+
+    func books(for person: Person) -> [Book] {
+        books.filter { $0.personId == person.id }.sorted { $0.addedAt > $1.addedAt }
+    }
+
+    func book(withId id: UUID) -> Book? { books.first { $0.id == id } }
+
+    func add(_ book: Book) {
+        books.append(book)
+        save()
+    }
+
+    func update(_ book: Book) {
+        guard let i = books.firstIndex(where: { $0.id == book.id }) else { return }
+        books[i] = book
+        save()
+    }
+
+    /// Removes the book and every page already read from it.
+    func delete(_ book: Book) {
+        for asset in assets where asset.bookId == book.id {
+            try? FileManager.default.removeItem(at: url(for: asset))
+        }
+        assets.removeAll { $0.bookId == book.id }
+        books.removeAll { $0.id == book.id }
+        save()
+    }
+
+    /// A page already generated. Found by id and index so it is replayed rather
+    /// than paid for a second time.
+    func readPage(of book: Book, index: Int) -> AudioAsset? {
+        // `last`, not `first`: if a page was ever re-read, the newest row is the
+        // one whose file exists. Returning the oldest left the reader stuck on a
+        // broken row, offering to generate — and bill — the same page again.
+        assets.last { $0.bookId == book.id && $0.pageIndex == index }
+    }
+
+    /// Drops earlier rows for a page that has just been re-read, so a book
+    /// cannot accumulate orphaned duplicates.
+    func pruneDuplicatePages(of bookId: UUID, index: Int, keeping keep: UUID) {
+        let doomed = assets.filter { $0.bookId == bookId && $0.pageIndex == index && $0.id != keep }
+        guard !doomed.isEmpty else { return }
+        for asset in doomed { try? FileManager.default.removeItem(at: url(for: asset)) }
+        assets.removeAll { asset in doomed.contains { $0.id == asset.id } }
+        save()
+    }
+
+    func pagesRead(of book: Book) -> Int {
+        Set(assets.compactMap { $0.bookId == book.id ? $0.pageIndex : nil }).count
+    }
+
+    // MARK: Saved lines
+
+    /// Comfort lines the user added to the bank.
+    func affirmations(for person: Person) -> [FamilyNote] {
+        notes.filter { $0.personId == person.id && $0.isAffirmation }
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
     /// Kept clips produced by one experience, newest first.
     func savedAssets(for person: Person, intent: Intent) -> [AudioAsset] {
-        assets
-            .filter { $0.personId == person.id && $0.isSaved && $0.intentRaw == intent.rawValue }
+        savedAssets(for: person, intents: [intent])
+    }
+
+    func savedAssets(for person: Person, intents: Set<Intent>) -> [AudioAsset] {
+        let wanted = Set(intents.map(\.rawValue))
+        return assets
+            .filter {
+                $0.personId == person.id && $0.isSaved
+                    && ($0.intentRaw.map(wanted.contains) ?? false)
+            }
             .sorted { $0.createdAt > $1.createdAt }
     }
 
@@ -118,6 +187,8 @@ final class Library: ObservableObject {
                     modelId: String? = nil,
                     provenance: String? = nil,
                     intent: Intent? = nil,
+                    bookId: UUID? = nil,
+                    pageIndex: Int? = nil,
                     isSaved: Bool = true,
                     fileExtension: String = "mp3") -> AudioAsset? {
         let name = "\(UUID().uuidString).\(fileExtension)"
@@ -137,6 +208,8 @@ final class Library: ObservableObject {
         asset.isSaved = isSaved
         asset.provenance = provenance
         asset.intentRaw = intent?.rawValue
+        asset.bookId = bookId
+        asset.pageIndex = pageIndex
         assets.append(asset)
         save()
         return asset
@@ -173,6 +246,7 @@ final class Library: ObservableObject {
         }
         assets.removeAll { $0.personId == person.id }
         notes.removeAll { $0.personId == person.id }
+        books.removeAll { $0.personId == person.id }
         people.removeAll { $0.id == person.id }
         save()
     }
@@ -183,6 +257,8 @@ final class Library: ObservableObject {
         var people: [Person]
         var assets: [AudioAsset]
         var notes: [FamilyNote]
+        /// Optional so an index written before books existed still decodes.
+        var books: [Book]? = nil
     }
 
     private func load() {
@@ -195,6 +271,7 @@ final class Library: ObservableObject {
             people = index.people
             assets = index.assets
             notes = index.notes
+            books = index.books ?? []
         } catch {
             // A corrupt index must not wedge the app on launch, and must not be
             // overwritten by the next save. Move it aside first, so the data is
@@ -212,7 +289,8 @@ final class Library: ObservableObject {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             encoder.dateEncodingStrategy = .iso8601
-            let data = try encoder.encode(Index(people: people, assets: assets, notes: notes))
+            let data = try encoder.encode(
+                Index(people: people, assets: assets, notes: notes, books: books))
             try data.write(to: indexURL, options: .atomic)
             storageError = nil
         } catch {

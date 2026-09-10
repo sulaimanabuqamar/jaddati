@@ -126,7 +126,32 @@ struct AudioAsset: Identifiable, Codable, Equatable, Hashable {
 
     var intent: Intent? { intentRaw.flatMap(Intent.init(rawValue:)) }
 
+    /// Set only for generated book pages, so an already-read page can be found
+    /// and replayed instead of paid for twice.
+    var bookId: UUID? = nil
+    var pageIndex: Int? = nil
+
     var isGenerated: Bool { source == .generated }
+}
+
+/// A text the user brought in and wants read aloud, already split into pages.
+/// The pages live here rather than in the original file so a book keeps working
+/// after the imported file is gone, and so a page can be looked up by index.
+struct Book: Identifiable, Codable, Equatable, Hashable {
+    var id: UUID = UUID()
+    var personId: UUID
+    var title: String
+    var pages: [String]
+    /// Where the reader left off.
+    var currentPage: Int = 0
+    var addedAt: Date = Date()
+
+    var pageCount: Int { pages.count }
+    var totalCharacters: Int { pages.reduce(0) { $0 + $1.count } }
+
+    func page(_ index: Int) -> String? {
+        pages.indices.contains(index) ? pages[index] : nil
+    }
 }
 
 /// A memory the family supplies in their own words. Used to ground a retelling.
@@ -138,6 +163,13 @@ struct FamilyNote: Identifiable, Codable, Equatable {
     var text: String
     var addedBy: String = ""
     var createdAt: Date = Date()
+
+    /// nil or "memory" for a family memory; "affirmation" for a comfort line
+    /// the user added to the bank. Optional so older stored notes still decode.
+    var kind: String? = nil
+
+    static let affirmationKind = "affirmation"
+    var isAffirmation: Bool { kind == Self.affirmationKind }
 }
 
 /// What kind of thing the user asked for. Drives the copy on the player and
@@ -147,6 +179,7 @@ enum Intent: String, Codable, CaseIterable {
     case comfort
     case storyFiction
     case storyFromMemories
+    case readBook
 
     var title: String {
         switch self {
@@ -154,6 +187,19 @@ enum Intent: String, Codable, CaseIterable {
         case .comfort:           return "Comfort me"
         case .storyFiction:      return "Tell me a story"
         case .storyFromMemories: return "A memory, retold"
+        case .readBook:          return "Read me a book"
+        }
+    }
+
+    /// One credit is roughly one character, so this is also a spending limit.
+    /// Stories get more room because they are the one thing meant to run long.
+    var characterLimit: Int {
+        switch self {
+        case .saySomething:      return 800
+        case .comfort:           return 400
+        case .storyFiction:      return 2_500
+        case .storyFromMemories: return 800
+        case .readBook:          return 1_500
         }
     }
 
@@ -162,7 +208,8 @@ enum Intent: String, Codable, CaseIterable {
         case .saySomething:      return "Words you choose, in their voice"
         case .comfort:           return "Something steadying to hear"
         case .storyFiction:      return "An invented bedtime story"
-        case .storyFromMemories: return "Built only from what your family wrote down"
+        case .storyFromMemories: return "Words you keep, in one place"
+        case .readBook:          return "A book you bring, read a page at a time"
         }
     }
 
@@ -172,6 +219,7 @@ enum Intent: String, Codable, CaseIterable {
         case .comfort:           return "heart"
         case .storyFiction:      return "moon.stars"
         case .storyFromMemories: return "book.closed"
+        case .readBook:          return "books.vertical"
         }
     }
 
@@ -181,9 +229,10 @@ enum Intent: String, Codable, CaseIterable {
         switch self {
         case .storyFiction:
             return "An invented story. Not a real memory."
-        case .storyFromMemories:
-            return "Retold from memories your family wrote down."
+        case .readBook:
+            return "Read from a file you provided."
         default:
+            // Everything else is words a person typed. Nothing to disclaim.
             return nil
         }
     }

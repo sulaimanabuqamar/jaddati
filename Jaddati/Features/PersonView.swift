@@ -37,8 +37,11 @@ struct PersonView: View {
 
                         originals(person)
 
+                        // Book pages are kept automatically so they are never
+                        // paid for twice; counting them here would drown the
+                        // things the user actually chose to keep.
                         let memories = library.assets(for: person, source: .generated)
-                            .filter { $0.isSaved }
+                            .filter { $0.isSaved && $0.intentRaw != Intent.readBook.rawValue }
                         if !memories.isEmpty {
                             NavigationLink {
                                 MemoriesView(personId: person.id, filter: .recreated)
@@ -162,7 +165,12 @@ struct PersonView: View {
         VStack(spacing: Theme.Space.s) {
             ForEach(Intent.allCases, id: \.self) { intent in
                 NavigationLink {
-                    CreateView(personId: person.id, intent: intent)
+                    // Books are a shelf, not a compose box.
+                    if intent == .readBook {
+                        BooksView(personId: person.id)
+                    } else {
+                        CreateView(personId: person.id, intent: intent)
+                    }
                 } label: {
                     Panel(padding: Theme.Space.s) {
                         HStack(spacing: Theme.Space.s) {

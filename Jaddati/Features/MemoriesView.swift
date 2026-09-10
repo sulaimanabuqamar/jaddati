@@ -18,7 +18,7 @@ struct MemoriesView: View {
     }
 
     enum Filter: Hashable, CaseIterable {
-        case all, original, recreated, saySomething, comfort, stories, memories
+        case all, original, recreated, saySomething, comfort, stories, memories, books
 
         var title: String {
             switch self {
@@ -29,6 +29,7 @@ struct MemoriesView: View {
             case .comfort:      return "Comfort"
             case .stories:      return "Stories"
             case .memories:     return "Memories"
+            case .books:        return "Book pages"
             }
         }
 
@@ -39,6 +40,7 @@ struct MemoriesView: View {
             case .comfort:      return .comfort
             case .stories:      return .storyFiction
             case .memories:     return .storyFromMemories
+            case .books:        return .readBook
             default:            return nil
             }
         }

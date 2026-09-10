@@ -9,7 +9,6 @@ struct CreateView: View {
     @EnvironmentObject private var library: Library
 
     @State private var text: String = ""
-    @State private var newNote: String = ""
     @State private var isGenerating = false
     @State private var errorText: String?
     /// Kept alongside the message because some failures have a fix the user can
@@ -24,11 +23,6 @@ struct CreateView: View {
     /// straight at the library would rewrite the whole index on every tick.
     @State private var draftTuning: VoiceTuning = .natural
 
-    /// The exact string the retelling builder produced, if it was used.
-    /// Provenance is claimed by comparing against this — opening the "memory"
-    /// screen and typing something new must NOT get a family-memory label.
-    @State private var builtRetelling: String?
-
     private var person: Person? { library.person(withId: personId) }
 
     private var trimmed: String {
@@ -41,22 +35,15 @@ struct CreateView: View {
         return false
     }
 
-    private var noteCount: Int {
-        guard let person else { return 0 }
-        return library.notes(for: person).count
-    }
-
     /// The screen-level hint. On the retelling screen it must not promise the
     /// family's words when the family has not written any.
     private var screenNote: String? {
         switch intent {
         case .storyFiction:
             return "An invented story. Not a real memory."
-        case .storyFromMemories:
-            return noteCount == 0
-                ? "Nothing to retell yet. Add a memory below, in your family's own words."
-                : "A retelling uses only your family's words. Nothing is invented."
-        case .saySomething, .comfort:
+        case .readBook:
+            return "Read from a file you provided."
+        case .saySomething, .comfort, .storyFromMemories:
             return nil
         }
     }
@@ -70,8 +57,8 @@ struct CreateView: View {
             return "This voice was made in test mode. Create the real one from the profile."
         }
         if person?.hasVoice != true { return "This person has no voice yet." }
-        if trimmed.count > AppConfig.maxCharactersPerGeneration {
-            return "That is longer than \(AppConfig.maxCharactersPerGeneration) characters."
+        if trimmed.count > intent.characterLimit {
+            return "That is longer than \(intent.characterLimit) characters."
         }
         switch intent {
         case .saySomething:
@@ -80,16 +67,14 @@ struct CreateView: View {
             return "Tap one of the lines above, or write your own."
         case .storyFiction:
             return "Tap one of the stories above to load it, or write your own."
-        case .storyFromMemories:
-            return noteCount == 0
-                ? "Add a memory first — the app will not invent one for you."
-                : "Tap Build the retelling above, or write your own words."
+        case .storyFromMemories, .readBook:
+            return "Type something for them to say."
         }
     }
 
     private var canSpeak: Bool {
         !trimmed.isEmpty
-            && trimmed.count <= AppConfig.maxCharactersPerGeneration
+            && trimmed.count <= intent.characterLimit
             && !isGenerating
             && person?.hasVoice == true
             && AppConfig.isConfigured
@@ -114,11 +99,15 @@ struct CreateView: View {
                         ErrorNote(message: "Voices aren't set up on this build, so nothing can be generated. Saved memories still play.")
                     }
 
+                    // On the shelf screen the kept items are the reason you
+                    // came, so they sit above the compose box rather than under
+                    // everything else.
+                    if intent == .storyFromMemories { savedFromHere }
+
                     switch intent {
-                    case .saySomething:      EmptyView()
-                    case .comfort:           comfortPicker
-                    case .storyFiction:      fictionPicker
-                    case .storyFromMemories: memoriesSource
+                    case .comfort:      comfortPicker
+                    case .storyFiction: fictionPicker
+                    default:            EmptyView()
                     }
 
                     editor
@@ -134,7 +123,7 @@ struct CreateView: View {
                     }
 
                     actionSection
-                    savedFromHere
+                    if intent != .storyFromMemories { savedFromHere }
                 }
                 .padding(Theme.Space.m)
                 .padding(.bottom, Theme.Space.xl)
@@ -179,6 +168,15 @@ struct CreateView: View {
         }
         .buttonStyle(PrimaryButtonStyle(enabled: canSpeak))
         .disabled(!canSpeak)
+
+        if intent == .comfort, let person, !trimmed.isEmpty, !isAlreadySaved(trimmed, for: person) {
+            Button("Add this line to my list") {
+                library.add(FamilyNote(personId: person.id,
+                                       text: trimmed,
+                                       kind: FamilyNote.affirmationKind))
+            }
+            .buttonStyle(QuietButtonStyle())
+        }
 
         if let reason = disabledReason {
             Text(reason)
@@ -306,9 +304,7 @@ struct CreateView: View {
                                   TextDirection.isArabic(text) ? .rightToLeft : .leftToRight)
                     .overlay(alignment: .topLeading) {
                         if trimmed.isEmpty {
-                            Text(intent == .storyFromMemories
-                                 ? "Save a memory above and it appears here, ready to speak."
-                                 : "Type the words you want to hear…")
+                            Text("Type the words you want to hear…")
                                 .font(Theme.Font.spoken)
                                 .foregroundStyle(Theme.Palette.inkSoft.opacity(0.6))
                                 .padding(.top, 8)
@@ -318,9 +314,9 @@ struct CreateView: View {
 
                 HStack {
                     Spacer()
-                    Text("\(trimmed.count) / \(AppConfig.maxCharactersPerGeneration)")
+                    Text("\(trimmed.count) / \(intent.characterLimit)")
                         .font(Theme.Font.caption)
-                        .foregroundStyle(trimmed.count > AppConfig.maxCharactersPerGeneration
+                        .foregroundStyle(trimmed.count > intent.characterLimit
                                          ? Theme.Palette.danger : Theme.Palette.inkSoft)
                 }
             }
@@ -332,6 +328,43 @@ struct CreateView: View {
             Text("Tap a line to load it, or write your own below")
                 .font(Theme.Font.label)
                 .foregroundStyle(Theme.Palette.ink)
+
+            if let person {
+                let mine = library.affirmations(for: person)
+                if !mine.isEmpty {
+                    Text("Yours")
+                        .font(Theme.Font.caption)
+                        .foregroundStyle(Theme.Palette.bronze)
+                    ForEach(mine) { line in
+                        Panel(padding: Theme.Space.s) {
+                            HStack(alignment: .top, spacing: Theme.Space.s) {
+                                Button { text = line.text } label: {
+                                    Text(line.text)
+                                        .font(Theme.Font.body)
+                                        .foregroundStyle(Theme.Palette.ink)
+                                        .multilineTextAlignment(
+                                            TextDirection.isArabic(line.text) ? .trailing : .leading)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                Button { library.removeNote(line) } label: {
+                                    Image(systemName: "trash")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(Theme.Palette.inkSoft)
+                                        .frame(width: 32, height: 32)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Remove this line")
+                            }
+                        }
+                    }
+                    Text("Ready-made")
+                        .font(Theme.Font.caption)
+                        .foregroundStyle(Theme.Palette.inkSoft)
+                }
+            }
 
             ForEach(Composer.affirmations) { affirmation in
                 Panel(padding: Theme.Space.s) {
@@ -430,108 +463,40 @@ struct CreateView: View {
         }
     }
 
-    private var memoriesSource: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.s) {
-            if let person {
-                let notes = library.notes(for: person)
-
-                HStack {
-                    Text("Memories your family wrote down")
-                        .font(Theme.Font.label)
-                        .foregroundStyle(Theme.Palette.ink)
-                    Spacer()
-                    if !notes.isEmpty {
-                        Text("\(notes.count) saved")
-                            .font(Theme.Font.caption)
-                            .foregroundStyle(Theme.Palette.inkSoft)
-                    }
-                }
-
-                Text("Everything saved here is read back word for word, in their voice. The app adds nothing of its own.")
-                    .font(Theme.Font.caption)
-                    .foregroundStyle(Theme.Palette.inkSoft)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if notes.isEmpty {
-                    Text("Nothing written down yet. A retelling is built only from what your family adds here — the app will not invent a memory.")
-                        .font(Theme.Font.caption)
-                        .foregroundStyle(Theme.Palette.inkSoft)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    ForEach(notes) { note in
-                        Panel(padding: Theme.Space.s) {
-                            HStack(alignment: .top, spacing: Theme.Space.s) {
-                                Text(note.text)
-                                    .font(Theme.Font.body)
-                                    .foregroundStyle(Theme.Palette.ink)
-                                    .multilineTextAlignment(
-                                        TextDirection.isArabic(note.text) ? .trailing : .leading)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                Button {
-                                    library.removeNote(note)
-                                    // The built text no longer matches the
-                                    // family's words. Rebuild it, or clear the
-                                    // claim if nothing is left.
-                                    builtRetelling = nil
-                                    rebuildRetellingIfSafe()
-                                } label: {
-                                    Image(systemName: "trash")
-                                        .font(.system(size: 12))
-                                        .foregroundStyle(Theme.Palette.inkSoft)
-                                        .frame(width: 32, height: 32)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("Delete this memory")
-                            }
-                        }
-                    }
-                    Button("Put all \(notes.count) into the words below") {
-                        let built = Composer.retelling(from: notes)
-                        text = built ?? ""
-                        builtRetelling = built
-                    }
-                    .buttonStyle(QuietButtonStyle())
-                }
-
-                Panel(padding: Theme.Space.s) {
-                    VStack(alignment: .leading, spacing: Theme.Space.s) {
-                        Text("Write a memory in their words, or yours")
-                            .font(Theme.Font.caption)
-                            .foregroundStyle(Theme.Palette.inkSoft)
-                        TextField("She always left the door unlocked…",
-                                  text: $newNote, axis: .vertical)
-                            .font(Theme.Font.body)
-                            .lineLimit(2...5)
-                            .multilineTextAlignment(
-                                TextDirection.isArabic(newNote) ? .trailing : .leading)
-                        // A real button. This was caption-sized plain text and
-                        // read as a label, so memories were typed and never saved.
-                        Button("Save this memory") {
-                            let clean = newNote.trimmingCharacters(in: .whitespacesAndNewlines)
-                            guard !clean.isEmpty else { return }
-                            library.add(FamilyNote(personId: person.id, text: clean))
-                            newNote = ""
-                            rebuildRetellingIfSafe()
-                        }
-                        .buttonStyle(PrimaryButtonStyle(
-                            enabled: !newNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
-                        .disabled(newNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
-                }
-            }
+    /// What this screen has made before. Kept clips used to land in one shared
+    /// pile with no way back to the experience that produced them.
+    /// Which experiences a screen shelves. "A memory, retold" is the shelf for
+    /// everything kept from it AND from Say something, so a line worth keeping
+    /// has one place to live rather than disappearing into a general pile.
+    private func isAlreadySaved(_ line: String, for person: Person) -> Bool {
+        library.affirmations(for: person).contains {
+            $0.text.trimmingCharacters(in: .whitespacesAndNewlines) == line
         }
     }
 
-    /// What this screen has made before. Kept clips used to land in one shared
-    /// pile with no way back to the experience that produced them.
+    private var shelvedIntents: Set<Intent> {
+        switch intent {
+        case .storyFromMemories: return [.storyFromMemories, .saySomething]
+        default:                 return [intent]
+        }
+    }
+
+    private var shelfTitle: String {
+        switch intent {
+        case .comfort:           return "Comfort you have kept"
+        case .storyFiction:      return "Stories you have kept"
+        case .storyFromMemories: return "Everything you have kept"
+        default:                 return "Kept from here"
+        }
+    }
+
     @ViewBuilder private var savedFromHere: some View {
         if let person {
-            let mine = library.savedAssets(for: person, intent: intent)
+            let mine = library.savedAssets(for: person, intents: shelvedIntents)
             if !mine.isEmpty {
                 VStack(alignment: .leading, spacing: Theme.Space.s) {
                     Divider().overlay(Theme.Palette.hairline)
-                    Text(intent == .comfort ? "Comfort you have kept" : "Kept from here")
+                    Text(shelfTitle)
                         .font(Theme.Font.label)
                         .foregroundStyle(Theme.Palette.ink)
                     ForEach(mine) { asset in
@@ -545,24 +510,10 @@ struct CreateView: View {
 
     // MARK: Behaviour
 
-    /// Fills the spoken text from the saved memories — but only when doing so
-    /// cannot destroy something the user typed. Safe when the box is empty, or
-    /// when it still holds a previous build untouched.
-    private func rebuildRetellingIfSafe() {
-        guard intent == .storyFromMemories, let person else { return }
-        let editorIsOurs = trimmed.isEmpty
-            || trimmed == (builtRetelling ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard editorIsOurs else { return }
-        let built = Composer.retelling(from: library.notes(for: person))
-        text = built ?? ""
-        builtRetelling = built
-    }
-
     private func seedIfNeeded() {
         draftTuning = person?.voiceTuning ?? .natural
         guard trimmed.isEmpty else { return }
         if intent == .comfort { text = Composer.affirmations[0].english }
-        if intent == .storyFromMemories { rebuildRetellingIfSafe() }
     }
 
     /// The label stored WITH the audio. It describes what these words actually
@@ -573,13 +524,9 @@ struct CreateView: View {
             return nil
         case .storyFiction:
             return "An invented story. Not a real memory."
-        case .storyFromMemories:
-            // Only claim the family's authority if the family's words are what
-            // is about to be spoken.
-            if let built = builtRetelling, trimmed == built.trimmingCharacters(in: .whitespacesAndNewlines) {
-                return "Retold from memories your family wrote down."
-            }
-            return "Written by you. Not taken from a recorded memory."
+        case .storyFromMemories, .readBook:
+            // Words a person typed. Nothing to disclaim.
+            return nil
         }
     }
 
