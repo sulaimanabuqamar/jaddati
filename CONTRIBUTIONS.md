@@ -14,14 +14,22 @@ create commits to disguise it.
 
 | Name | Role | Work completed so far |
 |---|---|---|
-| Sulaiman Abuqamar | Technical lead, all commits | Provider evaluation and account setup; product direction; directed the build session of 10 Sep |
-| _unassigned_ | Design and content review | — |
-| _unassigned_ | AI testing and QA | — |
+| Sulaiman Abuqamar | Technical lead, all commits | Provider evaluation and account setup; product direction; directed and reviewed the build sessions of 10 Sep |
+| Adel Almheiri | Team member | Nothing recorded in this repo yet — see "Work available to claim" |
+| Bilal Alkhofash | Team member | Nothing recorded in this repo yet — see "Work available to claim" |
 
-The roster and the presenting line-up are unresolved as of 10 September and must
-be settled before Demo Day. Judges open the contributor graph; three names on a
-submission against one name in the history is the first thing they will ask
-about, and the only good answer is an accurate one.
+Roster settled 10 September: Sulaiman Abuqamar, Adel Almheiri, Bilal Alkhofash.
+
+**The contributor graph shows one author, and it will still show one author on
+the 16th unless Adel and Bilal do work that lands in this repo.** That is not a
+problem to hide — it is a question to have a true answer to. Judges open the
+graph. The answer that works is "here is what each of us did", said out loud,
+with this file backing it. The answer that loses is a commit made on someone
+else's behalf to pad the graph.
+
+There are six days and the list below is real, separable work with visible
+output. Anything either of them finishes should land here as their own commit,
+from their own account, in their own words.
 
 ## Work available to claim
 
