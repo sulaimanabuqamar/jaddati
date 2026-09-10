@@ -1,5 +1,36 @@
 import Foundation
 
+/// How a voice should be performed. These map one-to-one onto the provider's
+/// `voice_settings`, which is the only real fine-tuning available for an
+/// instant clone — the clone itself is fixed once created.
+///
+///  - stability   low = more variable and emotional, high = flatter and safer
+///  - similarity  how hard to push towards the original recording. Very high
+///                also reproduces any noise in that recording.
+///  - style       exaggerates the speaker's manner. Costs latency. 0 is safest.
+struct VoiceTuning: Codable, Equatable, Hashable {
+    var stability: Double = 0.45
+    var similarity: Double = 0.80
+    var style: Double = 0.0
+    var speakerBoost: Bool = true
+
+    /// Balanced. What a first-time listener should hear.
+    static let natural = VoiceTuning(stability: 0.45, similarity: 0.80, style: 0.0)
+    /// Predictable and even. The safest thing to put on a stage.
+    static let steady = VoiceTuning(stability: 0.75, similarity: 0.80, style: 0.0)
+    /// More life, more risk. Occasionally produces an odd reading.
+    static let warm = VoiceTuning(stability: 0.30, similarity: 0.85, style: 0.30)
+
+    var presetName: String? {
+        switch self {
+        case Self.natural: return "Natural"
+        case Self.steady:  return "Steady"
+        case Self.warm:    return "Warm"
+        default:           return nil
+        }
+    }
+}
+
 /// A person whose voice has been preserved. One profile per loved one.
 struct Person: Identifiable, Codable, Equatable, Hashable {
     var id: UUID = UUID()
@@ -21,6 +52,12 @@ struct Person: Identifiable, Codable, Equatable, Hashable {
     /// Recorded at the moment of upload. We keep it because the whole product
     /// rests on it — see AddVoiceView.
     var consentConfirmedAt: Date? = nil
+
+    /// How this person's voice is performed. Optional so an index written
+    /// before this existed still decodes.
+    var tuning: VoiceTuning? = nil
+
+    var voiceTuning: VoiceTuning { tuning ?? .natural }
 
     /// Ready to speak. Deliberately stricter than "a voice id exists": a voice
     /// can exist and still be unusable, and claiming otherwise produces a
@@ -82,6 +119,12 @@ struct AudioAsset: Identifiable, Codable, Equatable, Hashable {
     /// whichever screen happens to be showing it. A fiction label that survives
     /// only until you reopen the clip from the archive is not a label.
     var provenance: String? = nil
+
+    /// Which experience produced this clip, as `Intent.rawValue`. Lets each
+    /// screen show what it made, instead of everything landing in one pile.
+    var intentRaw: String? = nil
+
+    var intent: Intent? { intentRaw.flatMap(Intent.init(rawValue:)) }
 
     var isGenerated: Bool { source == .generated }
 }

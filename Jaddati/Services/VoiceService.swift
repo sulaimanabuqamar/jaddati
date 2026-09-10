@@ -15,7 +15,8 @@ struct CreatedVoice: Equatable {
 /// without touching a single screen.
 protocol VoiceService {
     func createVoice(name: String, sampleURL: URL) async throws -> CreatedVoice
-    func synthesize(text: String, voiceId: String, modelId: String) async throws -> Data
+    func synthesize(text: String, voiceId: String, modelId: String,
+                    tuning: VoiceTuning) async throws -> Data
 }
 
 /// Failures the user might actually see, each with wording that says what to do.

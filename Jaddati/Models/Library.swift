@@ -69,6 +69,13 @@ final class Library: ObservableObject {
             .sorted { $0.createdAt > $1.createdAt }
     }
 
+    /// Kept clips produced by one experience, newest first.
+    func savedAssets(for person: Person, intent: Intent) -> [AudioAsset] {
+        assets
+            .filter { $0.personId == person.id && $0.isSaved && $0.intentRaw == intent.rawValue }
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
     func notes(for person: Person) -> [FamilyNote] {
         notes.filter { $0.personId == person.id }.sorted { $0.createdAt < $1.createdAt }
     }
@@ -110,6 +117,7 @@ final class Library: ObservableObject {
                     duration: Double = 0,
                     modelId: String? = nil,
                     provenance: String? = nil,
+                    intent: Intent? = nil,
                     isSaved: Bool = true,
                     fileExtension: String = "mp3") -> AudioAsset? {
         let name = "\(UUID().uuidString).\(fileExtension)"
@@ -128,6 +136,7 @@ final class Library: ObservableObject {
                                modelId: modelId)
         asset.isSaved = isSaved
         asset.provenance = provenance
+        asset.intentRaw = intent?.rawValue
         assets.append(asset)
         save()
         return asset

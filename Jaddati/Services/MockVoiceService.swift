@@ -21,7 +21,8 @@ struct MockVoiceService: VoiceService {
                             requiresVerification: false)
     }
 
-    func synthesize(text: String, voiceId: String, modelId: String) async throws -> Data {
+    func synthesize(text: String, voiceId: String, modelId: String,
+                    tuning: VoiceTuning) async throws -> Data {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw VoiceServiceError.badResponse }
         guard trimmed.count <= AppConfig.maxCharactersPerGeneration else {

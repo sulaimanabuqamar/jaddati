@@ -86,16 +86,36 @@ enum Composer {
     struct Story: Identifiable, Hashable {
         let id: String
         let title: String
+        let titleArabic: String
         let text: String
+        let textArabic: String
     }
 
-    /// Invented bedtime stories. Always labelled as fiction in the UI.
+    /// Invented bedtime stories, written for this app. Always labelled as
+    /// fiction in the UI. Both languages are first-class: the masthead is
+    /// جدّتي, so an Arabic listener should not have to settle for a translation
+    /// button.
     static let bedtimeStories: [Story] = [
-        .init(id: "lamp", title: "The lamp that waited",
-              text: "There was a small lamp in the hallway that never went out. It was not a brave lamp, and it was not a bright one. It simply stayed on, so that whoever came home late would not have to find the door in the dark. Sleep now. The lamp is still on."),
-        .init(id: "palm", title: "The date palm",
-              text: "A girl once planted a date stone and watched it every morning for a week. Nothing happened, so she stopped watching. Years later she came back and stood in its shade. Some things grow whether or not anyone is looking. Sleep now, and let them grow."),
-        .init(id: "sea", title: "The sea at night",
-              text: "The fishermen used to say the sea is loudest just before it turns calm. When you hear it roaring, that is not the storm arriving. That is the storm leaving. Close your eyes. It is already leaving.")
+        .init(
+            id: "lamp",
+            title: "The lamp that waited",
+            titleArabic: "المصباح الذي انتظر",
+            text: "There was a small lamp in the hallway that never went out. It was not a brave lamp, and it was not a bright one. It simply stayed on, so that whoever came home late would not have to find the door in the dark. Sleep now. The lamp is still on.",
+            textArabic: "كان في الممر مصباح صغير لا ينطفئ. ما كان مصباحاً شجاعاً، ولا كان ساطعاً. كان فقط يبقى مضيئاً، حتى لا يبحث من يتأخر في العودة عن الباب في العتمة. نامي الآن. المصباح ما زال مضيئاً."
+        ),
+        .init(
+            id: "palm",
+            title: "The date palm",
+            titleArabic: "النخلة",
+            text: "A girl once planted a date stone and watched it every morning for a week. Nothing happened, so she stopped watching. Years later she came back and stood in its shade. Some things grow whether or not anyone is looking. Sleep now, and let them grow.",
+            textArabic: "زرعت بنتٌ نواة تمرة، وصارت تراقبها كل صباح لمدة أسبوع. ما صار شي، فتركت المراقبة. وبعد سنين رجعت ووقفت في ظلها. بعض الأشياء تكبر سواء نظرنا إليها أو ما نظرنا. نامي الآن، وخليها تكبر."
+        ),
+        .init(
+            id: "sea",
+            title: "The sea at night",
+            titleArabic: "البحر في الليل",
+            text: "The fishermen used to say the sea is loudest just before it turns calm. When you hear it roaring, that is not the storm arriving. That is the storm leaving. Close your eyes. It is already leaving.",
+            textArabic: "كان الصيادون يقولون إن البحر يعلو صوته قبل أن يهدأ مباشرة. فإذا سمعتِه يهدر، فليست العاصفة قادمة — العاصفة راحلة. أغمضي عينيك. هي راحلة من زمان."
+        )
     ]
 }

@@ -41,7 +41,7 @@ struct PersonView: View {
                             .filter { $0.isSaved }
                         if !memories.isEmpty {
                             NavigationLink {
-                                MemoriesView(personId: person.id, filter: .generated)
+                                MemoriesView(personId: person.id, filter: .recreated)
                             } label: {
                                 Panel {
                                     HStack {

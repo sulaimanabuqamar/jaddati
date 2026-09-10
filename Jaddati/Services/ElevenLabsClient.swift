@@ -106,7 +106,8 @@ struct ElevenLabsClient: VoiceService {
 
     // MARK: Speech
 
-    func synthesize(text: String, voiceId: String, modelId: String) async throws -> Data {
+    func synthesize(text: String, voiceId: String, modelId: String,
+                    tuning: VoiceTuning) async throws -> Data {
         guard !key.isEmpty else { throw VoiceServiceError.notConfigured }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count <= AppConfig.maxCharactersPerGeneration else {
@@ -124,10 +125,21 @@ struct ElevenLabsClient: VoiceService {
         request.setValue(key, forHTTPHeaderField: "xi-api-key")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("audio/mpeg", forHTTPHeaderField: "Accept")
-        request.httpBody = try JSONSerialization.data(withJSONObject: [
+        // Both dictionaries are annotated. `data(withJSONObject:)` takes `Any`,
+        // which gives the literals no contextual type, and a literal mixing
+        // Double and Bool then has nothing to infer from.
+        let settings: [String: Any] = [
+            "stability": tuning.stability,
+            "similarity_boost": tuning.similarity,
+            "style": tuning.style,
+            "use_speaker_boost": tuning.speakerBoost
+        ]
+        let payload: [String: Any] = [
             "text": trimmed,
-            "model_id": modelId
-        ])
+            "model_id": modelId,
+            "voice_settings": settings
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
         let (data, response) = try await perform(request)
         guard let http = response as? HTTPURLResponse else { throw VoiceServiceError.badResponse }
