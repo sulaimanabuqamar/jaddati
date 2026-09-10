@@ -69,6 +69,8 @@ from a serious one.
 - [ ] **Rebuild from Xcode on the 15th.** Free provisioning expires seven days after signing. A build made on the 9th will not launch on the 16th.
 - [ ] Launch the rebuilt app and play something. Building is not launching.
 - [ ] Offline test mode **off**. No red banner on the home screen.
+- [ ] Profile shows **"Voice ready"** — not "This voice was made in test mode". A voice minted in test mode does not exist at ElevenLabs and every generation will fail.
+- [ ] Leave **"Faster, slightly plainer voice"** alone unless you have already generated with it successfully. It sends a different model id, and if this account cannot reach that model the request fails in a way that has nothing to do with the voice.
 - [ ] `Secrets.plist` present and the key valid — generate one line to prove it.
 - [ ] Check remaining credits at elevenlabs.io. Rehearsal eats them.
 - [ ] Demo profile created, voice built, at least one original recording imported.

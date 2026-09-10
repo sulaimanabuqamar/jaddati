@@ -31,6 +31,7 @@ second table.
 | Generation latency | Unmeasured. The UI copy avoids promising a number. |
 | The multipart field name is `files` rather than `files[]` | Taken from docs, never exercised. `spike/voice_spike.sh` tries `files` and falls back to `files[]` — run it to settle this. |
 | The exact provider error strings the failure mapping matches | Guessed defensively from status codes; never observed live. |
+| **`eleven_flash_v2_5` exists on this account** | Never called. It is what the "Faster, slightly plainer voice" toggle sends. An unavailable model id returns a 400 that looks nothing like a voice problem. **Do not touch that toggle on stage until one generation has succeeded with it.** |
 | That a ~1 minute sample is enough for a convincing result | Provider's stated minimum, not our measurement. |
 
 ## The fastest way to move rows up

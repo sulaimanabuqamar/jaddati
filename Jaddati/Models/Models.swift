@@ -22,11 +22,27 @@ struct Person: Identifiable, Codable, Equatable, Hashable {
     /// rests on it — see AddVoiceView.
     var consentConfirmedAt: Date? = nil
 
-    /// Ready to speak. Deliberately stricter than "a voice id exists".
-    var hasVoice: Bool { voiceId != nil && voiceRequiresVerification != true }
+    /// Ready to speak. Deliberately stricter than "a voice id exists": a voice
+    /// can exist and still be unusable, and claiming otherwise produces a
+    /// profile that says "Voice ready" while every generation fails.
+    var hasVoice: Bool {
+        voiceId != nil && voiceRequiresVerification != true && !voiceIsUnavailableHere
+    }
 
     /// A voice was created but the provider will not let it speak yet.
     var voicePendingVerification: Bool { voiceId != nil && voiceRequiresVerification == true }
+
+    /// Minted by the offline test mode. No such voice exists at the provider.
+    var voiceIsPlaceholder: Bool {
+        voiceId?.hasPrefix(AppConfig.placeholderVoicePrefix) == true
+    }
+
+    /// The stored voice cannot be used against the service the app is currently
+    /// pointed at — i.e. a test-mode voice while test mode is off. This is the
+    /// state that silently produced "invalid ID" on every generation.
+    var voiceIsUnavailableHere: Bool {
+        voiceIsPlaceholder && !AppConfig.isUsingMock
+    }
 }
 
 /// Where a piece of audio came from. This distinction is load-bearing:

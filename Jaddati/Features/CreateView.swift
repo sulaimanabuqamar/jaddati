@@ -12,6 +12,11 @@ struct CreateView: View {
     @State private var newNote: String = ""
     @State private var isGenerating = false
     @State private var errorText: String?
+    /// Kept alongside the message because some failures have a fix the user can
+    /// tap. A message telling someone to "add their voice again" on a screen
+    /// with no way to do that is a dead end.
+    @State private var failure: VoiceServiceError?
+    @State private var addingVoice = false
     @State private var generated: AudioAsset?
     @State private var useFastModel = false
 
@@ -24,6 +29,12 @@ struct CreateView: View {
 
     private var trimmed: String {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Only one failure has a fix the user can perform from this screen.
+    private var isRecoverableByRecreatingVoice: Bool {
+        if case .some(.voiceUnavailable) = failure { return true }
+        return false
     }
 
     private var noteCount: Int {
@@ -51,6 +62,9 @@ struct CreateView: View {
     private var disabledReason: String? {
         if isGenerating || canSpeak { return nil }
         if !AppConfig.isConfigured { return nil }        // has its own error note above
+        if person?.voiceIsUnavailableHere == true {
+            return "This voice was made in test mode. Create the real one from the profile."
+        }
         if person?.hasVoice != true { return "This person has no voice yet." }
         if trimmed.count > AppConfig.maxCharactersPerGeneration {
             return "That is longer than \(AppConfig.maxCharactersPerGeneration) characters."
@@ -115,41 +129,7 @@ struct CreateView: View {
                         .foregroundStyle(Theme.Palette.bronze)
                     }
 
-                    if let errorText {
-                        ErrorNote(message: errorText) {
-                            self.errorText = nil
-                            Task { await speak() }
-                        }
-                    }
-
-                    Button(isGenerating ? "Speaking…" : "Hear it in their voice") {
-                        Task { await speak() }
-                    }
-                    .buttonStyle(PrimaryButtonStyle(enabled: canSpeak))
-                    .disabled(!canSpeak)
-
-                    if let reason = disabledReason {
-                        Text(reason)
-                            .font(Theme.Font.caption)
-                            .foregroundStyle(Theme.Palette.inkSoft)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    if isGenerating {
-                        HStack(spacing: 8) {
-                            ProgressView()
-                            Text("Generating. Your words stay here if it fails.")
-                                .font(Theme.Font.caption)
-                                .foregroundStyle(Theme.Palette.inkSoft)
-                        }
-                    }
-
-                    Toggle("Faster, slightly plainer voice", isOn: $useFastModel)
-                        .font(Theme.Font.caption)
-                        .foregroundStyle(Theme.Palette.inkSoft)
-                        .tint(Theme.Palette.bronze)
-                        .padding(.top, Theme.Space.xs)
+                    actionSection
                 }
                 .padding(Theme.Space.m)
                 .padding(.bottom, Theme.Space.xl)
@@ -162,7 +142,61 @@ struct CreateView: View {
         .navigationDestination(item: $generated) { asset in
             PlayerView(asset: asset)
         }
+        .sheet(isPresented: $addingVoice) {
+            AddVoiceView(personId: personId)
+        }
+        .onChange(of: person?.voiceId) { _, _ in
+            // A new voice invalidates the old complaint.
+            errorText = nil
+            failure = nil
+        }
         .onAppear(perform: seedIfNeeded)
+    }
+
+    /// Error, primary action, why-it-is-disabled, progress, model toggle.
+    @ViewBuilder private var actionSection: some View {
+        if let errorText {
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                ErrorNote(message: errorText) {
+                    self.errorText = nil
+                    self.failure = nil
+                    Task { await speak() }
+                }
+                if isRecoverableByRecreatingVoice {
+                    Button("Add their voice again") { addingVoice = true }
+                        .buttonStyle(QuietButtonStyle())
+                }
+            }
+        }
+
+        Button(isGenerating ? "Speaking…" : "Hear it in their voice") {
+            Task { await speak() }
+        }
+        .buttonStyle(PrimaryButtonStyle(enabled: canSpeak))
+        .disabled(!canSpeak)
+
+        if let reason = disabledReason {
+            Text(reason)
+                .font(Theme.Font.caption)
+                .foregroundStyle(Theme.Palette.inkSoft)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+
+        if isGenerating {
+            HStack(spacing: 8) {
+                ProgressView()
+                Text("Generating. Your words stay here if it fails.")
+                    .font(Theme.Font.caption)
+                    .foregroundStyle(Theme.Palette.inkSoft)
+            }
+        }
+
+        Toggle("Faster, slightly plainer voice", isOn: $useFastModel)
+            .font(Theme.Font.caption)
+            .foregroundStyle(Theme.Palette.inkSoft)
+            .tint(Theme.Palette.bronze)
+            .padding(.top, Theme.Space.xs)
     }
 
     // MARK: Composer variants
@@ -352,6 +386,7 @@ struct CreateView: View {
         guard let person, let voiceId = person.voiceId, canSpeak else { return }
         isGenerating = true
         errorText = nil
+        failure = nil
 
         let model = useFastModel ? AppConfig.fastModelId : AppConfig.defaultModelId
         let service: VoiceService = AppConfig.voiceService()
@@ -379,8 +414,9 @@ struct CreateView: View {
         } catch {
             isGenerating = false
             // The typed text is deliberately left untouched.
-            errorText = (error as? VoiceServiceError)?.errorDescription
-                ?? "Something went wrong. Try again."
+            let known = error as? VoiceServiceError
+            failure = known
+            errorText = known?.errorDescription ?? "Something went wrong. Try again."
         }
     }
 }

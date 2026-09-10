@@ -46,12 +46,16 @@ struct ElevenLabsClient: VoiceService {
                                        filename: sampleURL.lastPathComponent,
                                        mime: mimeType(for: sampleURL), field: "files")
         } catch let error as VoiceServiceError {
-            // Split deliberately: a single case listing both patterns cannot
-            // compile, because `status` is bound by one of them and not the other.
             switch error {
-            case .provider(let status, _) where status == 422 || status == 400:
-                return try await retryVoice(name: name, data: sampleData, url: sampleURL)
-            case .sampleRejected, .badResponse:
+            case .sampleRejected:
+                // The server refused the shape of the request, which is exactly
+                // what a wrong multipart field name looks like. Try the other
+                // spelling before giving up.
+                //
+                // Deliberately NOT retrying .badResponse: that is also thrown
+                // for a 2xx body we could not parse, where the voice very
+                // likely WAS created. Retrying would mint a second one and
+                // spend another slot.
                 return try await retryVoice(name: name, data: sampleData, url: sampleURL)
             default:
                 throw error
@@ -159,13 +163,16 @@ struct ElevenLabsClient: VoiceService {
         }
     }
 
+    /// Which endpoint an error came from. The same status code means different
+    /// things on each, and reporting the wrong one sends the reader to the
+    /// wrong problem.
+    private enum CallKind { case voiceCreation, speech }
+
     /// Turns a provider status code into something a person can act on.
     ///
     /// Quota and voice-slot exhaustion are checked BEFORE the status switch:
     /// ElevenLabs reports credit exhaustion as 401, and treating that as a bad
     /// key sends you debugging the wrong thing while the judges wait.
-    private enum CallKind { case voiceCreation, speech }
-
     private func mapError(status: Int, body: Data, kind: CallKind = .voiceCreation) -> VoiceServiceError {
         let detail = extractDetail(body)
         let lowered = detail.lowercased()
@@ -178,7 +185,8 @@ struct ElevenLabsClient: VoiceService {
             return .voiceLimitReached
         }
 
-        if lowered.contains("invalid id") || lowered.contains("voice_not_found")
+        if kind == .speech,
+           lowered.contains("invalid id") || lowered.contains("voice_not_found")
             || lowered.contains("voice not found") {
             return .voiceUnavailable(detail)
         }
@@ -187,11 +195,19 @@ struct ElevenLabsClient: VoiceService {
         case 401, 403:
             return .unauthorised
         case 404:
-            return .voiceUnavailable(detail)
+            return kind == .speech
+                ? .voiceUnavailable(detail)
+                : .provider(status: 404, detail: detail)
         case 429:
             return .rateLimited
         case 400, 422:
-            return kind == .speech ? .voiceUnavailable(detail) : .sampleRejected(detail)
+            // A genuine bad voice id is caught by the string check above. What
+            // reaches here on a speech call is a bad model id, malformed text
+            // or a bad output format — none of which are fixed by creating a
+            // new voice, so do not offer that as the remedy.
+            return kind == .speech
+                ? .provider(status: status, detail: detail)
+                : .sampleRejected(detail)
         default:
             return .provider(status: status, detail: detail)
         }

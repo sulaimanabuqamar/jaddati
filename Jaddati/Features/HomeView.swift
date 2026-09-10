@@ -177,6 +177,8 @@ struct PersonCard: View {
     }
 
     private var subtitle: String {
+        if person.voiceIsUnavailableHere { return "Voice needs creating for real" }
+        if person.voicePendingVerification { return "Voice awaiting verification" }
         if !person.hasVoice {
             return originals == 0 ? "No recordings yet" : "Voice not created yet"
         }

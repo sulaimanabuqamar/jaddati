@@ -6,6 +6,12 @@ struct PersonView: View {
 
     @EnvironmentObject private var library: Library
     @State private var addingVoice = false
+    #if DEBUG
+    /// Not read anywhere. It exists so this screen re-renders when offline test
+    /// mode is toggled — `AppConfig.isUsingMock` reads UserDefaults directly and
+    /// publishes nothing, so without this the voice gating would show stale.
+    @AppStorage(AppConfig.mockDefaultsKey) private var useMockVoices = false
+    #endif
     @State private var confirmingDelete = false
 
     private var person: Person? { library.person(withId: personId) }
@@ -21,6 +27,8 @@ struct PersonView: View {
 
                         if person.hasVoice {
                             intents(person)
+                        } else if person.voiceIsUnavailableHere {
+                            placeholderVoice
                         } else if person.voicePendingVerification {
                             pendingVerification
                         } else {
@@ -92,6 +100,27 @@ struct PersonView: View {
                         .foregroundStyle(Theme.Palette.bronze)
                 }
                 .padding(.top, 2)
+            }
+        }
+    }
+
+    /// This voice was minted by the offline test mode and does not exist at the
+    /// provider. Before this state existed the profile read "Voice ready", all
+    /// four experiences unlocked, and every generation failed on an invalid id
+    /// with no way to recover from the screen you were on.
+    private var placeholderVoice: some View {
+        Panel {
+            VStack(alignment: .leading, spacing: Theme.Space.s) {
+                Text("This voice was made in test mode")
+                    .font(Theme.Font.heading)
+                    .foregroundStyle(Theme.Palette.ink)
+                Text("It only works while offline test mode is on. To speak for real, add the recording again now that the voice service is connected — it takes a few seconds.")
+                    .font(Theme.Font.body)
+                    .foregroundStyle(Theme.Palette.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Create the real voice") { addingVoice = true }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .padding(.top, 2)
             }
         }
     }

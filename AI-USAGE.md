@@ -69,6 +69,45 @@ fix it was the worse risk.
 
 **Human review status:** not started.
 
+## Session 3 — 10 September 2026, evening
+
+**Tool:** Claude (Opus 5), unattended, with two independent Claude reviewers that
+had not written the code.
+
+**The defect being fixed.** A voice created while the debug offline mode was on
+persisted into live mode and looked entirely healthy: the profile read "Voice
+ready", all four experiences unlocked, and every generation failed at ElevenLabs
+with *"An invalid ID has been received: 'mock-voice-…'"*. The only recovery was a
+"Replace" link below the fold, and the error text told the user to add the voice
+again while giving them nothing to tap. This was introduced by the mock in
+Session 2 — a testing tool that left unusable state behind in the real app.
+
+**Fixed:** voice ids minted by the mock now carry a prefix the model recognises,
+so a test-mode voice is reported as unusable the moment the mock is off, with its
+own screen state and a one-tap route to create the real one. The recording
+already stored for that person can be re-used without hunting for the file again,
+and selecting it can no longer delete it.
+
+**Two review rounds.** The first cleared the changes for compilation and found 8
+logic defects; the second verified each fix and found 4 more. Fixed across both:
+error mapping that told the user to recreate a voice when the actual fault was a
+bad model id (and offered a button that would mint a second voice and spend an
+account slot); a multipart-retry path that a status-code change had silently
+disabled; a retry offered on a completed action that would have created a
+duplicate voice; two dead "Try again" buttons; a file-picker cancellation
+reported as an error; and a `VStack` sitting exactly on SwiftUI's ten-child
+ViewBuilder limit, where one more line would have produced an unhelpful
+type-check failure.
+
+**Checks actually run:** brace/paren/bracket balance across all 17 Swift files
+after every edit; `#if`/`#endif` pairing; duplicate-definition and
+missing-symbol sweeps; an escaping-artifact scan (these edits were applied by
+script); and a manual trace of all four error paths in the voice-import screen.
+
+**Checks NOT run:** compilation. Everything above is unverified until it builds.
+
+**Human review status:** not started.
+
 ## How to keep this file honest
 
 Add a row when work happens. Never mark a human review complete without the

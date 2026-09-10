@@ -29,6 +29,12 @@ enum AppConfig {
     /// Key for the debug-only offline mode. Never consulted in a Release build.
     static let mockDefaultsKey = "jaddati.useMockVoices"
 
+    /// Voice ids minted by the offline test mode carry this prefix. They exist
+    /// only inside that mode; against the live service they are meaningless.
+    /// Defined here rather than in MockVoiceService because the model layer has
+    /// to recognise them in Release builds too, where the mock does not exist.
+    static let placeholderVoicePrefix = "mock-voice-"
+
     static var isUsingMock: Bool {
         #if DEBUG
         return UserDefaults.standard.bool(forKey: mockDefaultsKey)

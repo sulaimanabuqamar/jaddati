@@ -15,12 +15,18 @@ struct AddVoiceView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var pickedURL: URL?
+    /// False when the selection points at a file the library owns. Deleting one
+    /// of those on dismiss would destroy the person's original recording.
+    @State private var pickedIsTemporary = true
     @State private var pickedName: String = ""
     @State private var pickedDuration: Double = 0
     @State private var showingPicker = false
     @State private var consented = false
     @State private var isWorking = false
     @State private var errorText: String?
+    /// False for messages that report a completed action. Retrying those would
+    /// create a second voice at the provider, not fix anything.
+    @State private var errorAllowsRetry = true
 
     private var person: Person? { library.person(withId: personId) }
     private var replacingExistingVoice: Bool {
@@ -63,9 +69,13 @@ struct AddVoiceView: View {
                         consentPanel
 
                         if let errorText {
-                            ErrorNote(message: errorText) {
-                                self.errorText = nil
-                                Task { await createVoice() }
+                            if errorAllowsRetry {
+                                ErrorNote(message: errorText) {
+                                    self.errorText = nil
+                                    Task { await createVoice() }
+                                }
+                            } else {
+                                ErrorNote(message: errorText)
                             }
                         }
 
@@ -143,11 +153,48 @@ struct AddVoiceView: View {
                                                                  : Theme.Palette.inkSoft)
                         }
                         Spacer(minLength: 0)
-                        Button("Change") { showingPicker = true }
+                        // Deselect rather than jumping straight to Files —
+                        // that returns to the list, which offers both the
+                        // already-saved recordings and the file picker.
+                        Button("Change") { discardTempFile() }
                             .font(Theme.Font.caption)
                             .foregroundStyle(Theme.Palette.forest)
                     }
                 } else {
+                    if let person {
+                        let stored = library.assets(for: person, source: .original)
+                            .filter { library.fileExists(for: $0) }
+                        if !stored.isEmpty {
+                            Text("Already saved for \(person.name)")
+                                .font(Theme.Font.caption)
+                                .foregroundStyle(Theme.Palette.inkSoft)
+                            ForEach(stored) { asset in
+                                Button { use(asset) } label: {
+                                    HStack(spacing: Theme.Space.s) {
+                                        Image(systemName: "waveform")
+                                            .foregroundStyle(Theme.Palette.bronze)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(asset.createdAt.formatted(date: .abbreviated,
+                                                                           time: .shortened))
+                                                .font(Theme.Font.body)
+                                                .foregroundStyle(Theme.Palette.ink)
+                                            Text(lengthLabel(asset.durationSeconds))
+                                                .font(Theme.Font.caption)
+                                                .foregroundStyle(Theme.Palette.inkSoft)
+                                        }
+                                        Spacer(minLength: 0)
+                                        Text("Use")
+                                            .font(.system(size: 12, weight: .semibold))
+                                            .foregroundStyle(Theme.Palette.forest)
+                                    }
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            Divider().overlay(Theme.Palette.hairline)
+                        }
+                    }
+
                     Button {
                         showingPicker = true
                     } label: {
@@ -214,18 +261,54 @@ struct AddVoiceView: View {
         return text
     }
 
-    /// Removes the working copy. Called on cancel, on dismiss, and before
-    /// replacing it with a different pick — otherwise every abandoned import
-    /// leaves a full recording behind in the temp directory.
+    /// Removes our own working copy — on cancel, on dismiss, and before
+    /// replacing it with a different pick, so no abandoned import leaves a full
+    /// recording behind in the temp directory. A file belonging to the library
+    /// is only deselected, never deleted.
     private func discardTempFile() {
         guard let url = pickedURL else { return }
-        try? FileManager.default.removeItem(at: url)
+        if pickedIsTemporary {
+            try? FileManager.default.removeItem(at: url)
+        }
         pickedURL = nil
+        pickedIsTemporary = true
+        pickedName = ""
+        pickedDuration = 0
+    }
+
+    /// Select a recording the library already holds. No copy is made, and the
+    /// file is never deleted by this screen.
+    private func use(_ asset: AudioAsset) {
+        discardTempFile()
+        let url = library.url(for: asset)
+        pickedURL = url
+        pickedIsTemporary = false
+        pickedName = asset.text.isEmpty
+            ? asset.createdAt.formatted(date: .abbreviated, time: .shortened)
+            : asset.text
+        pickedDuration = asset.durationSeconds > 0
+            ? asset.durationSeconds
+            : ((try? AVAudioPlayer(contentsOf: url))?.duration ?? 0)
+        errorText = nil
+    }
+
+    private func lengthLabel(_ seconds: Double) -> String {
+        guard seconds > 0 else { return "Length unknown" }
+        let total = Int(seconds.rounded())
+        return total >= 60 ? "\(total / 60)m \(total % 60)s" : "\(total)s"
     }
 
     private func handlePick(_ result: Result<[URL], Error>) {
         switch result {
-        case .failure:
+        case .failure(let error):
+            // SwiftUI reports the user tapping Cancel as a failure. Telling
+            // them the file could not be opened when they chose not to open one
+            // is just noise.
+            if (error as? CocoaError)?.code == .userCancelled { return }
+            // No retry: the fix is to choose a file, using the button directly
+            // above this note. A "Try again" here would call createVoice() with
+            // no file selected and do nothing at all.
+            errorAllowsRetry = false
             errorText = "That file could not be opened."
         case .success(let urls):
             guard let url = urls.first else { return }
@@ -241,11 +324,13 @@ struct AddVoiceView: View {
             do {
                 try FileManager.default.copyItem(at: url, to: temp)
             } catch {
+                errorAllowsRetry = false
                 errorText = "That file could not be read from its location."
                 return
             }
 
             pickedURL = temp
+            pickedIsTemporary = true
             pickedName = url.lastPathComponent
             pickedDuration = (try? AVAudioPlayer(contentsOf: temp))?.duration ?? 0
             errorText = nil
@@ -256,6 +341,7 @@ struct AddVoiceView: View {
         guard let person, let sampleURL = pickedURL, canSubmit else { return }
         isWorking = true
         errorText = nil
+        errorAllowsRetry = true
 
         let service: VoiceService = AppConfig.voiceService()
         do {
@@ -265,8 +351,10 @@ struct AddVoiceView: View {
             // Keep the original. The archive must always be able to show what
             // the person actually sounded like, next to anything generated —
             // so a failure here is reported, not swallowed.
-            var originalStored = false
-            if let data = try? Data(contentsOf: sampleURL) {
+            // Re-using a recording the library already holds must not add a
+            // duplicate row pointing at the same audio.
+            var originalStored = !pickedIsTemporary
+            if pickedIsTemporary, let data = try? Data(contentsOf: sampleURL) {
                 let ext = sampleURL.pathExtension.isEmpty ? "m4a" : sampleURL.pathExtension
                 originalStored = library.storeAudio(data: data,
                                                     for: person,
@@ -288,6 +376,7 @@ struct AddVoiceView: View {
             if originalStored {
                 dismiss()
             } else {
+                errorAllowsRetry = false
                 errorText = "The voice was created, but the original recording could not be saved to this phone. Import it again from the profile so it appears in the archive."
             }
         } catch {

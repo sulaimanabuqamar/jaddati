@@ -17,7 +17,7 @@ struct MockVoiceService: VoiceService {
 
     func createVoice(name: String, sampleURL: URL) async throws -> CreatedVoice {
         try? await Task.sleep(nanoseconds: 1_200_000_000)     // feel the wait
-        return CreatedVoice(id: "mock-voice-\(UUID().uuidString.prefix(8))",
+        return CreatedVoice(id: "\(AppConfig.placeholderVoicePrefix)\(UUID().uuidString.prefix(8))",
                             requiresVerification: false)
     }
 
