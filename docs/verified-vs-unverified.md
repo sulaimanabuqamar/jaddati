@@ -22,6 +22,11 @@ second table.
 | The not-configured state gates correctly | On device: with no key the home screen shows "Voices are not set up on this build"; with offline test mode on, that panel disappears and the red test-mode banner replaces it. |
 | **Voice cloning and Arabic speech work end to end** | 10 Sep 2026, on device: a real sample was uploaded, cloned, and the clone spoke Arabic in a recognisable version of the speaker's own voice. Screenshot on file. |
 | The clone is recognisable as the speaker | Same run — judged by the speaker himself. |
+| **The question model, chosen by measurement** | 10 Sep 2026, `spike/llm_spike.sh` against three candidates on the Groq key. `openai/gpt-oss-120b` wins: one sentence when asked for one, and Gulf wording in Arabic unprompted. `qwen/qwen3.8-27b` second. `allam-2-7b` rejected — its English physics was backwards and its Arabic wandered off the question. |
+| **Answer latency is about 1 second** | Same run, all three models, English and Arabic. Fast enough to interrupt a story on stage. |
+| **Arabic comes back readable** | Same run. Not a quality judgement on a real storybook question, but it is not garbled. |
+| **`whisper-large-v3-turbo` is reachable on this key** | It is in the models list the spike printed. This is the model V1 measured at 16.5% median CER on Emirati dialect, so voice-to-text needs no second account. |
+| **A model id in code would already have broken** | `llama-3.3-70b-versatile` was retired before it was ever called. The spike caught it on a laptop instead of on stage. This is the argument for keeping `LLM_MODEL` in Secrets.plist. |
 
 ## NOT verified — do not claim these
 
@@ -38,9 +43,6 @@ second table.
 | The Pace slider audibly slows new generations | Written, not exercised on device. |
 | Playback rate slowing works on already-generated clips | `AVAudioPlayer.enableRate` is set before `prepareToPlay`; not yet driven from any control. |
 | Profile photos import, shrink and persist across a reinstall | Written, not exercised on device. Photos are stored by filename, like audio, so the container UUID cannot break them — but that is reasoning, not a test. |
-| **Which free host and model the story questions run on** | Nothing has been called yet. `spike/llm_spike.sh` prints the models a key can actually reach and times two answers, one English one Arabic. Run it before trusting `LLM_MODEL`. |
-| That the free tier is fast enough to interrupt a story on stage | Unmeasured. If an answer takes more than a few seconds the feature is worse than not having it — the spike prints the number. |
-| Arabic answer quality from an open-weights model | Untested, and the weakest link in this feature. The spike's second call is exactly this. |
 | The book Q&A flow end to end | Written, never run. Asking pauses the page, answers, speaks the answer, and resumes from the same second — none of that has been exercised on the phone. |
 
 ## The fastest way to move rows up

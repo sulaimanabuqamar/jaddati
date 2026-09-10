@@ -88,12 +88,23 @@ enum AppConfig {
 
     /// A string in Secrets.plist rather than a constant here, on purpose:
     /// hosted model ids get retired without notice, and swapping one should not
-    /// need a code change five days before a demo. `spike/llm_spike.sh` prints
-    /// the ids a given key can actually reach.
+    /// need a code change five days before a demo. That is not hypothetical —
+    /// the first id tried here, `llama-3.3-70b-versatile`, had already been
+    /// retired by the time it was called. `spike/llm_spike.sh` prints the ids a
+    /// given key can actually reach.
+    ///
+    /// Chosen by measurement on 10 Sep 2026 across three candidates: it held to
+    /// one sentence when asked for one, answered in about a second, and reached
+    /// for Gulf wording in Arabic unprompted. Fall back to `fallbackLLMModel`
+    /// if the free tier throttles the larger model.
     static var llmModel: String {
         let value = (secrets["LLM_MODEL"] as? String) ?? ""
-        return value.isEmpty ? "llama-3.3-70b-versatile" : value
+        return value.isEmpty ? "openai/gpt-oss-120b" : value
     }
+
+    /// Second place in the same test: cleaner physics, but formal MSA rather
+    /// than Gulf, and a smaller model. Swap it into Secrets.plist if needed.
+    static let fallbackLLMModel = "qwen/qwen3.8-27b"
 
     static var isCompanionConfigured: Bool {
         if isUsingMock { return true }
