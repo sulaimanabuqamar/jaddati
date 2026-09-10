@@ -17,6 +17,8 @@ second table.
 | **The app compiles** | Clean build in Xcode against a physical iPhone, 10 Sep 2026, twice — before and after the review fixes. Commit `bfba2d7`. |
 | The 13 review fixes compile | Same build. Compiling is not the same as behaving: each fix still needs exercising on the phone. |
 | **The app installs and runs on the iPhone** | Screenshots from the device, 10 Sep 2026 16:50. Home, profile creation, person detail, and voice import all render and navigate. |
+| **The app reaches ElevenLabs and is authenticated** | 10 Sep 2026 16:59, from the device. A text-to-speech request was accepted, authenticated with the key in `Secrets.plist`, and rejected only on the voice id: *"An invalid ID has been received: 'mock-voice-…'"* — the provider's own words, surfaced through the app's error mapping. Not a 401, so the key is valid. |
+| The request shape for text-to-speech is correct | Same request. A malformed body would have failed differently. |
 | The not-configured state gates correctly | On device: with no key the home screen shows "Voices are not set up on this build"; with offline test mode on, that panel disappears and the red test-mode banner replaces it. |
 
 ## NOT verified — do not claim these
@@ -24,7 +26,6 @@ second table.
 | Claim | Why not |
 |---|---|
 
-| Any request from the app has reached ElevenLabs | Zero requests have been made from this code. |
 | The cloned voice sounds recognisably like anyone | No sample has been uploaded yet. |
 | Arabic output quality, or Emirati dialect quality | Untested. Do not promise dialect quality. |
 | Generation latency | Unmeasured. The UI copy avoids promising a number. |

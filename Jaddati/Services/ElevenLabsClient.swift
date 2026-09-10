@@ -128,7 +128,7 @@ struct ElevenLabsClient: VoiceService {
         let (data, response) = try await perform(request)
         guard let http = response as? HTTPURLResponse else { throw VoiceServiceError.badResponse }
         guard (200..<300).contains(http.statusCode) else {
-            throw mapError(status: http.statusCode, body: data)
+            throw mapError(status: http.statusCode, body: data, kind: .speech)
         }
         guard data.count > 500 else { throw VoiceServiceError.badResponse }
         return data
@@ -164,7 +164,9 @@ struct ElevenLabsClient: VoiceService {
     /// Quota and voice-slot exhaustion are checked BEFORE the status switch:
     /// ElevenLabs reports credit exhaustion as 401, and treating that as a bad
     /// key sends you debugging the wrong thing while the judges wait.
-    private func mapError(status: Int, body: Data) -> VoiceServiceError {
+    private enum CallKind { case voiceCreation, speech }
+
+    private func mapError(status: Int, body: Data, kind: CallKind = .voiceCreation) -> VoiceServiceError {
         let detail = extractDetail(body)
         let lowered = detail.lowercased()
 
@@ -176,13 +178,20 @@ struct ElevenLabsClient: VoiceService {
             return .voiceLimitReached
         }
 
+        if lowered.contains("invalid id") || lowered.contains("voice_not_found")
+            || lowered.contains("voice not found") {
+            return .voiceUnavailable(detail)
+        }
+
         switch status {
         case 401, 403:
             return .unauthorised
+        case 404:
+            return .voiceUnavailable(detail)
         case 429:
             return .rateLimited
         case 400, 422:
-            return .sampleRejected(detail)
+            return kind == .speech ? .voiceUnavailable(detail) : .sampleRejected(detail)
         default:
             return .provider(status: status, detail: detail)
         }

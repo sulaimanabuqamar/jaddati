@@ -24,6 +24,7 @@ enum VoiceServiceError: LocalizedError, Equatable {
     case textTooLong(limit: Int)
     case sampleUnreadable
     case sampleRejected(String)
+    case voiceUnavailable(String)
     case unauthorised
     case outOfCredits
     case voiceLimitReached
@@ -45,6 +46,8 @@ enum VoiceServiceError: LocalizedError, Equatable {
             return why.isEmpty
                 ? "The voice service would not accept that recording. Try a longer, cleaner one."
                 : "The voice service would not accept that recording. \(why)"
+        case .voiceUnavailable(let detail):
+            return "That voice is not available at the voice service\(detail.isEmpty ? "" : " (\(detail))"). Add their voice again to create a new one."
         case .unauthorised:
             return "The voice service rejected the key on this build."
         case .outOfCredits:

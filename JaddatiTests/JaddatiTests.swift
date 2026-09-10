@@ -157,7 +157,7 @@ final class JaddatiTests: XCTestCase {
     func testEveryProviderFailureSaysSomethingUseful() {
         let cases: [VoiceServiceError] = [
             .notConfigured, .textTooLong(limit: 800), .sampleUnreadable,
-            .sampleRejected(""), .unauthorised, .outOfCredits, .voiceLimitReached,
+            .sampleRejected(""), .voiceUnavailable("invalid id"), .unauthorised, .outOfCredits, .voiceLimitReached,
             .rateLimited, .offline, .timedOut, .provider(status: 500, detail: "x"), .badResponse
         ]
         for error in cases {

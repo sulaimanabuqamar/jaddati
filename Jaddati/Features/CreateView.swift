@@ -154,6 +154,9 @@ struct CreateView: View {
                 .padding(Theme.Space.m)
                 .padding(.bottom, Theme.Space.xl)
             }
+            // Swiping the page down puts the keyboard away, so the primary
+            // action is reachable without hunting for a Done button.
+            .scrollDismissesKeyboard(.interactively)
         }
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $generated) { asset in
