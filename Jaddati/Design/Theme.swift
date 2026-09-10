@@ -96,32 +96,59 @@ struct PrimaryButtonStyle: ButtonStyle {
     var enabled: Bool = true
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(Theme.Font.label)
-            .foregroundStyle(Theme.Palette.ivory)
-            .frame(maxWidth: .infinity, minHeight: 52)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
-                    .fill(enabled ? (configuration.isPressed ? Theme.Palette.forestDeep
-                                                             : Theme.Palette.forest)
-                                  : Theme.Palette.inkSoft.opacity(0.35))
-            )
-            .scaleEffect(configuration.isPressed ? 0.985 : 1)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+        Body(configuration: configuration, enabled: enabled)
+    }
+
+    /// Honours BOTH the explicit flag and `.disabled(...)`, so a caller that
+    /// only used one of them still gets the greyed-out look.
+    private struct Body: View {
+        let configuration: ButtonStyleConfiguration
+        let enabled: Bool
+        @Environment(\.isEnabled) private var isEnabled
+
+        private var live: Bool { enabled && isEnabled }
+
+        var body: some View {
+            configuration.label
+                .font(Theme.Font.label)
+                .foregroundStyle(Theme.Palette.ivory)
+                .frame(maxWidth: .infinity, minHeight: 52)
+                .background(
+                    RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                        .fill(live ? (configuration.isPressed ? Theme.Palette.forestDeep
+                                                              : Theme.Palette.forest)
+                                   : Theme.Palette.inkSoft.opacity(0.35))
+                )
+                .scaleEffect(configuration.isPressed && live ? 0.985 : 1)
+                .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+        }
     }
 }
 
 struct QuietButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(Theme.Font.label)
-            .foregroundStyle(Theme.Palette.forest)
-            .frame(maxWidth: .infinity, minHeight: 48)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
-                    .fill(Theme.Palette.ivorySunk)
-            )
-            .opacity(configuration.isPressed ? 0.75 : 1)
+        Body(configuration: configuration)
+    }
+
+    /// A ButtonStyle cannot read `isEnabled` directly, so the body lives in a
+    /// small view that can. Without this a disabled control looks identical to
+    /// a live one — Previous and Next on the last page read as broken taps.
+    private struct Body: View {
+        let configuration: ButtonStyleConfiguration
+        @Environment(\.isEnabled) private var isEnabled
+
+        var body: some View {
+            configuration.label
+                .font(Theme.Font.label)
+                .foregroundStyle(isEnabled ? Theme.Palette.forest
+                                           : Theme.Palette.inkSoft.opacity(0.45))
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .background(
+                    RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                        .fill(Theme.Palette.ivorySunk.opacity(isEnabled ? 1 : 0.5))
+                )
+                .opacity(configuration.isPressed && isEnabled ? 0.75 : 1)
+        }
     }
 }
 

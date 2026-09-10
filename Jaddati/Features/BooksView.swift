@@ -10,6 +10,7 @@ struct BooksView: View {
     @EnvironmentObject private var player: AudioPlayer
     @State private var showingPicker = false
     @State private var isImporting = false
+    @State private var pendingDeletion: Book?
     @State private var errorText: String?
     @State private var openedBookId: UUID?
 
@@ -64,6 +65,21 @@ struct BooksView: View {
         .navigationDestination(item: $openedBookId) { id in
             BookReaderView(bookId: id, personId: personId)
         }
+        .confirmationDialog("Delete this book?",
+                            isPresented: Binding(get: { pendingDeletion != nil },
+                                                 set: { if !$0 { pendingDeletion = nil } }),
+                            titleVisibility: .visible) {
+            Button("Delete book and its audio", role: .destructive) {
+                if let book = pendingDeletion {
+                    player.stop()               // it may be reading this book
+                    library.delete(book)
+                }
+                pendingDeletion = nil
+            }
+            Button("Cancel", role: .cancel) { pendingDeletion = nil }
+        } message: {
+            Text("The pages you have already had read will be removed from this phone too.")
+        }
         .fileImporter(isPresented: $showingPicker,
                       // Deliberately NOT `.text`: that is the parent type and
                       // also matches RTF, HTML, CSV and source files, whose
@@ -83,29 +99,36 @@ struct BooksView: View {
                           message: "Import something short to start with — a chapter, a letter, a story you wrote.")
             } else {
                 ForEach(books) { book in
-                    Button { openedBookId = book.id } label: {
-                        Panel {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(book.title)
-                                    .font(Theme.Font.heading)
-                                    .foregroundStyle(Theme.Palette.ink)
-                                    .multilineTextAlignment(.leading)
-                                Text("\(book.pageCount) pages · \(library.pagesRead(of: book)) already read")
-                                    .font(Theme.Font.caption)
-                                    .foregroundStyle(Theme.Palette.inkSoft)
-                                Text("About \(book.totalCharacters.formatted()) credits to read all of it")
-                                    .font(Theme.Font.caption)
-                                    .foregroundStyle(Theme.Palette.bronze)
+                    Panel {
+                        HStack(alignment: .top, spacing: Theme.Space.s) {
+                            Button { openedBookId = book.id } label: {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(book.title)
+                                        .font(Theme.Font.heading)
+                                        .foregroundStyle(Theme.Palette.ink)
+                                        .multilineTextAlignment(.leading)
+                                    Text("\(book.pageCount) pages · \(library.pagesRead(of: book)) already read")
+                                        .font(Theme.Font.caption)
+                                        .foregroundStyle(Theme.Palette.inkSoft)
+                                    Text("About \(book.totalCharacters.formatted()) credits to read all of it")
+                                        .font(Theme.Font.caption)
+                                        .foregroundStyle(Theme.Palette.bronze)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
                             }
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .contextMenu {
-                        Button(role: .destructive) {
-                            player.stop()          // it may be reading this book
-                            library.delete(book)
-                        } label: {
-                            Label("Delete book and its audio", systemImage: "trash")
+                            .buttonStyle(.plain)
+
+                            // Visible, not hidden behind a long press.
+                            Button { pendingDeletion = book } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(Theme.Palette.inkSoft)
+                                    .frame(width: 44, height: 44)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Delete \(book.title)")
                         }
                     }
                 }
@@ -143,6 +166,9 @@ struct BooksView: View {
             }
             if scoped { url.stopAccessingSecurityScopedResource() }
 
+            // The title must come from the file the USER picked. Reading it
+            // from `temp` produced book titles that were raw UUIDs.
+            let displayName = url.deletingPathExtension().lastPathComponent
             let personId = person.id
             isImporting = true
             errorText = nil
@@ -150,7 +176,9 @@ struct BooksView: View {
             Task {
                 let outcome = await Task.detached(priority: .userInitiated) { () -> ImportOutcome in
                     do {
-                        let book = try BookImporter.makeBook(from: temp, personId: personId)
+                        let book = try BookImporter.makeBook(from: temp,
+                                                             personId: personId,
+                                                             displayName: displayName)
                         return ImportOutcome(book: book, message: nil)
                     } catch {
                         let message = (error as? BookImporter.ImportError)?.errorDescription
