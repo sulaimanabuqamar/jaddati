@@ -306,7 +306,9 @@ struct CreateView: View {
                                   TextDirection.isArabic(text) ? .rightToLeft : .leftToRight)
                     .overlay(alignment: .topLeading) {
                         if trimmed.isEmpty {
-                            Text("Type the words you want to hear…")
+                            Text(intent == .storyFromMemories
+                                 ? "Save a memory above and it appears here, ready to speak."
+                                 : "Type the words you want to hear…")
                                 .font(Theme.Font.spoken)
                                 .foregroundStyle(Theme.Palette.inkSoft.opacity(0.6))
                                 .padding(.top, 8)
@@ -434,7 +436,7 @@ struct CreateView: View {
                 let notes = library.notes(for: person)
 
                 HStack {
-                    Text("Your family's memories")
+                    Text("Memories your family wrote down")
                         .font(Theme.Font.label)
                         .foregroundStyle(Theme.Palette.ink)
                     Spacer()
@@ -444,6 +446,11 @@ struct CreateView: View {
                             .foregroundStyle(Theme.Palette.inkSoft)
                     }
                 }
+
+                Text("Everything saved here is read back word for word, in their voice. The app adds nothing of its own.")
+                    .font(Theme.Font.caption)
+                    .foregroundStyle(Theme.Palette.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 if notes.isEmpty {
                     Text("Nothing written down yet. A retelling is built only from what your family adds here — the app will not invent a memory.")
@@ -463,9 +470,10 @@ struct CreateView: View {
                                 Button {
                                     library.removeNote(note)
                                     // The built text no longer matches the
-                                    // family's words, so it must stop claiming
-                                    // to be them.
+                                    // family's words. Rebuild it, or clear the
+                                    // claim if nothing is left.
                                     builtRetelling = nil
+                                    rebuildRetellingIfSafe()
                                 } label: {
                                     Image(systemName: "trash")
                                         .font(.system(size: 12))
@@ -478,7 +486,7 @@ struct CreateView: View {
                             }
                         }
                     }
-                    Button("Build the retelling from these \(notes.count)") {
+                    Button("Put all \(notes.count) into the words below") {
                         let built = Composer.retelling(from: notes)
                         text = built ?? ""
                         builtRetelling = built
@@ -504,6 +512,7 @@ struct CreateView: View {
                             guard !clean.isEmpty else { return }
                             library.add(FamilyNote(personId: person.id, text: clean))
                             newNote = ""
+                            rebuildRetellingIfSafe()
                         }
                         .buttonStyle(PrimaryButtonStyle(
                             enabled: !newNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
@@ -536,10 +545,24 @@ struct CreateView: View {
 
     // MARK: Behaviour
 
+    /// Fills the spoken text from the saved memories — but only when doing so
+    /// cannot destroy something the user typed. Safe when the box is empty, or
+    /// when it still holds a previous build untouched.
+    private func rebuildRetellingIfSafe() {
+        guard intent == .storyFromMemories, let person else { return }
+        let editorIsOurs = trimmed.isEmpty
+            || trimmed == (builtRetelling ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard editorIsOurs else { return }
+        let built = Composer.retelling(from: library.notes(for: person))
+        text = built ?? ""
+        builtRetelling = built
+    }
+
     private func seedIfNeeded() {
         draftTuning = person?.voiceTuning ?? .natural
         guard trimmed.isEmpty else { return }
         if intent == .comfort { text = Composer.affirmations[0].english }
+        if intent == .storyFromMemories { rebuildRetellingIfSafe() }
     }
 
     /// The label stored WITH the audio. It describes what these words actually
