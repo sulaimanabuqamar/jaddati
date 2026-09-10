@@ -340,6 +340,7 @@ struct CreateView: View {
                     }
 
                 HStack {
+                    DictateButton(text: $text)
                     Spacer()
                     Text("\(trimmed.count) / \(intent.characterLimit)")
                         .font(Theme.Font.caption)

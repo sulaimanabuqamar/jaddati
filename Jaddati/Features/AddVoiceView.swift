@@ -27,6 +27,8 @@ struct AddVoiceView: View {
     /// False for messages that report a completed action. Retrying those would
     /// create a second voice at the provider, not fix anything.
     @State private var errorAllowsRetry = true
+    @StateObject private var recorder = VoiceRecorder()
+    @State private var recordProblem: String?
 
     private var person: Person? { library.person(withId: personId) }
     private var replacingExistingVoice: Bool {
@@ -114,7 +116,13 @@ struct AddVoiceView: View {
             }
         }
         .interactiveDismissDisabled(isWorking)
-        .onDisappear(perform: discardTempFile)
+        .onDisappear {
+            if recorder.isRecording { recorder.cancel() }
+            discardTempFile()
+        }
+        .onChange(of: recorder.reachedLimit) { _, hit in
+            if hit { stopRecording() }
+        }
     }
 
     // MARK: Panels
@@ -214,9 +222,126 @@ struct AddVoiceView: View {
                         }
                     }
                     .buttonStyle(.plain)
+
+                    Divider().overlay(Theme.Palette.hairline)
+
+                    recordRow
                 }
             }
         }
+    }
+
+    /// Recording straight into the app. The file it produces is handed to the
+    /// same fields the file picker fills, so consent, validation and cleanup
+    /// downstream are untouched.
+    @ViewBuilder private var recordRow: some View {
+        if recorder.isRecording {
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                HStack(spacing: Theme.Space.s) {
+                    // A bar that moves is the only honest sign the microphone is
+                    // capturing. A timer alone counts up over silence just as happily.
+                    GeometryReader { geometry in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Theme.Palette.ivorySunk)
+                            Capsule()
+                                .fill(Theme.Palette.bronze)
+                                .frame(width: max(3, geometry.size.width * recorder.level))
+                                .animation(.linear(duration: 0.1), value: recorder.level)
+                        }
+                    }
+                    .frame(height: 8)
+
+                    Text(recordTimeLabel)
+                        .font(Theme.Font.caption.monospacedDigit())
+                        .foregroundStyle(Theme.Palette.inkSoft)
+                }
+
+                Text(recorder.elapsed < 60
+                     ? "Keep going \u{2014} about a minute is what the clone needs."
+                     : "That is enough. Stop whenever you like.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(recorder.elapsed < 60 ? Theme.Palette.danger
+                                                           : Theme.Palette.inkSoft)
+
+                HStack(spacing: Theme.Space.s) {
+                    Button("Stop") { stopRecording() }
+                        .buttonStyle(PrimaryButtonStyle())
+                    Button("Discard") {
+                        recorder.cancel()
+                        recordProblem = nil
+                    }
+                    .buttonStyle(QuietButtonStyle())
+                }
+            }
+        } else {
+            Button {
+                Task { await startRecording() }
+            } label: {
+                HStack(spacing: Theme.Space.s) {
+                    Image(systemName: "mic.circle")
+                        .font(.system(size: 20))
+                        .foregroundStyle(Theme.Palette.forest)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Record now")
+                            .font(Theme.Font.label)
+                            .foregroundStyle(Theme.Palette.ink)
+                        Text("Speak into this phone for about a minute")
+                            .font(Theme.Font.caption)
+                            .foregroundStyle(Theme.Palette.inkSoft)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+            .buttonStyle(.plain)
+        }
+
+        if let recordProblem {
+            Text(recordProblem)
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.Palette.danger)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var recordTimeLabel: String {
+        let seconds = Int(recorder.elapsed)
+        return String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+
+    private func startRecording() async {
+        recordProblem = nil
+        guard await recorder.requestPermission() else {
+            recordProblem = recorder.permissionDenied
+                ? "Microphone access is off for Jaddati. Turn it on in Settings."
+                : "Microphone access was not granted."
+            return
+        }
+        discardTempFile()
+        recorder.start(purpose: .voiceSample)
+        if let failure = recorder.error { recordProblem = failure }
+    }
+
+    private func stopRecording() {
+        guard let result = recorder.stop() else { return }
+
+        // The check that earns its keep. In the first version of this project a
+        // recording library reported success and wrote a valid, empty file every
+        // time. Cloning silence spends credits and fails in front of judges, so
+        // refuse it here and say what was actually measured.
+        guard result.capturedSound else {
+            try? FileManager.default.removeItem(at: result.url)
+            recordProblem = "That recording came out silent \u{2014} \(result.bytes) bytes, "
+                + "peak \(Int(result.peakDecibels)) dB. Nothing reached the microphone. "
+                + "Check nothing is covering it and try again."
+            return
+        }
+
+        pickedURL = result.url
+        pickedIsTemporary = true
+        pickedName = "Recorded just now"
+        pickedDuration = result.duration
+        recordProblem = nil
+        errorText = nil
     }
 
     private var guidance: some View {

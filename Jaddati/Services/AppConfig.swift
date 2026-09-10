@@ -118,6 +118,28 @@ enum AppConfig {
         return LLMClient()
     }
 
+    /// Speaking into the app rides the same host and the same key as the story
+    /// questions. `-turbo`, not plain `large-v3`: the first version of this
+    /// project measured turbo at 16.5% median CER on real Emirati dialect,
+    /// while `large-v3` hallucinated "subscribe to the channel" onto near-silent
+    /// audio at 86% CER.
+    static var whisperModel: String {
+        let value = (secrets["WHISPER_MODEL"] as? String) ?? ""
+        return value.isEmpty ? "whisper-large-v3-turbo" : value
+    }
+
+    static var isTranscriptionConfigured: Bool {
+        if isUsingMock { return true }
+        return !llmKey.isEmpty
+    }
+
+    static func transcriber() -> Transcriber {
+        #if DEBUG
+        if isUsingMock { return MockTranscriber() }
+        #endif
+        return WhisperClient()
+    }
+
     /// Shorter than the voice timeout. A child who has stopped the story is
     /// waiting in silence, and a slow answer is worse than a missing one.
     static let companionTimeout: TimeInterval = 20

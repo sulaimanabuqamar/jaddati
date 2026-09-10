@@ -44,6 +44,9 @@ second table.
 | Playback rate slowing works on already-generated clips | `AVAudioPlayer.enableRate` is set before `prepareToPlay`; not yet driven from any control. |
 | Profile photos import, shrink and persist across a reinstall | Written, not exercised on device. Photos are stored by filename, like audio, so the container UUID cannot break them — but that is reasoning, not a test. |
 | The book Q&A flow end to end | Written, never run. Asking pauses the page, answers, speaks the answer, and resumes from the same second — none of that has been exercised on the phone. |
+| **The microphone has never been run in this app** | `VoiceRecorder` is written and the mic usage string is already in the build settings, but no recording has been made on the phone. This is the single most important thing to test — V1 lost days to a recorder that reported success and wrote empty files. The silence check (`RecordingResult.capturedSound`, >8 KB and peak above -40 dB) is there for that reason and is itself untested. |
+| Dictation end to end | Written, never run. Record, upload to Whisper, append the words into the box. |
+| Whisper accuracy in THIS configuration | V1's 16.5% median CER on Emirati was measured with `language=ar`. This client deliberately omits `language` so English dictation is not mangled, so that figure does not transfer unchanged. Quote it as V1's measurement, not this build's. |
 
 ## The fastest way to move rows up
 

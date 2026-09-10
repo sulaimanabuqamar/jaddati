@@ -409,6 +409,8 @@ struct BookReaderView: View {
             )
             .disabled(isAnswering)
 
+        DictateButton(text: $question, prompt: "Say the question instead")
+
         Button(isAnswering ? "Thinking\u{2026}" : "Ask") {
             Task { await ask() }
         }
