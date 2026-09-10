@@ -1,0 +1,23 @@
+# Secrets — never commit
+.secrets/
+*.key
+Secrets.plist
+.env
+
+# Voice samples and generated audio (personal data, not source)
+spike/out/
+spike/*.m4a
+spike/*.mp3
+SampleAudio/
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+DerivedData/
+build/
+*.xcscmblueprint
+*.moved-aside
+
+# macOS
+.DS_Store
