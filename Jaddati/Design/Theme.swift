@@ -96,12 +96,16 @@ struct PrimaryButtonStyle: ButtonStyle {
     var enabled: Bool = true
 
     func makeBody(configuration: Configuration) -> some View {
-        Body(configuration: configuration, enabled: enabled)
+        PrimaryBody(configuration: configuration, enabled: enabled)
     }
 
+    /// Deliberately NOT named `Body`: `ButtonStyle` has an associated type by
+    /// that name, and a nested type matching it must be at least as accessible
+    /// as the style itself.
+    ///
     /// Honours BOTH the explicit flag and `.disabled(...)`, so a caller that
     /// only used one of them still gets the greyed-out look.
-    private struct Body: View {
+    private struct PrimaryBody: View {
         let configuration: ButtonStyleConfiguration
         let enabled: Bool
         @Environment(\.isEnabled) private var isEnabled
@@ -127,13 +131,16 @@ struct PrimaryButtonStyle: ButtonStyle {
 
 struct QuietButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        Body(configuration: configuration)
+        QuietBody(configuration: configuration)
     }
 
     /// A ButtonStyle cannot read `isEnabled` directly, so the body lives in a
     /// small view that can. Without this a disabled control looks identical to
     /// a live one — Previous and Next on the last page read as broken taps.
-    private struct Body: View {
+    ///
+    /// Named `QuietBody`, not `Body`, to avoid colliding with the protocol's
+    /// own `Body` associated type.
+    private struct QuietBody: View {
         let configuration: ButtonStyleConfiguration
         @Environment(\.isEnabled) private var isEnabled
 
