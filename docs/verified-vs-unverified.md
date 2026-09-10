@@ -14,14 +14,16 @@ second table.
 | There is no automatic overage on this plan — credits are topped up manually | Same page: "You can still top up anytime" + a manual Add credits button |
 | `eleven_multilingual_v2` supports Arabic (Saudi, UAE variants) | ElevenLabs models documentation |
 | API shapes: `POST /v1/voices/add` (multipart `name`, `files`) returns `voice_id`; `POST /v1/text-to-speech/{voice_id}` takes `{text, model_id}` | ElevenLabs API reference, read 10 Sep 2026 |
-| **The app compiles** | Clean build in Xcode against a physical iPhone, 10 Sep 2026, reported by Sulaiman. Only failure was an unset `DEVELOPMENT_TEAM`, now set. |
+| **The app compiles** | Clean build in Xcode against a physical iPhone, 10 Sep 2026, twice — before and after the review fixes. Commit `bfba2d7`. |
+| The 13 review fixes compile | Same build. Compiling is not the same as behaving: each fix still needs exercising on the phone. |
+| **The app installs and runs on the iPhone** | Screenshots from the device, 10 Sep 2026 16:50. Home, profile creation, person detail, and voice import all render and navigate. |
+| The not-configured state gates correctly | On device: with no key the home screen shows "Voices are not set up on this build"; with offline test mode on, that panel disappears and the red test-mode banner replaces it. |
 
 ## NOT verified — do not claim these
 
 | Claim | Why not |
 |---|---|
-| **The app runs on the iPhone** | Never installed. Launch it and confirm. |
-| The 30 defects found in review are actually fixed | 13 were corrected in code on 10 Sep, verified only by static review — the app has not been rebuilt since. Rebuild before believing this line. |
+
 | Any request from the app has reached ElevenLabs | Zero requests have been made from this code. |
 | The cloned voice sounds recognisably like anyone | No sample has been uploaded yet. |
 | Arabic output quality, or Emirati dialect quality | Untested. Do not promise dialect quality. |

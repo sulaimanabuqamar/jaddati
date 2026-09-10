@@ -26,6 +26,49 @@ struct CreateView: View {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    private var noteCount: Int {
+        guard let person else { return 0 }
+        return library.notes(for: person).count
+    }
+
+    /// The screen-level hint. On the retelling screen it must not promise the
+    /// family's words when the family has not written any.
+    private var screenNote: String? {
+        switch intent {
+        case .storyFiction:
+            return "An invented story. Not a real memory."
+        case .storyFromMemories:
+            return noteCount == 0
+                ? "Nothing to retell yet. Add a memory below, in your family's own words."
+                : "A retelling uses only your family's words. Nothing is invented."
+        case .saySomething, .comfort:
+            return nil
+        }
+    }
+
+    /// Why the button is greyed out. Shown under it, because a disabled control
+    /// that gives no reason reads as broken.
+    private var disabledReason: String? {
+        if isGenerating || canSpeak { return nil }
+        if !AppConfig.isConfigured { return nil }        // has its own error note above
+        if person?.hasVoice != true { return "This person has no voice yet." }
+        if trimmed.count > AppConfig.maxCharactersPerGeneration {
+            return "That is longer than \(AppConfig.maxCharactersPerGeneration) characters."
+        }
+        switch intent {
+        case .saySomething:
+            return "Type something for them to say."
+        case .comfort:
+            return "Tap one of the lines above, or write your own."
+        case .storyFiction:
+            return "Tap one of the stories above to load it, or write your own."
+        case .storyFromMemories:
+            return noteCount == 0
+                ? "Add a memory first — the app will not invent one for you."
+                : "Tap Build the retelling above, or write your own words."
+        }
+    }
+
     private var canSpeak: Bool {
         !trimmed.isEmpty
             && trimmed.count <= AppConfig.maxCharactersPerGeneration
@@ -62,7 +105,7 @@ struct CreateView: View {
 
                     editor
 
-                    if let note = intent.provenanceNote {
+                    if let note = screenNote {
                         HStack(spacing: 6) {
                             Image(systemName: "info.circle")
                                 .font(.system(size: 11))
@@ -84,6 +127,14 @@ struct CreateView: View {
                     }
                     .buttonStyle(PrimaryButtonStyle(enabled: canSpeak))
                     .disabled(!canSpeak)
+
+                    if let reason = disabledReason {
+                        Text(reason)
+                            .font(Theme.Font.caption)
+                            .foregroundStyle(Theme.Palette.inkSoft)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
 
                     if isGenerating {
                         HStack(spacing: 8) {
@@ -147,7 +198,7 @@ struct CreateView: View {
 
     private var comfortPicker: some View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
-            Text("Pick one, or write your own below")
+            Text("Tap a line to load it, or write your own below")
                 .font(Theme.Font.label)
                 .foregroundStyle(Theme.Palette.ink)
 
@@ -193,15 +244,21 @@ struct CreateView: View {
             ForEach(Composer.bedtimeStories) { story in
                 Button { text = story.text } label: {
                     Panel(padding: Theme.Space.s) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(story.title)
-                                .font(Theme.Font.label)
-                                .foregroundStyle(Theme.Palette.ink)
-                            Text(story.text)
-                                .font(Theme.Font.caption)
-                                .foregroundStyle(Theme.Palette.inkSoft)
-                                .lineLimit(2)
-                                .multilineTextAlignment(.leading)
+                        HStack(alignment: .top, spacing: Theme.Space.s) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(story.title)
+                                    .font(Theme.Font.label)
+                                    .foregroundStyle(Theme.Palette.ink)
+                                Text(story.text)
+                                    .font(Theme.Font.caption)
+                                    .foregroundStyle(Theme.Palette.inkSoft)
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.leading)
+                            }
+                            Spacer(minLength: 0)
+                            Text("Use")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Theme.Palette.forest)
                         }
                     }
                 }
