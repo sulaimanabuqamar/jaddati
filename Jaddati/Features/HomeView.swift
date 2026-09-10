@@ -44,6 +44,7 @@ struct HomeView: View {
                             ForEach(library.people) { person in
                                 NavigationLink(value: person) {
                                     PersonCard(person: person,
+                                               photo: library.photoURL(for: person),
                                                originals: library.assets(for: person, source: .original).count,
                                                memories: library.assets(for: person, source: .generated).count)
                                 }
@@ -138,20 +139,14 @@ struct HomeView: View {
 
 struct PersonCard: View {
     let person: Person
+    let photo: URL?
     let originals: Int
     let memories: Int
 
     var body: some View {
         Panel {
             HStack(spacing: Theme.Space.s) {
-                Circle()
-                    .fill(Theme.Palette.forest.opacity(0.10))
-                    .frame(width: 52, height: 52)
-                    .overlay(
-                        Text(initials)
-                            .font(Theme.Font.displayMedium(20))
-                            .foregroundStyle(Theme.Palette.forest)
-                    )
+                PersonAvatar(name: person.name, imageURL: photo)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(person.name)
@@ -169,11 +164,6 @@ struct PersonCard: View {
                     .foregroundStyle(Theme.Palette.hairline)
             }
         }
-    }
-
-    private var initials: String {
-        let first = person.name.trimmingCharacters(in: .whitespaces).first
-        return first.map { String($0) } ?? "؟"
     }
 
     private var subtitle: String {

@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 /// One loved one. The voice and the ways to hear it are the whole screen.
 struct PersonView: View {
@@ -13,6 +14,7 @@ struct PersonView: View {
     @AppStorage(AppConfig.mockDefaultsKey) private var useMockVoices = false
     #endif
     @State private var confirmingDelete = false
+    @State private var photoPick: PhotosPickerItem?
 
     private var person: Person? { library.person(withId: personId) }
 
@@ -81,30 +83,81 @@ struct PersonView: View {
         .sheet(isPresented: $addingVoice) {
             if let person { AddVoiceView(personId: person.id) }
         }
+        .onChange(of: photoPick) { _, item in
+            guard let item, let person else { return }
+            Task {
+                let data = try? await item.loadTransferable(type: Data.self)
+                let shrunk = data.flatMap { Self.downscale($0) }
+                await MainActor.run {
+                    if let shrunk { library.setPhoto(shrunk, for: person) }
+                    photoPick = nil
+                }
+            }
+        }
     }
 
     // MARK: Pieces
 
     private func header(_ person: Person) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(person.name)
-                .font(Theme.Font.display(38))
-                .foregroundStyle(Theme.Palette.forest)
-            if !person.relationship.isEmpty {
-                Text(person.relationship)
-                    .font(Theme.Font.body)
-                    .foregroundStyle(Theme.Palette.inkSoft)
-            }
-            if person.hasVoice {
-                HStack(spacing: 6) {
-                    Circle().fill(Theme.Palette.bronze).frame(width: 6, height: 6)
-                    Text("Voice ready")
-                        .font(Theme.Font.caption)
-                        .foregroundStyle(Theme.Palette.bronze)
+        let photo = library.photoURL(for: person)
+        return HStack(alignment: .top, spacing: Theme.Space.s) {
+            PhotosPicker(selection: $photoPick, matching: .images, photoLibrary: .shared()) {
+                ZStack(alignment: .bottomTrailing) {
+                    PersonAvatar(name: person.name, imageURL: photo, size: 78)
+                    Image(systemName: photo == nil ? "plus" : "pencil")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Theme.Palette.ivory)
+                        .frame(width: 22, height: 22)
+                        .background(Circle().fill(Theme.Palette.forest))
+                        .overlay(Circle().stroke(Theme.Palette.ivory, lineWidth: 2))
                 }
-                .padding(.top, 2)
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel(photo == nil ? "Add a photo" : "Change photo")
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(person.name)
+                    .font(Theme.Font.display(34))
+                    .foregroundStyle(Theme.Palette.forest)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !person.relationship.isEmpty {
+                    Text(person.relationship)
+                        .font(Theme.Font.body)
+                        .foregroundStyle(Theme.Palette.inkSoft)
+                }
+                if person.hasVoice {
+                    HStack(spacing: 6) {
+                        Circle().fill(Theme.Palette.bronze).frame(width: 6, height: 6)
+                        Text("Voice ready")
+                            .font(Theme.Font.caption)
+                            .foregroundStyle(Theme.Palette.bronze)
+                    }
+                    .padding(.top, 2)
+                }
+                if photo != nil {
+                    Button("Remove photo") { library.removePhoto(for: person) }
+                        .font(Theme.Font.caption)
+                        .foregroundStyle(Theme.Palette.inkSoft)
+                        .padding(.top, 2)
+                }
+            }
+            Spacer(minLength: 0)
         }
+    }
+
+    /// A library photo is many times larger than a 78-point circle needs, and
+    /// `PersonAvatar` re-reads the file from disk on every render. Shrink once,
+    /// on import, so that read stays cheap.
+    private static func downscale(_ data: Data, to maxSide: CGFloat = 600) -> Data? {
+        guard let image = UIImage(data: data) else { return nil }
+        let longest = max(image.size.width, image.size.height)
+        guard longest > maxSide else { return image.jpegData(compressionQuality: 0.85) }
+        let scale = maxSide / longest
+        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let shrunk = UIGraphicsImageRenderer(size: size).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+        return shrunk.jpegData(compressionQuality: 0.85)
     }
 
     /// This voice was minted by the offline test mode and does not exist at the

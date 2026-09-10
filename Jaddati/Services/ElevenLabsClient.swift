@@ -132,7 +132,8 @@ struct ElevenLabsClient: VoiceService {
             "stability": tuning.stability,
             "similarity_boost": tuning.similarity,
             "style": tuning.style,
-            "use_speaker_boost": tuning.speakerBoost
+            "use_speaker_boost": tuning.speakerBoost,
+            "speed": tuning.speed
         ]
         let payload: [String: Any] = [
             "text": trimmed,

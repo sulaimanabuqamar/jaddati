@@ -159,6 +159,39 @@ struct QuietButtonStyle: ButtonStyle {
     }
 }
 
+/// A person's picture, or their initial when there isn't one.
+struct PersonAvatar: View {
+    let name: String
+    let imageURL: URL?
+    var size: CGFloat = 52
+
+    var body: some View {
+        Group {
+            if let imageURL, let data = try? Data(contentsOf: imageURL),
+               let image = UIImage(data: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Theme.Palette.forest.opacity(0.10)
+                    .overlay(
+                        Text(initial)
+                            .font(Theme.Font.displayMedium(size * 0.38))
+                            .foregroundStyle(Theme.Palette.forest)
+                    )
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+        .overlay(Circle().stroke(Theme.Palette.hairline, lineWidth: 1))
+    }
+
+    private var initial: String {
+        let first = name.trimmingCharacters(in: .whitespaces).first
+        return first.map { String($0) } ?? "؟"
+    }
+}
+
 /// The label that keeps original recordings and generated audio visibly distinct.
 /// This appears anywhere audio can be played. It is not decorative — it is the
 /// product's honesty requirement, so it never gets hidden behind a setting.

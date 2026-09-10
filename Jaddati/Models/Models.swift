@@ -13,13 +13,20 @@ struct VoiceTuning: Codable, Equatable, Hashable {
     var similarity: Double = 0.80
     var style: Double = 0.0
     var speakerBoost: Bool = true
+    /// 1.0 is the provider's default. Below 1 is slower. The default here is
+    /// deliberately under 1: at full speed the output was hard to follow, and
+    /// an elderly voice reading to someone should not be brisk.
+    var speed: Double = 0.88
 
     /// Balanced. What a first-time listener should hear.
-    static let natural = VoiceTuning(stability: 0.45, similarity: 0.80, style: 0.0)
+    static let natural = VoiceTuning(stability: 0.45, similarity: 0.80, style: 0.0,
+                                     speed: 0.88)
     /// Predictable and even. The safest thing to put on a stage.
-    static let steady = VoiceTuning(stability: 0.75, similarity: 0.80, style: 0.0)
+    static let steady = VoiceTuning(stability: 0.75, similarity: 0.80, style: 0.0,
+                                    speed: 0.85)
     /// More life, more risk. Occasionally produces an odd reading.
-    static let warm = VoiceTuning(stability: 0.30, similarity: 0.85, style: 0.30)
+    static let warm = VoiceTuning(stability: 0.30, similarity: 0.85, style: 0.30,
+                                  speed: 0.92)
 
     var presetName: String? {
         switch self {
@@ -52,6 +59,10 @@ struct Person: Identifiable, Codable, Equatable, Hashable {
     /// Recorded at the moment of upload. We keep it because the whole product
     /// rests on it — see AddVoiceView.
     var consentConfirmedAt: Date? = nil
+
+    /// Filename only, resolved against the library's photo directory at read
+    /// time — the iOS container path changes on every install.
+    var photoFilename: String? = nil
 
     /// How this person's voice is performed. Optional so an index written
     /// before this existed still decodes.

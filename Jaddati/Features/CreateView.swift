@@ -224,6 +224,8 @@ struct CreateView: View {
                        help: "How hard to push towards the original recording. Very high also reproduces any noise in it.",
                        value: $draftTuning.similarity)
 
+                paceSlider
+
                 Text("Changes apply to the next thing you generate.")
                     .font(Theme.Font.caption)
                     .foregroundStyle(Theme.Palette.inkSoft)
@@ -277,6 +279,31 @@ struct CreateView: View {
             }
             .tint(Theme.Palette.bronze)
             Text(help)
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.Palette.inkSoft)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// Pace is the one setting that is not a 0-1 dial. The provider accepts
+    /// 0.7-1.2, where lower is slower, so it gets its own control rather than
+    /// being squeezed into `slider(_:help:value:)`.
+    private var paceSlider: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text("Pace")
+                    .font(Theme.Font.caption)
+                    .foregroundStyle(Theme.Palette.ink)
+                Spacer()
+                Text(String(format: "%.2f\u{00D7}", draftTuning.speed))
+                    .font(Theme.Font.caption.monospacedDigit())
+                    .foregroundStyle(Theme.Palette.inkSoft)
+            }
+            Slider(value: $draftTuning.speed, in: 0.70...1.20, step: 0.01) { editing in
+                if !editing { commitTuning() }      // save on release, not per tick
+            }
+            .tint(Theme.Palette.bronze)
+            Text("Lower is slower and easier to follow. Much below 0.80 the voice starts to drag.")
                 .font(.system(size: 11))
                 .foregroundStyle(Theme.Palette.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)

@@ -212,6 +212,19 @@ struct BookReaderView: View {
     @State private var isGenerating = false
     @State private var errorText: String?
 
+    @State private var question = ""
+    @State private var isAnswering = false
+    @State private var answer: String?
+    @State private var answerAsset: AudioAsset?
+    @State private var questionError: String?
+    /// How far into the page the story had got when it was interrupted, as a
+    /// fraction. Playing the answer replaces the audio player, so the position
+    /// is gone by the time the story is asked to carry on.
+    @State private var resumeAt: Double?
+    /// Answers made in this sitting, so they can be cleared on the way out
+    /// rather than piling up as files nothing lists.
+    @State private var answerIds: [UUID] = []
+
     private var book: Book? { library.book(withId: bookId) }
     private var person: Person? { library.person(withId: personId) }
     private var pageText: String { book?.page(pageIndex) ?? "" }
@@ -236,6 +249,7 @@ struct BookReaderView: View {
                             }
                         }
                         controls(book)
+                        questionSection
                     }
                     .padding(Theme.Space.m)
                     .padding(.bottom, Theme.Space.xl)
@@ -255,7 +269,15 @@ struct BookReaderView: View {
                 pageIndex = max(0, min(book.currentPage, max(book.pageCount - 1, 0)))
             }
         }
-        .onDisappear { player.stop() }
+        .onDisappear {
+            player.stop()
+            discardAnswers()
+        }
+        .onChange(of: question) { old, new in
+            // First keystroke stops the story. Waiting until "Ask" is tapped
+            // meant the page carried on talking over the child.
+            if old.isEmpty && !new.isEmpty { pauseForQuestion() }
+        }
     }
 
     private func header(_ book: Book) -> some View {
@@ -337,9 +359,177 @@ struct BookReaderView: View {
         player.stop()
         pageIndex = max(0, min(max(pageIndex + delta, 0), book.pageCount - 1))
         errorText = nil
+        clearQuestion()
         var updated = book
         updated.currentPage = pageIndex
         library.update(updated)
+    }
+
+    // MARK: Stopping to ask
+
+    /// The interruption. A child stops the story, asks something, hears the
+    /// answer in the same voice, and the story picks up where it stopped.
+    @ViewBuilder private var questionSection: some View {
+        if AppConfig.isCompanionConfigured, person?.hasVoice == true {
+            Panel {
+                VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                    Text("Stop and ask")
+                        .font(Theme.Font.label)
+                        .foregroundStyle(Theme.Palette.ink)
+
+                    askControls
+
+                    if let answer { answerPanel(answer) }
+
+                    if let questionError {
+                        ErrorNote(message: questionError) {
+                            self.questionError = nil
+                            Task { await ask() }
+                        }
+                    }
+
+                    Text("Answers are written by AI. They are not their words and not their memories.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.Palette.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var askControls: some View {
+        TextField("What do you want to ask?", text: $question, axis: .vertical)
+            .font(Theme.Font.body)
+            .foregroundStyle(Theme.Palette.ink)
+            .lineLimit(1...3)
+            .padding(Theme.Space.xs)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                    .fill(Theme.Palette.ivorySunk)
+            )
+            .disabled(isAnswering)
+
+        Button(isAnswering ? "Thinking\u{2026}" : "Ask") {
+            Task { await ask() }
+        }
+        .buttonStyle(PrimaryButtonStyle(enabled: canAsk))
+        .disabled(!canAsk)
+    }
+
+    private func answerPanel(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
+            Text(text)
+                .font(Theme.Font.spoken)
+                .foregroundStyle(Theme.Palette.ink)
+                .multilineTextAlignment(TextDirection.isArabic(text) ? .trailing : .leading)
+                .frame(maxWidth: .infinity,
+                       alignment: TextDirection.isArabic(text) ? .trailing : .leading)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: Theme.Space.s) {
+                if let answerAsset, library.fileExists(for: answerAsset) {
+                    Button(player.isPlaying(assetId: answerAsset.id) ? "Pause" : "Hear it again") {
+                        player.play(url: library.url(for: answerAsset), assetId: answerAsset.id)
+                    }
+                    .buttonStyle(QuietButtonStyle())
+                }
+                Button("Continue the story") { continueStory() }
+                    .buttonStyle(QuietButtonStyle())
+                    .disabled(alreadyRead == nil)
+            }
+        }
+        .padding(.top, Theme.Space.xs)
+    }
+
+    private var canAsk: Bool {
+        !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !isAnswering && !isGenerating
+            && person?.hasVoice == true
+            && AppConfig.isConfigured
+            && AppConfig.isCompanionConfigured
+    }
+
+    private func pauseForQuestion() {
+        guard let asset = alreadyRead, player.isPlaying(assetId: asset.id) else { return }
+        resumeAt = player.duration > 0 ? player.currentTime / player.duration : 0
+        player.pause()
+    }
+
+    private func continueStory() {
+        clearQuestion()
+        guard let asset = alreadyRead, library.fileExists(for: asset) else { return }
+        player.ensurePlaying(url: library.url(for: asset), assetId: asset.id)
+        if let mark = resumeAt, mark > 0, mark < 1 { player.seek(toProgress: mark) }
+        resumeAt = nil
+    }
+
+    private func clearQuestion() {
+        question = ""
+        answer = nil
+        answerAsset = nil
+        questionError = nil
+    }
+
+    private func discardAnswers() {
+        guard let person else { return }
+        let doomed = library.assets(for: person, source: .generated)
+            .filter { answerIds.contains($0.id) }
+        for asset in doomed { _ = library.delete(asset) }
+        answerIds = []
+    }
+
+    private func ask() async {
+        let asked = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let book, let person, let voiceId = person.voiceId, canAsk else { return }
+
+        pauseForQuestion()
+        isAnswering = true
+        questionError = nil
+        answer = nil
+        answerAsset = nil
+
+        do {
+            let reply = try await AppConfig.storyCompanion().answer(
+                question: asked,
+                page: PageContext(bookTitle: book.title,
+                                  pageText: String(pageText.prefix(1_200)),
+                                  pageNumber: pageIndex + 1))
+            answer = reply
+
+            let data = try await AppConfig.voiceService().synthesize(
+                text: reply,
+                voiceId: voiceId,
+                modelId: AppConfig.defaultModelId,
+                tuning: person.voiceTuning)
+            let duration = (try? AVAudioPlayer(data: data))?.duration ?? 0
+
+            // bookId and pageIndex stay nil deliberately. `readPage` matches on
+            // exactly those two, so an answer filed against the page would be
+            // handed back later as the page's own reading.
+            let asset = library.storeAudio(data: data,
+                                           for: person,
+                                           source: .generated,
+                                           text: reply,
+                                           duration: duration,
+                                           modelId: AppConfig.defaultModelId,
+                                           provenance: "Answered a question while reading \(book.title).",
+                                           intent: .saySomething,
+                                           isSaved: false,
+                                           fileExtension: CreateView.audioExtension(for: data))
+            isAnswering = false
+            if let asset {
+                answerAsset = asset
+                answerIds.append(asset.id)
+                player.play(url: library.url(for: asset), assetId: asset.id)
+            } else {
+                questionError = "The answer was written but the audio could not be saved to this phone."
+            }
+        } catch {
+            isAnswering = false
+            questionError = (error as? CompanionError)?.errorDescription
+                ?? (error as? VoiceServiceError)?.errorDescription
+                ?? "That question could not be answered. Try again."
+        }
     }
 
     private func readPage() async {

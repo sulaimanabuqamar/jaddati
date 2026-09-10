@@ -27,6 +27,7 @@ final class Library: ObservableObject {
 
     private let root: URL
     private let audioDir: URL
+    private let photoDir: URL
     private var indexURL: URL { root.appendingPathComponent("library.json") }
 
     /// Only set by tests, so a second Library can be pointed at the same
@@ -39,12 +40,13 @@ final class Library: ObservableObject {
                                                in: .userDomainMask)[0]
         root = support.appendingPathComponent(directoryName, isDirectory: true)
         audioDir = root.appendingPathComponent("Audio", isDirectory: true)
+        photoDir = root.appendingPathComponent("Photos", isDirectory: true)
         createDirectoriesIfNeeded()
         load()
     }
 
     private func createDirectoriesIfNeeded() {
-        for dir in [root, audioDir] {
+        for dir in [root, audioDir, photoDir] {
             if !FileManager.default.fileExists(atPath: dir.path) {
                 try? FileManager.default.createDirectory(at: dir,
                                                          withIntermediateDirectories: true)
@@ -56,6 +58,40 @@ final class Library: ObservableObject {
     /// Never store the result — the container path changes between installs.
     func url(for asset: AudioAsset) -> URL {
         audioDir.appendingPathComponent(asset.filename)
+    }
+
+    /// Resolved fresh, like audio — a stored absolute path would dangle after
+    /// the next install.
+    func photoURL(for person: Person) -> URL? {
+        guard let name = person.photoFilename else { return nil }
+        let url = photoDir.appendingPathComponent(name)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    /// Writes a new photo, removes the old one, and records the filename.
+    func setPhoto(_ data: Data, for person: Person) {
+        let name = "\(UUID().uuidString).jpg"
+        do {
+            try data.write(to: photoDir.appendingPathComponent(name), options: .atomic)
+        } catch {
+            storageError = "That photo could not be saved to this phone."
+            return
+        }
+        if let old = person.photoFilename {
+            try? FileManager.default.removeItem(at: photoDir.appendingPathComponent(old))
+        }
+        var updated = person
+        updated.photoFilename = name
+        update(updated)
+    }
+
+    func removePhoto(for person: Person) {
+        if let old = person.photoFilename {
+            try? FileManager.default.removeItem(at: photoDir.appendingPathComponent(old))
+        }
+        var updated = person
+        updated.photoFilename = nil
+        update(updated)
     }
 
     func fileExists(for asset: AudioAsset) -> Bool {
@@ -243,6 +279,9 @@ final class Library: ObservableObject {
         for asset in assets(for: person) {
             let fileURL = url(for: asset)
             try? FileManager.default.removeItem(at: fileURL)
+        }
+        if let photo = person.photoFilename {
+            try? FileManager.default.removeItem(at: photoDir.appendingPathComponent(photo))
         }
         assets.removeAll { $0.personId == person.id }
         notes.removeAll { $0.personId == person.id }

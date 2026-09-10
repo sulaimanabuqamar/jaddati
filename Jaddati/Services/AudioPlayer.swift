@@ -14,6 +14,13 @@ final class AudioPlayer: NSObject, ObservableObject {
     @Published private(set) var playingAssetId: UUID?
     @Published var playbackError: String?
 
+    /// Applies to playback only, so a clip already generated can be slowed
+    /// without paying to make it again. AVAudioPlayer time-stretches, so the
+    /// pitch does not drop.
+    @Published var playbackRate: Float = 1.0 {
+        didSet { player?.rate = playbackRate }
+    }
+
     private var player: AVAudioPlayer?
     private var ticker: Timer?
 
@@ -71,6 +78,8 @@ final class AudioPlayer: NSObject, ObservableObject {
 
             let newPlayer = try AVAudioPlayer(contentsOf: url)
             newPlayer.delegate = self
+            newPlayer.enableRate = true          // must precede prepareToPlay()
+            newPlayer.rate = playbackRate
             newPlayer.prepareToPlay()
             player = newPlayer
             duration = newPlayer.duration

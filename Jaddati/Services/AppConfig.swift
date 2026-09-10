@@ -67,4 +67,47 @@ enum AppConfig {
     static let maxCharactersPerGeneration = 2_500
 
     static let requestTimeout: TimeInterval = 45
+
+    // MARK: Questions during a story
+
+    /// Any OpenAI-compatible chat endpoint. Groq, OpenRouter, Together and a
+    /// llama.cpp server on a laptop all speak this shape, so which open-weights
+    /// model answers a child's question is a setting, not a rewrite.
+    static var llmKey: String {
+        if let env = ProcessInfo.processInfo.environment["LLM_API_KEY"], !env.isEmpty {
+            return env
+        }
+        let value = (secrets["LLM_API_KEY"] as? String) ?? ""
+        return value == "PASTE_YOUR_KEY_HERE" ? "" : value
+    }
+
+    static var llmBaseURL: String {
+        let value = (secrets["LLM_BASE_URL"] as? String) ?? ""
+        return value.isEmpty ? "https://api.groq.com/openai/v1" : value
+    }
+
+    /// A string in Secrets.plist rather than a constant here, on purpose:
+    /// hosted model ids get retired without notice, and swapping one should not
+    /// need a code change five days before a demo. `spike/llm_spike.sh` prints
+    /// the ids a given key can actually reach.
+    static var llmModel: String {
+        let value = (secrets["LLM_MODEL"] as? String) ?? ""
+        return value.isEmpty ? "llama-3.3-70b-versatile" : value
+    }
+
+    static var isCompanionConfigured: Bool {
+        if isUsingMock { return true }
+        return !llmKey.isEmpty
+    }
+
+    static func storyCompanion() -> StoryCompanion {
+        #if DEBUG
+        if isUsingMock { return MockStoryCompanion() }
+        #endif
+        return LLMClient()
+    }
+
+    /// Shorter than the voice timeout. A child who has stopped the story is
+    /// waiting in silence, and a slow answer is worse than a missing one.
+    static let companionTimeout: TimeInterval = 20
 }
