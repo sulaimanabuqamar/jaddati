@@ -44,29 +44,11 @@ struct DictateButton: View {
         HStack(spacing: Theme.Space.s) {
             // A bar that moves is the only honest signal that the microphone is
             // actually capturing. A spinner would look identical over silence.
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Theme.Palette.ivorySunk)
-                    Capsule()
-                        .fill(Theme.Palette.bronze)
-                        .frame(width: max(3, geometry.size.width * recorder.level))
-                        .animation(.linear(duration: 0.1), value: recorder.level)
-                }
-            }
-            .frame(height: 6)
-
-            Text(timeLabel)
-                .font(Theme.Font.caption.monospacedDigit())
-                .foregroundStyle(Theme.Palette.inkSoft)
+            LiveMeter(meter: recorder.meter, height: 6)
 
             Button(L("Pause")) { Task { await finishRecording() } }
                 .buttonStyle(QuietButtonStyle())
         }
-    }
-
-    private var timeLabel: String {
-        let seconds = Int(recorder.elapsed)
-        return String(format: "%d:%02d", seconds / 60, seconds % 60)
     }
 
     private func beginRecording() async {
@@ -105,5 +87,53 @@ struct DictateButton: View {
                 ?? L("That could not be written down. Try again.")
         }
         isTranscribing = false
+    }
+}
+
+/// The moving bar and the clock. The only thing on either screen that has to
+/// redraw while the microphone is open, and so the only thing that observes the
+/// recorder's live numbers.
+struct LiveMeter: View {
+    @ObservedObject var meter: RecordingMeter
+    var height: CGFloat = 8
+
+    var body: some View {
+        HStack(spacing: Theme.Space.s) {
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Theme.Palette.ivorySunk)
+                    Capsule()
+                        .fill(Theme.Palette.bronze)
+                        .frame(width: max(3, geometry.size.width * meter.level))
+                        .animation(.linear(duration: 0.1), value: meter.level)
+                }
+            }
+            .frame(height: height)
+
+            Text(clock)
+                .font(Theme.Font.caption.monospacedDigit())
+                .foregroundStyle(Theme.Palette.inkSoft)
+        }
+    }
+
+    private var clock: String {
+        let seconds = Int(meter.elapsed)
+        return String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+/// The line under the bar on the voice screen, for the same reason.
+struct RecordingHint: View {
+    @ObservedObject var meter: RecordingMeter
+
+    var body: some View {
+        Text(meter.elapsed < 60
+             ? L("Keep going — about a minute is what the voice needs.")
+             : L("That is enough. Stop whenever you like."))
+            .font(.system(size: 11))
+            // Was danger red for the normal case, so a recording going exactly
+            // to plan looked like it was failing.
+            .foregroundStyle(meter.elapsed < 60 ? Theme.Palette.amber
+                                                : Theme.Palette.sage)
     }
 }

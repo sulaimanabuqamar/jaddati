@@ -1,4 +1,15 @@
 import Foundation
+
+/// The live level and elapsed time while recording. Split off `VoiceRecorder`
+/// so that observing the recorder does not mean redrawing a whole screen ten
+/// times a second for the length of the recording.
+final class RecordingMeter: ObservableObject {
+    /// 0 to 1. Someone watching a still bar knows to stop and check before
+    /// they spend credits on the result.
+    @Published var level: Double = 0
+    @Published var elapsed: Double = 0
+}
+
 import AVFoundation
 import Combine
 
@@ -53,11 +64,18 @@ final class VoiceRecorder: ObservableObject {
     }
 
     @Published private(set) var isRecording = false
-    @Published private(set) var elapsed: Double = 0
-    /// 0 to 1, for a level meter. Someone watching a still bar knows to stop
-    /// and check before they spend credits on the result.
-    @Published private(set) var level: Double = 0
     @Published var error: String?
+
+    /// The live numbers, on their own object — same reason as `PlaybackPosition`.
+    /// These change ten times a second for as long as the microphone is open,
+    /// which on the voice screen is up to five minutes, and the screen around
+    /// the meter is a long scroll of panels that has no business rebuilding at
+    /// that rate. Only the meter itself observes this.
+    let meter = RecordingMeter()
+
+    /// Read-only pass-throughs for code that wants a number without subscribing.
+    var elapsed: Double { meter.elapsed }
+    var level: Double { meter.level }
     /// Set when the cap is reached so the screen can stop and keep what it has.
     @Published private(set) var reachedLimit = false
 
@@ -88,8 +106,8 @@ final class VoiceRecorder: ObservableObject {
         self.purpose = purpose
         error = nil
         peak = -160
-        elapsed = 0
-        level = 0
+        meter.elapsed = 0
+        meter.level = 0
         reachedLimit = false
 
         let url = FileManager.default.temporaryDirectory
@@ -126,7 +144,7 @@ final class VoiceRecorder: ObservableObject {
         stopTicking()
         isRecording = false
         self.recorder = nil
-        level = 0
+        meter.level = 0
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
 
         let url = recorder.url
@@ -142,8 +160,8 @@ final class VoiceRecorder: ObservableObject {
         stopTicking()
         isRecording = false
         self.recorder = nil
-        level = 0
-        elapsed = 0
+        meter.level = 0
+        meter.elapsed = 0
         try? FileManager.default.removeItem(at: url)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
@@ -165,12 +183,12 @@ final class VoiceRecorder: ObservableObject {
         let power = recorder.peakPower(forChannel: 0)
         peak = max(peak, power)
         // -60 dB floor, mapped to 0...1 for a bar that moves at speaking volume.
-        level = Double(max(0, min(1, (power + 60) / 60)))
-        elapsed = recorder.currentTime
+        meter.level = Double(max(0, min(1, (power + 60) / 60)))
+        meter.elapsed = recorder.currentTime
 
         // Nothing is lost when this trips — stop() hands back everything
         // recorded up to that point.
-        if elapsed >= purpose.maximumDuration { reachedLimit = true }
+        if meter.elapsed >= purpose.maximumDuration { reachedLimit = true }
     }
 
     private func stopTicking() {

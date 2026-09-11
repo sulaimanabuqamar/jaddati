@@ -14,8 +14,6 @@ struct PlayerView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var kept: Bool
-    @State private var scrubbing = false
-    @State private var scrubValue: Double = 0
     @State private var confirmingDiscard = false
 
     init(asset: AudioAsset) {
@@ -24,7 +22,6 @@ struct PlayerView: View {
     }
 
     private var isCurrent: Bool { player.playingAssetId == asset.id }
-    private var shownProgress: Double { scrubbing ? scrubValue : (isCurrent ? player.progress : 0) }
     private var fileIsPresent: Bool { library.fileExists(for: asset) }
 
     var body: some View {
@@ -118,35 +115,37 @@ struct PlayerView: View {
 
     private var transport: some View {
         VStack(spacing: Theme.Space.s) {
-            track
+            // The position lives on its own object, so this subview is the
+            // only thing that redraws while audio is playing.
+            PlaybackTrack(position: player.position,
+                          isCurrent: isCurrent,
+                          fallbackDuration: asset.durationSeconds,
+                          onSeek: { player.seek(toProgress: $0) })
 
-            HStack {
-                Text(timeString(isCurrent ? player.currentTime : 0))
-                Spacer()
-                Text(timeString(isCurrent && player.duration > 0
-                                ? player.duration : asset.durationSeconds))
-            }
-            .font(Theme.Font.caption.monospacedDigit())
-            .foregroundStyle(Theme.Palette.inkSoft)
+            HStack(spacing: Theme.Space.m) {
+                skipButton(-skipInterval)
 
-            Button {
-                player.play(url: library.url(for: asset), assetId: asset.id)
-            } label: {
-                Image(systemName: player.isPlaying(assetId: asset.id) ? "pause.fill" : "play.fill")
-                    .font(.system(size: 26, weight: .bold))
-                    .foregroundStyle(Theme.Palette.ivory)
-                    .frame(width: 76, height: 76)
-                    .background(
-                        Circle()
-                            .fill(Theme.Palette.forest)
-                            .shadow(color: Theme.Palette.forest.opacity(0.25),
-                                    radius: player.isPlaying(assetId: asset.id) ? 18 : 6,
-                                    y: 4)
-                    )
+                Button {
+                    player.play(url: library.url(for: asset), assetId: asset.id)
+                } label: {
+                    Image(systemName: player.isPlaying(assetId: asset.id) ? "pause.fill" : "play.fill")
+                        .font(.system(size: 26, weight: .bold))
+                        .foregroundStyle(Theme.Palette.ivory)
+                        .frame(width: 76, height: 76)
+                        .background(
+                            Circle()
+                                .fill(Theme.Palette.forest)
+                                .shadow(color: Theme.Palette.forest.opacity(0.25),
+                                        radius: player.isPlaying(assetId: asset.id) ? 18 : 6,
+                                        y: 4)
+                        )
+                }
+                .buttonStyle(.plain)
+                .animation(.easeInOut(duration: 0.35), value: player.isPlaying(assetId: asset.id))
+                .accessibilityLabel(player.isPlaying(assetId: asset.id) ? L("Pause") : L("Play"))
+
+                skipButton(skipInterval)
             }
-            .buttonStyle(.plain)
-            .animation(.easeInOut(duration: 0.35), value: player.isPlaying(assetId: asset.id))
-            .accessibilityLabel(player.isPlaying(assetId: asset.id) ? L("Pause") : L("Play"))
             .padding(.top, Theme.Space.xs)
 
             speedControl
@@ -188,37 +187,43 @@ struct PlayerView: View {
 
     private static let speeds: [Float] = [0.75, 1.0, 1.25]
 
-    private var track: some View {
-        GeometryReader { geometry in
-            let width = max(geometry.size.width, 1)   // never divide by zero below
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(Theme.Palette.ivorySunk)
-                    .frame(height: 6)
-                Capsule()
-                    .fill(Theme.Palette.bronze)
-                    .frame(width: max(0, min(width, width * shownProgress)), height: 6)
-                Circle()
-                    .fill(Theme.Palette.forest)
-                    .frame(width: 16, height: 16)
-                    .offset(x: max(0, min(width - 16, width * shownProgress - 8)))
-            }
-            .frame(height: 20)
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        scrubbing = true
-                        let fraction = value.location.x / width
-                        scrubValue = fraction.isFinite ? min(max(fraction, 0), 1) : 0
-                    }
-                    .onEnded { _ in
-                        player.seek(toProgress: scrubValue)
-                        scrubbing = false
-                    }
-            )
+    /// Sized to the clip, not fixed. A fifteen-second jump through a
+    /// two-second page of a book is the whole clip and then some, so short
+    /// audio gets a short step — and anything too short to jump around in at
+    /// all gets no buttons, rather than two controls that do nothing useful.
+    private var clipLength: Double {
+        let live = player.position.duration
+        return isCurrent && live > 0 ? live : asset.durationSeconds
+    }
+
+    private var skipInterval: Double {
+        switch clipLength {
+        case ..<60:  return 5
+        case ..<180: return 10
+        default:     return 15
         }
-        .frame(height: 20)
+    }
+
+    private var showsSkip: Bool { clipLength >= 12 }
+
+    @ViewBuilder private func skipButton(_ seconds: Double) -> some View {
+        if showsSkip {
+            let back = seconds < 0
+            Button { player.skip(by: seconds) } label: {
+                Image(systemName: (back ? "gobackward." : "goforward.")
+                                + String(Int(abs(seconds))))
+                    .font(.system(size: 22, weight: .regular))
+                    .foregroundStyle(Theme.Palette.wine)
+                    .frame(width: Theme.Metric.touchTarget,
+                           height: Theme.Metric.touchTarget)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!isCurrent)
+            .opacity(isCurrent ? 1 : 0.35)
+            .accessibilityLabel(back ? L("Back") : L("Next"))
+            .accessibilityValue(Counts.number(Int(abs(seconds))))
+        }
     }
 
     // MARK: Keep or discard
@@ -273,17 +278,77 @@ struct PlayerView: View {
         }
     }
 
-    private func timeString(_ seconds: Double) -> String {
-        guard seconds.isFinite, seconds >= 0 else { return "0:00" }
-        let total = Int(seconds.rounded())
-        return String(format: "%d:%02d", total / 60, total % 60)
-    }
-
     /// Both labels, always. Colour alone never carries which is which.
     @ViewBuilder private var provenanceBadges: some View {
         SourceBadge(isGenerated: asset.isGenerated)
         if asset.isGenerated, let content = asset.contentProvenance {
             ContentBadge(provenance: content)
         }
+    }
+}
+
+/// The scrubber and the clock — the only part of the app that has to redraw
+/// while audio is playing, and so the only part that observes the position.
+private struct PlaybackTrack: View {
+    @ObservedObject var position: PlaybackPosition
+    let isCurrent: Bool
+    let fallbackDuration: Double
+    let onSeek: (Double) -> Void
+
+    @State private var scrubbing = false
+    @State private var scrubValue: Double = 0
+
+    private var shown: Double {
+        scrubbing ? scrubValue : (isCurrent ? position.progress : 0)
+    }
+
+    var body: some View {
+        VStack(spacing: Theme.Space.s) {
+            GeometryReader { geometry in
+                let width = max(geometry.size.width, 1)   // never divide by zero below
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Theme.Palette.ivorySunk)
+                        .frame(height: 6)
+                    Capsule()
+                        .fill(Theme.Palette.bronze)
+                        .frame(width: max(0, min(width, width * shown)), height: 6)
+                    Circle()
+                        .fill(Theme.Palette.forest)
+                        .frame(width: 16, height: 16)
+                        .offset(x: max(0, min(width - 16, width * shown - 8)))
+                }
+                .frame(height: 20)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            scrubbing = true
+                            let fraction = value.location.x / width
+                            scrubValue = fraction.isFinite ? min(max(fraction, 0), 1) : 0
+                        }
+                        .onEnded { _ in
+                            onSeek(scrubValue)
+                            scrubbing = false
+                        }
+                )
+            }
+            .frame(height: 20)
+
+            HStack {
+                Text(Self.clock(isCurrent ? position.currentTime : 0))
+                Spacer()
+                Text(Self.clock(isCurrent && position.duration > 0
+                                ? position.duration : fallbackDuration))
+            }
+            .font(Theme.Font.caption.monospacedDigit())
+            .foregroundStyle(Theme.Palette.inkSoft)
+        }
+    }
+
+    private static func clock(_ seconds: Double) -> String {
+        guard seconds.isFinite, seconds >= 0 else { return "0:00" }
+        let total = Int(seconds.rounded())
+        return String(format: "%d:%02d", total / 60, total % 60)
     }
 }

@@ -296,33 +296,11 @@ struct AddVoiceView: View {
     @ViewBuilder private var recordRow: some View {
         if recorder.isRecording {
             VStack(alignment: .leading, spacing: Theme.Space.xs) {
-                HStack(spacing: Theme.Space.s) {
-                    // A bar that moves is the only honest sign the microphone is
-                    // capturing. A timer alone counts up over silence just as happily.
-                    GeometryReader { geometry in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(Theme.Palette.ivorySunk)
-                            Capsule()
-                                .fill(Theme.Palette.bronze)
-                                .frame(width: max(3, geometry.size.width * recorder.level))
-                                .animation(.linear(duration: 0.1), value: recorder.level)
-                        }
-                    }
-                    .frame(height: 8)
+                // A bar that moves is the only honest sign the microphone is
+                // capturing. A timer alone counts up over silence just as happily.
+                LiveMeter(meter: recorder.meter)
 
-                    Text(recordTimeLabel)
-                        .font(Theme.Font.caption.monospacedDigit())
-                        .foregroundStyle(Theme.Palette.inkSoft)
-                }
-
-                Text(recorder.elapsed < 60
-                     ? L("Keep going — about a minute is what the voice needs.")
-                     : L("That is enough. Stop whenever you like."))
-                    .font(.system(size: 11))
-                    // Was danger red for the normal case, so a recording going
-                    // exactly to plan looked like it was failing.
-                    .foregroundStyle(recorder.elapsed < 60 ? Theme.Palette.amber
-                                                           : Theme.Palette.sage)
+                RecordingHint(meter: recorder.meter)
 
                 HStack(spacing: Theme.Space.s) {
                     Button(L("Stop")) { stopRecording() }
@@ -362,11 +340,6 @@ struct AddVoiceView: View {
                 .foregroundStyle(Theme.Palette.danger)
                 .fixedSize(horizontal: false, vertical: true)
         }
-    }
-
-    private var recordTimeLabel: String {
-        let seconds = Int(recorder.elapsed)
-        return String(format: "%d:%02d", seconds / 60, seconds % 60)
     }
 
     private func startRecording() async {

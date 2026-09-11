@@ -308,13 +308,17 @@ struct PersonView: View {
                                emphasised: index == 0)
                 }
                 .buttonStyle(.plain)
+                // The wine card is a card, not a list row. It was sitting hard
+                // against the badge above it and the first plain row below,
+                // which is what made it look wedged in rather than featured.
+                .padding(.bottom, index == 0 ? 16 : 0)
 
                 if index > 0 && index < Intent.allCases.count - 1 {
                     Theme.Palette.hairline.frame(height: 1)
                 }
             }
         }
-        .padding(.top, 4)
+        .padding(.top, 22)
     }
 
 
@@ -345,39 +349,38 @@ struct PersonView: View {
     /// Everything kept for this person, in one place. Book pages are excluded:
     /// they are kept automatically so they are never paid for twice, and
     /// counting them would drown the things the user actually chose to keep.
-    @ViewBuilder private func savedLink(_ person: Person) -> some View {
+    private func savedLink(_ person: Person) -> some View {
         let memories = library.keptClips(for: person)
-        if !memories.isEmpty {
-            NavigationLink {
-                // Not .recreated: the screen it opens is headed "Original
-                // recordings and the new words you chose to save", and a
-                // pre-set filter quietly hiding half of that is a lie in a
-                // place this app cannot afford one.
-                MemoriesView(personId: person.id)
-            } label: {
-                HStack {
-                    Text(L("Everything saved"))
-                        .font(.system(size: 14, weight: .semibold))
-                    Spacer()
-                    Text(Counts.savedClips(memories.count))
-                        .font(.system(size: 12))
-                        .foregroundStyle(Theme.Palette.inkSoft)
-                }
-                .foregroundStyle(Theme.Palette.wine)
-                .padding(.horizontal, 16)
-                .frame(maxWidth: .infinity, minHeight: Theme.Metric.buttonHeight)
-                .background(
-                    RoundedRectangle(cornerRadius: Theme.Metric.buttonRadius, style: .continuous)
-                        .fill(Color(hex: 0xFFFAF4))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: Theme.Metric.buttonRadius, style: .continuous)
-                        .stroke(Theme.Palette.hairline, lineWidth: 1)
-                )
+        return NavigationLink {
+            // Not .recreated: the screen it opens is headed "Original
+            // recordings and the new words you chose to save", and a
+            // pre-set filter quietly hiding half of that is a lie in a
+            // place this app cannot afford one.
+            MemoriesView(personId: person.id)
+        } label: {
+            HStack {
+                Text(L("Everything saved"))
+                    .font(.system(size: 14, weight: .semibold))
+                Spacer()
+                Text(memories.isEmpty ? L("Nothing saved yet")
+                                      : Counts.savedClips(memories.count))
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.Palette.inkSoft)
             }
-            .buttonStyle(.plain)
-            .padding(.top, 22)
+            .foregroundStyle(Theme.Palette.wine)
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity, minHeight: Theme.Metric.buttonHeight)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Metric.buttonRadius, style: .continuous)
+                    .fill(Color(hex: 0xFFFAF4))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.Metric.buttonRadius, style: .continuous)
+                    .stroke(Theme.Palette.hairline, lineWidth: 1)
+            )
         }
+        .buttonStyle(.plain)
+        .padding(.top, 22)
     }
 
     private func deleteRow(_ person: Person) -> some View {

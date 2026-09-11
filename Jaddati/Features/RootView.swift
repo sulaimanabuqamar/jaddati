@@ -33,36 +33,43 @@ struct RootView: View {
     }
 
     var body: some View {
-        ZStack {
-            Theme.Palette.paper.ignoresSafeArea()
+        VStack(spacing: 0) {
+            // A pager, not a switch. Three reasons: you can swipe between
+            // the tabs the way every other app on the phone lets you; the
+            // change is animated, so it reads as movement rather than as
+            // the screen being replaced; and all three stay alive, so a tab
+            // still remembers where you were when you come back to it. The
+            // switch it replaced tore down the navigation stack every time.
+            TabView(selection: tab) {
+                HomeView(selectedPersonId: selectedPersonId)
+                    .tag(RootTab.people)
 
-            VStack(spacing: 0) {
-                Group {
-                    switch tab.wrappedValue {
-                    case .people:
-                        HomeView(selectedPersonId: selectedPersonId)
-                    case .saved:
-                        personScoped { person in
-                            MemoriesView(personId: person.id, isTabRoot: true)
-                        } emptyMessage: {
-                            L("Open a person to see what is kept for them.")
-                        }
-                    case .books:
-                        personScoped { person in
-                            BooksView(personId: person.id, isTabRoot: true)
-                        } emptyMessage: {
-                            L("Open a person to bring them a text.")
-                        }
-                    }
+                personScoped { person in
+                    MemoriesView(personId: person.id, isTabRoot: true)
+                } emptyMessage: {
+                    L("Open a person to see what is kept for them.")
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .tag(RootTab.saved)
 
-                TabRail(selection: tab)
+                personScoped { person in
+                    BooksView(personId: person.id, isTabRoot: true)
+                } emptyMessage: {
+                    L("Open a person to bring them a text.")
+                }
+                .tag(RootTab.books)
             }
-            // The rail is furniture, not content. Without this it rides up with
-            // the keyboard and covers the line being typed.
-            .ignoresSafeArea(.keyboard, edges: .bottom)
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            TabRail(selection: tab)
         }
+        // The ground, as a background rather than as a sibling in a ZStack. A
+        // sibling that ignores the safe area can hand its expanded frame to the
+        // stack, and screens started drawing up underneath the status bar.
+        .background(Theme.Palette.paper.ignoresSafeArea())
+        // The rail is furniture, not content. Without this it rides up with the
+        // keyboard and covers the line being typed.
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         .onChange(of: library.people.count) { _, _ in forgetSelectionIfGone() }
         .onAppear(perform: forgetSelectionIfGone)
     }
@@ -85,7 +92,7 @@ struct RootView: View {
         emptyMessage: () -> String
     ) -> some View {
         if let person = selectedPerson {
-            NavigationStack { content(person) }
+            NavigationStack { content(person).swipeBackEnabled() }
         } else {
             VStack(spacing: 0) {
                 AppBar(title: tab.wrappedValue.title, showsBack: false)

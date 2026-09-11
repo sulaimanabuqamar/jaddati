@@ -31,6 +31,10 @@ struct AppBar: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var localization = Localization.shared
 
+    private static let glyphInset  = Theme.Metric.screenPadding - Theme.Metric.touchTarget / 2 + 6
+    private static let circleInset = Theme.Metric.screenPadding
+                                   - (Theme.Metric.touchTarget - GlobeButton.diameter) / 2
+
     var body: some View {
         HStack(spacing: 0) {
             Group {
@@ -69,7 +73,14 @@ struct AppBar: View {
             }
             .frame(width: Theme.Metric.touchTarget, height: Theme.Metric.touchTarget)
         }
-        .padding(.horizontal, Theme.Metric.screenPadding - Theme.Metric.touchTarget / 2 + 6)
+        // Two different insets on purpose. The back chevron is a small glyph
+        // centred in a 44pt tap box, so it needs a small inset to sit ON the
+        // 20pt content grid; the globe is a 36pt drawn circle in the same box,
+        // so it needs a larger one for its EDGE to land there. One symmetric
+        // padding aligned the chevron and left the globe hanging 12pt past
+        // everything else on the screen.
+        .padding(.leading, Self.glyphInset)
+        .padding(.trailing, Self.circleInset)
         .frame(height: Theme.Metric.appBar)
         .background(Theme.Palette.paper)
     }
@@ -79,6 +90,9 @@ struct AppBar: View {
 /// puts it there — a language you can only change from a settings screen is a
 /// language the app does not really speak.
 struct GlobeButton: View {
+    /// The drawn circle, which is what the eye aligns to — not the tap box.
+    static let diameter: CGFloat = 36
+
     @ObservedObject private var localization = Localization.shared
 
     var body: some View {
@@ -88,7 +102,7 @@ struct GlobeButton: View {
             Image(systemName: "globe")
                 .font(.system(size: 16, weight: .regular))
                 .foregroundStyle(Theme.Palette.ink)
-                .frame(width: 36, height: 36)
+                .frame(width: Self.diameter, height: Self.diameter)
                 .overlay(Circle().stroke(Theme.Palette.hairline, lineWidth: 1))
                 .contentShape(Circle())
         }

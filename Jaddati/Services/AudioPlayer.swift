@@ -6,13 +6,40 @@ import Combine
 ///
 /// Progress comes from `AVAudioPlayer.currentTime` on a timer. It is the real
 /// playback position — nothing here is animated independently of the audio.
+/// Where the audio is, second by second.
+///
+/// Deliberately its own object rather than two more `@Published` properties on
+/// `AudioPlayer`. Every list row, every breadcrumb and every screen observes
+/// `AudioPlayer` for the play/pause glyph, so publishing the position ten times
+/// a second from there rebuilt entire screens ten times a second for the whole
+/// length of every clip — and every avatar on them is a raster image clipped to
+/// a custom arch, which forces an offscreen render pass each time it is drawn.
+/// Only the one view that draws a progress bar needs this.
+final class PlaybackPosition: ObservableObject {
+    @Published var currentTime: Double = 0
+    @Published var duration: Double = 0
+
+    var progress: Double {
+        guard duration > 0 else { return 0 }
+        return min(max(currentTime / duration, 0), 1)
+    }
+}
+
 final class AudioPlayer: NSObject, ObservableObject {
 
     @Published private(set) var isPlaying = false
-    @Published private(set) var currentTime: Double = 0
-    @Published private(set) var duration: Double = 0
     @Published private(set) var playingAssetId: UUID?
     @Published var playbackError: String?
+
+    /// A plain `let`, NOT `@Published` — observing the player must not mean
+    /// observing the position. See `PlaybackPosition` above.
+    let position = PlaybackPosition()
+
+    /// Read-only pass-throughs for code that wants the numbers without
+    /// subscribing to them.
+    var currentTime: Double { position.currentTime }
+    var duration: Double { position.duration }
+    var progress: Double { position.progress }
 
     /// Applies to playback only, so a clip already generated can be slowed
     /// without paying to make it again. AVAudioPlayer time-stretches, so the
@@ -37,11 +64,6 @@ final class AudioPlayer: NSObject, ObservableObject {
     deinit {
         ticker?.invalidate()
         NotificationCenter.default.removeObserver(self)
-    }
-
-    var progress: Double {
-        guard duration > 0 else { return 0 }
-        return min(max(currentTime / duration, 0), 1)
     }
 
     func isPlaying(assetId: UUID) -> Bool {
@@ -82,8 +104,8 @@ final class AudioPlayer: NSObject, ObservableObject {
             newPlayer.rate = playbackRate
             newPlayer.prepareToPlay()
             player = newPlayer
-            duration = newPlayer.duration
-            currentTime = 0
+            position.duration = newPlayer.duration
+            position.currentTime = 0
             playingAssetId = assetId
             playbackError = nil
             newPlayer.play()
@@ -107,18 +129,27 @@ final class AudioPlayer: NSObject, ObservableObject {
         // At end-of-file, play() from the current position is unreliable.
         if player.currentTime >= player.duration - 0.05 {
             player.currentTime = 0
-            currentTime = 0
+            position.currentTime = 0
         }
         player.play()
         isPlaying = true
         startTicking()
     }
 
-    func seek(toProgress fraction: Double) {
-        guard let player, duration > 0 else { return }
-        let target = min(max(fraction, 0), 1) * duration
+    /// Jump by a fixed number of seconds, clamped to the clip. Distinct from
+    /// `seek(toProgress:)`, which the scrubber uses.
+    func skip(by seconds: Double) {
+        guard let player, position.duration > 0 else { return }
+        let target = min(max(player.currentTime + seconds, 0), position.duration)
         player.currentTime = target
-        currentTime = target
+        position.currentTime = target
+    }
+
+    func seek(toProgress fraction: Double) {
+        guard let player, position.duration > 0 else { return }
+        let target = min(max(fraction, 0), 1) * position.duration
+        player.currentTime = target
+        position.currentTime = target
     }
 
     func stop() {
@@ -126,8 +157,8 @@ final class AudioPlayer: NSObject, ObservableObject {
         player?.stop()
         player = nil
         isPlaying = false
-        currentTime = 0
-        duration = 0
+        position.currentTime = 0
+        position.duration = 0
         playingAssetId = nil
         // Release the session so other audio on the phone is not left suppressed.
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
@@ -139,7 +170,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         stopTicking()
         let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
             guard let self, let player = self.player else { return }
-            self.currentTime = player.currentTime
+            self.position.currentTime = player.currentTime
         }
         RunLoop.main.add(timer, forMode: .common)   // keeps ticking while scrolling
         ticker = timer
@@ -177,7 +208,7 @@ extension AudioPlayer: AVAudioPlayerDelegate {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.isPlaying = false
-            self.currentTime = self.duration
+            self.position.currentTime = self.position.duration
             self.stopTicking()
         }
     }

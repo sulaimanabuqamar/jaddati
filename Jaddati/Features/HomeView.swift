@@ -47,17 +47,17 @@ struct HomeView: View {
                     .onAppear { selectedPersonId = person.id }
             }
             .sheet(isPresented: $addingPerson) { AddPersonView() }
+            .swipeBackEnabled()
         }
     }
 
     // MARK: Pieces
 
+    /// No wordmark here. The identity block immediately below already sets
+    /// "Jaddati" beside جدّتي at full size — printing جدّتي again 40 points
+    /// above it read as a mistake, not as branding.
     private var masthead: some View {
         HStack {
-            Text("جدّتي")
-                .font(Theme.Font.display(22))
-                .foregroundStyle(Theme.Palette.ink)
-                .environment(\.layoutDirection, .rightToLeft)
             Spacer()
             #if DEBUG
             debugMenu
