@@ -58,3 +58,22 @@ where an ElevenLabs key inside a shipped build is permanent and uncapped.
 
 The right end state is a sign-in, so an allowance belongs to a person rather
 than to a phone. That is not a demo-week job.
+
+## Deleting a voice
+
+`DELETE /v1/voices/{id}` is the one non-POST route the worker accepts.
+
+The app calls it when a person is removed, because the clone lives under this
+account rather than the family's — without it, "how do I get this deleted?"
+had no answer anyone could act on, and the app's own privacy notice would be
+promising something it could not do.
+
+Only the device that created a voice may delete it: the `voice:{device}` key is
+the proof of ownership, and a mismatch is a 403. A voice already gone at the
+provider counts as success. `voices:live` is decremented only when a `v:{id}`
+record was actually removed, so a repeated delete cannot push the counter below
+the true number of live voices.
+
+**If you point a build at this worker, deploy this route with it.** An older
+worker rejects every non-POST with a 405, and the app will then tell people
+their voice could not be removed.

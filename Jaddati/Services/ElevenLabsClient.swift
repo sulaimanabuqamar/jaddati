@@ -79,7 +79,7 @@ struct ElevenLabsClient: VoiceService {
         var request = URLRequest(url: base.appendingPathComponent("v1/voices/add"))
         request.httpMethod = "POST"
         request.setValue(key, forHTTPHeaderField: "xi-api-key")
-        if AppConfig.sendsDeviceHeader {
+        if AppConfig.sendsVoiceDeviceHeader {
             request.setValue(AppConfig.deviceId, forHTTPHeaderField: "X-Jaddati-Device")
         }
         request.setValue("multipart/form-data; boundary=\(boundary)",
@@ -130,7 +130,7 @@ struct ElevenLabsClient: VoiceService {
         var request = URLRequest(url: components.url!)
         request.httpMethod = "POST"
         request.setValue(key, forHTTPHeaderField: "xi-api-key")
-        if AppConfig.sendsDeviceHeader {
+        if AppConfig.sendsVoiceDeviceHeader {
             request.setValue(AppConfig.deviceId, forHTTPHeaderField: "X-Jaddati-Device")
         }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -164,16 +164,18 @@ struct ElevenLabsClient: VoiceService {
     // MARK: Deletion
 
     func deleteVoice(voiceId: String) async throws {
+        // First, above everything. A voice minted by the offline test mode never
+        // existed at the provider, so there is nothing to refuse on consent
+        // grounds and nothing a missing key could have stopped. Checking those
+        // first told people a voice would be left behind that was never there.
+        guard !voiceId.hasPrefix(AppConfig.placeholderVoicePrefix) else { return }
         guard Consent.networkAllowed else { throw ConsentMissing() }
         guard !key.isEmpty else { throw VoiceServiceError.notConfigured }
-        // A voice minted by the offline test mode never existed at the
-        // provider. Reporting a failure for it would be a lie.
-        guard !voiceId.hasPrefix(AppConfig.placeholderVoicePrefix) else { return }
 
         var request = URLRequest(url: base.appendingPathComponent("v1/voices/\(voiceId)"))
         request.httpMethod = "DELETE"
         request.setValue(key, forHTTPHeaderField: "xi-api-key")
-        if AppConfig.sendsDeviceHeader {
+        if AppConfig.sendsVoiceDeviceHeader {
             request.setValue(AppConfig.deviceId, forHTTPHeaderField: "X-Jaddati-Device")
         }
 

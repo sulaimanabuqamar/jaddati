@@ -7,6 +7,12 @@ struct JaddatiApp: App {
     @StateObject private var localization = Localization.shared
     @StateObject private var consent = Consent.shared
 
+    init() {
+        // Touch it once here, on the main thread, rather than first reading
+        // UIDevice from inside a URLSession task.
+        _ = AppConfig.deviceId
+    }
+
     var body: some Scene {
         WindowGroup {
             Group {

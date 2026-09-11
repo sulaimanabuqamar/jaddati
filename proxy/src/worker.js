@@ -129,6 +129,41 @@ async function createVoice(request, env) {
  * Speaking. Billed by character, because that is how ElevenLabs bills and how
  * the app already quotes it on screen ("≈ 320 credits").
  */
+/**
+ * Delete a voice, and give the slot back.
+ *
+ * Only the device that made a voice may delete it — the per-device key is the
+ * proof. Without that check any phone could delete any family's voice, which
+ * is a worse failure than not being able to delete at all.
+ *
+ * A voice that is already gone counts as success: the caller wanted it absent,
+ * and it is. The counter only ever moves on a KV record we actually removed,
+ * so a repeated delete cannot drive `voices:live` below the real number.
+ */
+async function deleteVoice(request, env, voiceId) {
+  const device = deviceId(request);
+  const owned = await env.JADDATI.get(`voice:${device}`);
+  if (owned !== voiceId) return json(403, "not this device's voice");
+
+  const gone = await fetch(`${ELEVEN}/v1/voices/${voiceId}`, {
+    method: "DELETE",
+    headers: { "xi-api-key": env.ELEVENLABS_API_KEY },
+  });
+  if (!gone.ok && gone.status !== 404) {
+    return json(gone.status, "the voice service refused the deletion");
+  }
+
+  const had = await env.JADDATI.get(`v:${voiceId}`);
+  await env.JADDATI.delete(`v:${voiceId}`);
+  await env.JADDATI.delete(`voice:${device}`);
+  if (had) {
+    const live = num(await env.JADDATI.get("voices:live"), 0);
+    await env.JADDATI.put("voices:live", String(Math.max(live - 1, 0)));
+  }
+
+  return new Response(null, { status: 204 });
+}
+
 async function speak(request, env, voiceId) {
   const device = deviceId(request);
   const raw = await request.text();
@@ -197,10 +232,26 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === "/health") return new Response("ok");
-    if (request.method !== "POST") return json(405, "method not allowed");
+
+    // DELETE is allowed through for one route: removing a voice. The app has
+    // to be able to answer "how do I get this deleted?", and refusing every
+    // non-POST made that promise undeliverable on exactly the builds that go
+    // through here.
+    const isVoiceDelete =
+      request.method === "DELETE" &&
+      url.pathname.startsWith("/v1/voices/") &&
+      url.pathname !== "/v1/voices/add";
+    if (request.method !== "POST" && !isVoiceDelete) {
+      return json(405, "method not allowed");
+    }
 
     if (appToken(request) !== env.APP_TOKEN) return json(401, "unauthorised");
     if (!deviceId(request)) return json(400, "missing device identifier");
+
+    if (isVoiceDelete) {
+      const voiceId = url.pathname.slice("/v1/voices/".length);
+      return voiceId ? deleteVoice(request, env, voiceId) : json(400, "no voice id");
+    }
 
     if (url.pathname === "/v1/voices/add") return createVoice(request, env);
 

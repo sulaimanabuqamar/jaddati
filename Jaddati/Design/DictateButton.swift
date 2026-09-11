@@ -87,6 +87,10 @@ struct DictateButton: View {
             let existing = text.trimmingCharacters(in: .whitespacesAndNewlines)
             text = existing.isEmpty ? heard : existing + " " + heard
             problem = nil
+        } catch is ConsentMissing {
+            // Withdrawn while this was in flight. The check at the start of
+            // recording passed; the one at call time is the one that fired.
+            problem = AppConfig.unavailableMessage
         } catch {
             problem = (error as? TranscriptionError)?.errorDescription
                 ?? L("That could not be written down. Try again.")

@@ -1,0 +1,27 @@
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: #F9F5EF; color: #302725;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  line-height: 1.65; padding: 0 20px;
+}
+.wrap { max-width: 720px; margin: 0 auto; padding-block: 56px 80px; }
+.mark { width: 46px; height: 46px; display: block; }
+.name { font-family: Georgia, serif; font-size: 13px; letter-spacing: 0.24em; color: #592C43; margin-top: 14px; }
+h1 { font-family: Georgia, serif; font-weight: 400; font-size: 34px; line-height: 1.2; margin: 6px 0 4px; }
+.sub { color: #766861; font-size: 15px; margin: 0 0 6px; }
+.stamp { color: #766861; font-size: 13px; margin: 0 0 36px; }
+h2 { font-family: Georgia, serif; font-weight: 400; font-size: 22px; margin: 38px 0 10px; }
+h3 { font-size: 15px; font-weight: 600; margin: 24px 0 6px; }
+p, li { font-size: 15px; color: #4A403C; }
+ul { padding-inline-start: 20px; }
+li { margin-bottom: 7px; }
+a { color: #592C43; }
+.card { background: #FEFAF5; border: 1px solid #E4DCD3; border-radius: 18px; padding: 22px 24px; margin: 22px 0; }
+.card h3 { margin-top: 0; }
+table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 14px; }
+th, td { text-align: start; padding: 10px 12px; border-bottom: 1px solid #E4DCD3; vertical-align: top; }
+th { color: #592C43; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; }
+.tablewrap { overflow-x: auto; }
+footer { margin-top: 56px; padding-top: 22px; border-top: 1px solid #E4DCD3; font-size: 13px; color: #766861; }
+footer a { margin-inline-end: 16px; }

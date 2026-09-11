@@ -481,6 +481,9 @@ let arabicStrings: [String: String] = [
     "Removing the voice from the voice service…": "جارٍ حذف الصوت من خدمة الصوت…",
     "The voice could not be removed from the voice service.": "تعذّر حذف الصوت من خدمة الصوت.",
     "Removing a person also deletes the voice built for them at the voice service. That happens first, and if it fails nothing here is removed, so it can be tried again.": "إزالة شخص تحذف أيضًا الصوت المُنشأ له لدى خدمة الصوت. يحدث ذلك أولًا، وإذا تعذّر لا يُحذف شيء من هنا، فيمكن إعادة المحاولة.",
+
+    "Keep for now": "الاحتفاظ به الآن",
+    "When Jaddati reaches these services through a relay we run, requests carry a code identifying this phone, so one phone cannot use up everyone's allowance. It is not a name, is not linked to one, and is not sent when the app calls the two services directly.": "حين يصل جدّتي إلى هاتين الخدمتين عبر وسيط نُشغّله، تحمل الطلبات رمزًا يميّز هذا الهاتف، حتى لا يستهلك هاتف واحد حصة الجميع. وهو ليس اسمًا ولا مرتبطًا باسم، ولا يُرسَل حين يتصل التطبيق بالخدمتين مباشرة.",
 ]
 
 // MARK: - Counts

@@ -28,7 +28,6 @@ struct PersonView: View {
     @State private var confirmingDelete = false
     @State private var isDeleting = false
     @State private var deleteProblem: String?
-    @State private var confirmingLocalOnlyDelete = false
     @State private var photoPick: PhotosPickerItem?
     @State private var checkingAvailability = false
     @State private var availabilityNote: String?
@@ -406,6 +405,7 @@ struct PersonView: View {
     /// person's voice sitting on someone else's server with nothing left that
     /// knows its name. If the provider call fails we stop and say so, and the
     /// person is still here to try again with.
+    @MainActor
     private func remove(_ person: Person) async {
         deleteProblem = nil
 
@@ -424,13 +424,11 @@ struct PersonView: View {
         } catch is ConsentMissing {
             isDeleting = false
             deleteProblem = AppConfig.unavailableMessage
-            confirmingLocalOnlyDelete = true
             return
         } catch {
             isDeleting = false
             deleteProblem = (error as? VoiceServiceError)?.errorDescription
                 ?? L("The voice could not be removed from the voice service.")
-            confirmingLocalOnlyDelete = true
             return
         }
         isDeleting = false
@@ -463,17 +461,7 @@ struct PersonView: View {
                         ? L("Nothing was ever sent to the voice service for this person.")
                         : L("The voice built for them is deleted from the voice service first. If that fails, nothing here is removed, so you can try again.")))
             }
-            .confirmationDialog(L("Remove from this phone anyway?"),
-                                isPresented: $confirmingLocalOnlyDelete,
-                                titleVisibility: .visible) {
-                Button(L("Remove from this phone"), role: .destructive) {
-                    library.delete(person)
-                    dismiss()
-                }
-                Button(L("Cancel"), role: .cancel) { }
-            } message: {
-                Text(L("The voice will stay at the voice service and this app will no longer know its name, so it cannot be removed from here later."))
-            }
+            .disabled(isDeleting)
 
             if isDeleting {
                 Text(L("Removing the voice from the voice service…"))
@@ -482,9 +470,24 @@ struct PersonView: View {
                     .padding(.top, Theme.Space.xs)
             }
 
+            // Inline, not a second dialog. A confirmationDialog raised while
+            // the first one is still dismissing is dropped by UIKit, and the
+            // paths that get here most often — consent declined, no key —
+            // fail without ever suspending, so they land in exactly that
+            // window and the person would see nothing happen at all.
             if let deleteProblem {
-                ErrorNote(message: deleteProblem)
-                    .padding(.top, Theme.Space.xs)
+                VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                    ErrorNote(message: deleteProblem + "\n\n"
+                              + L("The voice will stay at the voice service and this app will no longer know its name, so it cannot be removed from here later."))
+                    Button(L("Remove from this phone")) {
+                        library.delete(person)
+                        dismiss()
+                    }
+                    .buttonStyle(QuietButtonStyle())
+                    Button(L("Keep for now")) { self.deleteProblem = nil }
+                        .buttonStyle(QuietButtonStyle())
+                }
+                .padding(.top, Theme.Space.xs)
             }
         }
         .padding(.top, 18)

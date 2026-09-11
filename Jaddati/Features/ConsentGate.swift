@@ -48,7 +48,11 @@ struct ConsentGate: View {
             HStack {
                 Eyebrow(text: L("Before you begin"))
                 Spacer(minLength: 0)
+                // AppBar gives the globe a full touch target; bare, it is the
+                // 36pt drawn circle, which is under the minimum.
                 GlobeButton()
+                    .frame(width: Theme.Metric.touchTarget,
+                           height: Theme.Metric.touchTarget)
             }
             Headline(text: L("Some of this\nleaves the phone."), size: 33)
             SubText(text: L("Jaddati can work entirely on this phone. Three things cannot, because they are done by companies outside it. Here is exactly what they are."))
@@ -59,7 +63,7 @@ struct ConsentGate: View {
         Panel {
             VStack(alignment: .leading, spacing: Theme.Space.m) {
                 recipient(
-                    name: "ElevenLabs",
+                    name: AppConfig.voiceProviderName,
                     role: L("Voice service"),
                     sends: L("The recording you choose, and the words you ask to be spoken."),
                     why: L("It builds the voice and reads your words in it. The voice it builds is kept on their servers, not only here.")
@@ -68,7 +72,7 @@ struct ConsentGate: View {
                 Divider().overlay(Theme.Palette.hairline)
 
                 recipient(
-                    name: "Groq",
+                    name: AppConfig.textProviderName,
                     role: L("Questions and dictation"),
                     sends: L("A question typed or spoken during a story, with the page it is about — and the audio itself when you speak instead of typing."),
                     why: L("It writes the answer, and turns speech into text. It is never told whose voice will read the answer out.")
@@ -179,7 +183,11 @@ struct PrivacyScreen: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(L("Close")) { dismiss() }
                 }
-                ToolbarItem(placement: .primaryAction) { GlobeButton() }
+                // No globe here. Switching language changes the .id on the
+                // root, which tears the tree down and takes this sheet with
+                // it — the control added so an Arabic reader could read the
+                // notice would close the notice. The globe on the screen
+                // behind this one does the job without that.
             }
         }
     }
@@ -207,9 +215,7 @@ struct PrivacyScreen: View {
                 SectionLabel(text: L("Sent to others, only if you allow it"))
                 bullet(L("ElevenLabs receives the recording you choose and the words you want spoken. The voice it builds is stored under this app's account there."))
                 bullet(L("Groq receives a question and the page it is about, and the audio when you speak instead of typing."))
-                if AppConfig.sendsDeviceHeader {
-                    bullet(L("A code identifying this phone, so that one phone cannot use up everyone's allowance. It is not a name and is not linked to one."))
-                }
+                bullet(L("When Jaddati reaches these services through a relay we run, requests carry a code identifying this phone, so one phone cannot use up everyone's allowance. It is not a name, is not linked to one, and is not sent when the app calls the two services directly."))
                 Text(L("Both are bound by their own terms, which require them to protect what they are sent. Jaddati does not send them anything else, and does not send anything anywhere else."))
                     .font(Theme.Font.caption)
                     .foregroundStyle(Theme.Palette.inkSoft)
@@ -272,7 +278,7 @@ struct PrivacyScreen: View {
             Text(L("Questions about any of this"))
                 .font(Theme.Font.label)
                 .foregroundStyle(Theme.Palette.ink)
-            Text(verbatim: "jaddati.app@gmail.com")
+            Text(verbatim: "sulaiman.abuqamar@gmail.com")
                 .font(Theme.Font.caption)
                 .foregroundStyle(Theme.Palette.wine)
                 .textSelection(.enabled)

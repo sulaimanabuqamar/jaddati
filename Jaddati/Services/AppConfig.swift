@@ -36,7 +36,7 @@ enum AppConfig {
     static var voiceBaseURL: String {
         let value = (secrets["ELEVENLABS_BASE_URL"] as? String) ?? ""
         let trimmed = value.trimmingCharacters(in: CharacterSet(charactersIn: " /"))
-        return trimmed.isEmpty ? "https://api.elevenlabs.io" : trimmed
+        return trimmed.isEmpty ? stockVoiceURL : trimmed
     }
 
     /// Which phone is spending, so the proxy can meter one device without the
@@ -50,9 +50,32 @@ enum AppConfig {
     /// directly the meter header means nothing to the recipient, so sending it
     /// would be handing an identifier to a third party for a purpose that does
     /// not exist there. Only the proxy is told which phone is asking.
-    static var sendsDeviceHeader: Bool {
-        voiceBaseURL != "https://api.elevenlabs.io"
-            || llmBaseURL != "https://api.groq.com/openai/v1"
+    /// One flag per service, never a shared one. The proxy README describes
+    /// relaying the questions while leaving voice on the stock host — with a
+    /// single OR, that configuration sent the identifier straight to
+    /// ElevenLabs, which is the exact thing this is here to prevent.
+    static var sendsVoiceDeviceHeader: Bool { voiceBaseURL != stockVoiceURL }
+    static var sendsTextDeviceHeader: Bool { llmBaseURL != stockTextURL }
+
+    /// True if either does, for the one place that describes the app rather
+    /// than making a request.
+    static var sendsDeviceHeader: Bool { sendsVoiceDeviceHeader || sendsTextDeviceHeader }
+
+    private static let stockVoiceURL = "https://api.elevenlabs.io"
+    private static let stockTextURL = "https://api.groq.com/openai/v1"
+
+    /// Named in the disclosure. Derived, because a build pointed at a relay is
+    /// not talking to the company the screen would otherwise name.
+    static var voiceProviderName: String {
+        if isUsingMock { return "Offline test mode" }
+        return voiceBaseURL == stockVoiceURL
+            ? "ElevenLabs" : (URL(string: voiceBaseURL)?.host ?? voiceBaseURL)
+    }
+
+    static var textProviderName: String {
+        if isUsingMock { return "Offline test mode" }
+        return llmBaseURL == stockTextURL
+            ? "Groq" : (URL(string: llmBaseURL)?.host ?? llmBaseURL)
     }
 
     /// Key for the debug-only offline mode. Never consulted in a Release build.
@@ -116,7 +139,7 @@ enum AppConfig {
 
     /// Named in the consent card. A disclosure that says "a third-party voice
     /// service" without saying which one is not a disclosure.
-    static var providerName: String { isUsingMock ? "Offline test mode" : "ElevenLabs" }
+    static var providerName: String { voiceProviderName }
 
     /// Arabic-capable and stable on long-form.
     static let defaultModelId = "eleven_multilingual_v2"
@@ -145,7 +168,12 @@ enum AppConfig {
 
     static var llmBaseURL: String {
         let value = (secrets["LLM_BASE_URL"] as? String) ?? ""
-        return value.isEmpty ? "https://api.groq.com/openai/v1" : value
+        // Trimmed exactly like voiceBaseURL. Untrimmed, a trailing slash — a
+        // spelling that works everywhere else, because each client trims at
+        // use time — read as a different host and shipped the device id to
+        // both stock providers.
+        let trimmed = value.trimmingCharacters(in: CharacterSet(charactersIn: " /"))
+        return trimmed.isEmpty ? stockTextURL : trimmed
     }
 
     /// A string in Secrets.plist rather than a constant here, on purpose:
