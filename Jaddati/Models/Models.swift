@@ -319,6 +319,27 @@ enum Intent: String, Codable, CaseIterable {
         }
     }
 
+    /// The screen headline. Line breaks are the designer's, not the wrapper's.
+    var headline: String {
+        switch self {
+        case .saySomething:      return L("Words of\nyour choosing.")
+        case .comfort:           return L("A little\nsteadiness.")
+        case .storyFiction:      return L("A small story.\nA quiet moment.")
+        case .storyFromMemories: return L("Words worth\nkeeping.")
+        case .readBook:          return L("A shelf of\nfamiliar pages.")
+        }
+    }
+
+    var standfirst: String {
+        switch self {
+        case .saySomething:      return L("Write something new to be spoken in a recreated voice.")
+        case .comfort:           return L("Choose a line, or write what feels right to you.")
+        case .storyFiction:      return L("These are invented stories, not memories or stories told by this person.")
+        case .storyFromMemories: return L("A place for your memories and the words you have chosen.")
+        case .readBook:          return L("Bring a text. Hear it in a recreated voice, one page at a time.")
+        }
+    }
+
     /// The content label a clip from this experience is born with.
     var defaultContentProvenance: ContentProvenance {
         switch self {
@@ -330,13 +351,14 @@ enum Intent: String, Codable, CaseIterable {
         }
     }
 
+    /// Matches the design's own glyph for each experience.
     var icon: String {
         switch self {
-        case .saySomething:      return "text.quote"
-        case .comfort:           return "heart"
+        case .saySomething:      return "pencil"
+        case .comfort:           return "leaf"
         case .storyFiction:      return "moon.stars"
-        case .storyFromMemories: return "book.closed"
-        case .readBook:          return "books.vertical"
+        case .storyFromMemories: return "tray.full"
+        case .readBook:          return "book"
         }
     }
 

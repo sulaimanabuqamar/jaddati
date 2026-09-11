@@ -27,11 +27,11 @@ struct PlayerView: View {
     private var fileIsPresent: Bool { library.fileExists(for: asset) }
 
     var body: some View {
-        ZStack {
-            Theme.Palette.ivory.ignoresSafeArea()
+        VStack(spacing: 0) {
+            AppBar(title: L("Playing"))
 
             VStack(spacing: Theme.Space.l) {
-                Spacer(minLength: Theme.Space.m)
+                Spacer(minLength: 0)
 
                 // Provenance first, words second. Which of the two things this
                 // is — a recording of them, or audio a machine made — has to be
@@ -41,11 +41,15 @@ struct PlayerView: View {
                     VStack(spacing: 6) { provenanceBadges }
                 }
 
+                // A still archive mark. Nothing here moves with the sound.
+                PlayerArt()
+
                 if !asset.text.isEmpty {
                     Text(asset.text)
-                        .font(Theme.Font.spoken)
+                        .font(Theme.Font.display(27))
+                        .tracking(-0.35)
                         .foregroundStyle(Theme.Palette.ink)
-                        .multilineTextAlignment(TextDirection.isArabic(asset.text) ? .trailing : .center)
+                        .multilineTextAlignment(.center)
                         .environment(\.layoutDirection,
                                       TextDirection.isArabic(asset.text) ? .rightToLeft : .leftToRight)
                         .lineSpacing(6 + Theme.textLineSpacing)
@@ -81,9 +85,10 @@ struct PlayerView: View {
 
                 Spacer(minLength: Theme.Space.m)
             }
-            .padding(Theme.Space.m)
+            .padding(.horizontal, Theme.Metric.screenPadding)
         }
-        .navigationBarTitleDisplayMode(.inline)
+        .background(Theme.Palette.paper)
+        .navigationBarHidden(true)
         .onAppear {
             guard fileIsPresent else { return }
             player.ensurePlaying(url: library.url(for: asset), assetId: asset.id)

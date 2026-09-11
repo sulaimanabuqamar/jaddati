@@ -81,22 +81,25 @@ struct CreateView: View {
     }
 
     var body: some View {
-        ZStack {
-            Theme.Palette.ivory.ignoresSafeArea()
+        VStack(spacing: 0) {
+            AppBar(title: intent.title)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Space.m) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(intent.title)
-                            .font(Theme.Font.title)
-                            .foregroundStyle(Theme.Palette.ink)
-                        Text(intent.subtitle)
-                            .font(Theme.Font.caption)
-                            .foregroundStyle(Theme.Palette.inkSoft)
+                    // Grouped so the header counts as one child: this stack sits
+                    // right on SwiftUI's ten-child ViewBuilder limit.
+                    Group {
+                        if let person {
+                            Breadcrumb(name: person.name,
+                                       relationship: person.relationship,
+                                       photo: library.photoURL(for: person))
+                        }
+                        Headline(text: intent.headline)
+                        SubText(text: intent.standfirst)
                     }
 
                     if !AppConfig.isConfigured {
-                        ErrorNote(message: "Voices aren't set up on this build, so nothing can be generated. Saved memories still play.")
+                        ErrorNote(message: L("Voice service is not connected."))
                     }
 
                     // On the shelf screen the kept items are the reason you
@@ -122,17 +125,19 @@ struct CreateView: View {
                         .foregroundStyle(Theme.Palette.bronze)
                     }
 
+                    ExampleQuote(characters: trimmed.count)
                     actionSection
                     if intent != .storyFromMemories { savedFromHere }
                 }
-                .padding(Theme.Space.m)
+                .padding(.horizontal, Theme.Metric.screenPadding)
                 .padding(.bottom, Theme.Space.xl)
             }
             // Swiping the page down puts the keyboard away, so the primary
             // action is reachable without hunting for a Done button.
             .scrollDismissesKeyboard(.interactively)
         }
-        .navigationBarTitleDisplayMode(.inline)
+        .background(Theme.Palette.paper)
+        .navigationBarHidden(true)
         .navigationDestination(item: $generated) { asset in
             PlayerView(asset: asset)
         }
@@ -210,6 +215,7 @@ struct CreateView: View {
     @ViewBuilder private var tuningSection: some View {
         DisclosureGroup(isExpanded: $showingTuning) {
             VStack(alignment: .leading, spacing: Theme.Space.s) {
+                SectionLabel(text: L("How it is spoken"))
                 HStack(spacing: Theme.Space.xs) {
                     tuningPreset(L("Gentle"), .gentle)
                     tuningPreset(L("Natural"), .natural)

@@ -18,15 +18,15 @@ struct BooksView: View {
 
     var body: some View {
         ZStack {
-            Theme.Palette.ivory.ignoresSafeArea()
+            Theme.Palette.paper.ignoresSafeArea()
 
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Space.m) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(L("Read me a book"))
+                        Headline(text: L("A shelf of\nfamiliar pages."))
                             .font(Theme.Font.title)
                             .foregroundStyle(Theme.Palette.ink)
-                        Text(L("A text you bring, read one page at a time."))
+                        SubText(text: L("Bring a text. Hear it in a recreated voice, one page at a time."))
                             .font(Theme.Font.caption)
                             .foregroundStyle(Theme.Palette.inkSoft)
                     }
@@ -95,42 +95,56 @@ struct BooksView: View {
             let books = library.books(for: person)
             if books.isEmpty {
                 EmptyHint(icon: "books.vertical",
-                          title: "No books yet",
-                          message: "Import something short to start with — a chapter, a letter, a story you wrote.")
+                          title: L("No books yet"),
+                          message: L("Your first book belongs here."))
             } else {
-                ForEach(books) { book in
-                    Panel {
-                        HStack(alignment: .top, spacing: Theme.Space.s) {
-                            Button { openedBookId = book.id } label: {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text(book.title)
-                                        .font(Theme.Font.heading)
-                                        .foregroundStyle(Theme.Palette.ink)
-                                        .multilineTextAlignment(.leading)
-                                    Text("\(book.pageCount) pages · \(library.pagesRead(of: book)) already read")
-                                        .font(Theme.Font.caption)
-                                        .foregroundStyle(Theme.Palette.inkSoft)
-                                    Text("About \(book.totalCharacters.formatted()) credits to read all of it")
-                                        .font(Theme.Font.caption)
-                                        .foregroundStyle(Theme.Palette.bronze)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
+                ForEach(Array(books.enumerated()), id: \.element) { index, book in
+                    HStack(alignment: .top, spacing: 16) {
+                        // A book, drawn as a book. The cover alternates so a
+                        // shelf of two reads as a shelf, not a list.
+                        BookCover(title: book.title,
+                                  tint: index % 2 == 0 ? Theme.Palette.coverGreen
+                                                       : Theme.Palette.coverRust)
 
-                            // Visible, not hidden behind a long press.
-                            Button { pendingDeletion = book } label: {
-                                Image(systemName: "trash")
-                                    .font(.system(size: 14))
-                                    .foregroundStyle(Theme.Palette.inkSoft)
-                                    .frame(width: 44, height: 44)
-                                    .contentShape(Rectangle())
+                        VStack(alignment: .leading, spacing: 7) {
+                            BidiText(value: book.title,
+                                     font: Theme.Font.display(22),
+                                     colour: Theme.Palette.ink,
+                                     lineLimit: 2)
+
+                            Theme.Palette.hairline.frame(height: 1)
+
+                            Text(Counts.pagesRead(library.pagesRead(of: book), of: book.pageCount))
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.Palette.inkSoft)
+
+                            // An example figure, marked as one. Only the page
+                            // you ask for is ever generated.
+                            Text(L("Whole text estimate") + ": "
+                                 + String(format: "$%.2f USD",
+                                          max(Double(book.totalCharacters) * 0.00011, 0.01)))
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.Palette.inkSoft)
+
+                            HStack {
+                                Button(L("Read this page")) { openedBookId = book.id }
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(Theme.Palette.wine)
+                                Spacer()
+                                // Visible, not hidden behind a long press.
+                                Button { pendingDeletion = book } label: {
+                                    Image(systemName: "trash")
+                                        .font(.system(size: 14))
+                                        .foregroundStyle(Theme.Palette.inkSoft)
+                                        .frame(width: 44, height: 44)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(L("Delete book"))
                             }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Delete \(book.title)")
                         }
                     }
+                    .padding(.vertical, 12)
                 }
             }
         }
@@ -235,7 +249,7 @@ struct BookReaderView: View {
 
     var body: some View {
         ZStack {
-            Theme.Palette.ivory.ignoresSafeArea()
+            Theme.Palette.paper.ignoresSafeArea()
 
             if let book {
                 ScrollView {

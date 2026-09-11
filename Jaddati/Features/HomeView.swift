@@ -1,8 +1,10 @@
 import SwiftUI
 
-/// The front door. One job: get you to a voice you want to hear.
-/// No dashboard, no counters, no grid of features.
+/// The front door. People come first — no feed, no counters that reward coming
+/// back, no engagement score. The counts that are here describe a collection.
 struct HomeView: View {
+    @Binding var selectedPersonId: UUID?
+
     @EnvironmentObject private var library: Library
     @State private var addingPerson = false
     #if DEBUG
@@ -11,110 +13,167 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                Theme.Palette.ivory.ignoresSafeArea()
+            VStack(spacing: 0) {
+                masthead
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: Theme.Space.m) {
-                        masthead
+                    VStack(alignment: .leading, spacing: 0) {
+                        identity
+                        hero
 
                         if let problem = library.storageError {
-                            ErrorNote(message: problem)
+                            ErrorNote(message: problem).padding(.top, 16)
                         }
-
-                        // Above the list, not below it. A warning you scroll
-                        // past is a warning nobody reads.
                         #if DEBUG
-                        if useMockVoices { mockModeBanner }
+                        if useMockVoices { mockModeBanner.padding(.top, 16) }
                         #endif
-
                         if !AppConfig.isConfigured {
-                            notConfiguredNote
+                            notConfiguredNote.padding(.top, 16)
                         }
 
-                        if library.people.isEmpty {
-                            EmptyHint(
-                                icon: "waveform",
-                                title: L("No people yet"),
-                                message: L("Start with a name. Add a recording when you are ready.")
-                            )
-                            Button(L("Add someone")) { addingPerson = true }
-                                .buttonStyle(PrimaryButtonStyle())
-                        } else {
-                            ForEach(library.people) { person in
-                                NavigationLink(value: person) {
-                                    PersonCard(person: person,
-                                               photo: library.photoURL(for: person),
-                                               originals: library.assets(for: person, source: .original).count,
-                                               memories: library.assets(for: person, source: .generated).count)
-                                }
-                                .buttonStyle(.plain)
-                            }
-
-                            Button(L("Add someone")) { addingPerson = true }
-                                .buttonStyle(QuietButtonStyle())
-                                .padding(.top, Theme.Space.xs)
-                        }
+                        people
                     }
-                    .padding(Theme.Space.m)
+                    .padding(.horizontal, Theme.Metric.screenPadding)
                     .padding(.bottom, Theme.Space.xl)
                 }
             }
+            .background(Theme.Palette.paper)
             .navigationDestination(for: Person.self) { person in
                 PersonView(personId: person.id)
             }
-            .sheet(isPresented: $addingPerson) {
-                AddPersonView()
-            }
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) { debugMenu }
-            }
+            .sheet(isPresented: $addingPerson) { AddPersonView() }
         }
     }
 
-    /// The identity stays bilingual in both locales — the name of the app is
-    /// جدّتي whichever language the interface is in.
+    // MARK: Pieces
+
     private var masthead: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("جدّتي")
-                    .font(Theme.Font.display(40))
-                    .foregroundStyle(Theme.Palette.forest)
-                    .environment(\.layoutDirection, .rightToLeft)
-                Text("Jaddati")
-                    .font(Theme.Font.displayMedium(20))
-                    .foregroundStyle(Theme.Palette.ink)
-                // Describes what the app does, not a message from a person.
-                Text(L("Keep their recordings. Create new words in a recreated voice."))
-                    .font(Theme.Font.caption)
-                    .foregroundStyle(Theme.Palette.inkSoft)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: Theme.Space.s)
-            LanguageSwitch()
-                .padding(.top, 4)
+        HStack {
+            Text("جدّتي")
+                .font(Theme.Font.display(22))
+                .foregroundStyle(Theme.Palette.ink)
+                .environment(\.layoutDirection, .rightToLeft)
+            Spacer()
+            #if DEBUG
+            debugMenu
+            #endif
+            GlobeButton()
         }
-        .padding(.top, Theme.Space.s)
-        .padding(.bottom, Theme.Space.xs)
+        .padding(.horizontal, Theme.Metric.screenPadding)
+        .frame(height: Theme.Metric.appBar)
+        .background(Theme.Palette.paper)
     }
 
-    /// Empty in Release, so the icon simply is not there.
+    /// Bilingual in both locales. The app is called جدّتي whichever language the
+    /// interface is in, so the name never gets translated away.
+    private var identity: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Eyebrow(text: L("A family archive"))
+            HStack(alignment: .firstTextBaseline) {
+                Text("Jaddati")
+                    .font(Theme.Font.display(37))
+                    .tracking(-1.3)
+                    .foregroundStyle(Theme.Palette.ink)
+                Spacer(minLength: Theme.Space.s)
+                Text("جدّتي")
+                    .font(Theme.Font.display(28))
+                    .foregroundStyle(Theme.Palette.wine)
+                    .environment(\.layoutDirection, .rightToLeft)
+            }
+            SubText(text: L("A place for a familiar voice."))
+        }
+        .padding(.top, 8)
+    }
+
+    private var hero: some View {
+        HeroCard {
+            VStack(alignment: .leading, spacing: 0) {
+                Image(systemName: "circle.dotted.circle")
+                    .font(.system(size: 19))
+                    .foregroundStyle(Color(hex: 0xF8EFE4).opacity(0.85))
+                    .padding(.bottom, 26)
+
+                Text(L("The recordings you have. The words you choose."))
+                    .font(Theme.Font.display(28))
+                    .tracking(-0.5)
+                    .lineSpacing(2)
+                    .foregroundStyle(Color(hex: 0xF8EFE4))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 260, alignment: .leading)
+
+                Color(hex: 0xF8EFE4).opacity(0.18)
+                    .frame(height: 1)
+                    .padding(.vertical, 16)
+
+                HStack(spacing: 7) {
+                    Image(systemName: "checkmark.seal")
+                        .font(.system(size: 12))
+                    Text(L("Original and recreated. Always distinct."))
+                        .font(.system(size: 11))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .foregroundStyle(Color(hex: 0xF8EFE4).opacity(0.8))
+            }
+        }
+        .padding(.top, 21)
+    }
+
+    @ViewBuilder private var people: some View {
+        if library.people.isEmpty {
+            EmptyHint(icon: "waveform",
+                      title: L("No people yet"),
+                      message: L("Start with a name. Add a recording when you are ready."))
+            addButton
+        } else {
+            SectionLabel(text: L("People you keep here"))
+                .padding(.top, 26)
+
+            ForEach(library.people) { person in
+                NavigationLink(value: person) {
+                    PersonCard(person: person,
+                               photo: library.photoURL(for: person),
+                               originals: library.assets(for: person, source: .original).count,
+                               saved: library.assets(for: person, source: .generated)
+                                   .filter { $0.isSaved }.count)
+                }
+                .buttonStyle(.plain)
+                .simultaneousGesture(TapGesture().onEnded { selectedPersonId = person.id })
+            }
+
+            addButton.padding(.top, 4)
+        }
+    }
+
+    private var addButton: some View {
+        Button { addingPerson = true } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "plus")
+                Text(L("Add someone"))
+            }
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(Theme.Palette.wine)
+            .frame(maxWidth: .infinity, minHeight: Theme.Metric.buttonHeight)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Metric.buttonRadius, style: .continuous)
+                    .stroke(Theme.Palette.hairline, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    #if DEBUG
     @ViewBuilder private var debugMenu: some View {
-        #if DEBUG
         Menu {
             Toggle("Offline test mode", isOn: $useMockVoices)
         } label: {
             Image(systemName: "ladybug")
                 .foregroundStyle(Theme.Palette.inkSoft)
+                .frame(width: 36, height: 36)
         }
-        #else
-        EmptyView()
-        #endif
     }
 
-    #if DEBUG
     /// Loud on purpose. A test mode that looks like the real thing is how a
-    /// cached file ends up being presented as live generation.
+    /// cached file ends up presented as live generation.
     private var mockModeBanner: some View {
         Panel {
             VStack(alignment: .leading, spacing: 4) {
@@ -122,7 +181,7 @@ struct HomeView: View {
                     .font(.system(size: 12, weight: .heavy))
                     .foregroundStyle(Theme.Palette.danger)
                 Text("Nothing reaches the voice service. Generated audio is a placeholder tone, not a voice. Turn this off before demonstrating.")
-                    .font(Theme.Font.caption)
+                    .font(.system(size: 13))
                     .foregroundStyle(Theme.Palette.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -130,17 +189,13 @@ struct HomeView: View {
     }
     #endif
 
-    /// Honest about the build's state rather than failing mysteriously later.
     private var notConfiguredNote: some View {
         Panel {
             VStack(alignment: .leading, spacing: 6) {
                 Text(L("Voice service not connected"))
-                    .font(Theme.Font.label)
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Theme.Palette.ink)
-                Text(L("Connect a voice service to create a voice or new audio. Original recordings remain available."))
-                    .font(Theme.Font.caption)
-                    .foregroundStyle(Theme.Palette.inkSoft)
-                    .fixedSize(horizontal: false, vertical: true)
+                SubText(text: L("Connect a voice service to create a voice or new audio. Original recordings remain available."))
             }
         }
     }
@@ -150,55 +205,71 @@ struct PersonCard: View {
     let person: Person
     let photo: URL?
     let originals: Int
-    let memories: Int
+    let saved: Int
 
     var body: some View {
-        Panel {
-            HStack(spacing: Theme.Space.s) {
-                PersonAvatar(name: person.name, imageURL: photo)
+        HStack(spacing: 13) {
+            PersonAvatar(name: person.name, imageURL: photo, size: 54)
 
-                VStack(alignment: .leading, spacing: 3) {
-                    BidiText(value: person.name,
-                             font: Theme.Font.heading,
-                             colour: Theme.Palette.ink,
-                             lineLimit: 1)
-                    Text(subtitle)
-                        .font(Theme.Font.caption)
-                        .foregroundStyle(Theme.Palette.inkSoft)
-                }
-
-                Spacer(minLength: 0)
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Theme.Palette.hairline)
+            VStack(alignment: .leading, spacing: 3) {
+                BidiText(value: person.name,
+                         font: Theme.Font.display(22),
+                         colour: Theme.Palette.ink,
+                         lineLimit: 1)
+                Text(collection)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.Palette.inkSoft)
+                status
             }
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color(hex: 0x958578))
         }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Metric.cardRadius, style: .continuous)
+                .fill(Color(hex: 0xFFFAF4))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Metric.cardRadius, style: .continuous)
+                .stroke(Theme.Palette.hairline, lineWidth: 1)
+        )
+        .padding(.vertical, 5)
     }
 
-    /// Describes a collection and a voice status, and nothing else. No streak,
-    /// no total, no reason to come back — this is not that kind of app.
-    ///
-    /// Counts go through a formatter rather than string interpolation so Arabic
-    /// gets Arabic-Indic digits, and plurals use the locale's own rules instead
-    /// of an English singular/plural template.
-    private var subtitle: String {
-        if person.voiceIsUnavailableHere { return L("Test voice · No real voice was created.") }
-        if person.voicePendingVerification { return L("Voice is being prepared") }
-
+    /// Describes a collection, never a streak.
+    private var collection: String {
         var parts: [String] = []
         if originals > 0 { parts.append(Counts.originals(originals)) }
-        if memories > 0 { parts.append(Counts.savedClips(memories)) }
+        if saved > 0 { parts.append(Counts.savedClips(saved)) }
+        if parts.isEmpty { return person.relationship.isEmpty ? L("No recordings yet") : person.relationship }
+        return parts.joined(separator: " · ")
+    }
 
-        if !person.hasVoice {
-            let status = L("No recreated voice yet")
-            return parts.isEmpty ? status : (parts + [status]).joined(separator: " · ")
+    @ViewBuilder private var status: some View {
+        if person.voiceIsUnavailableHere {
+            Text(L("Test voice · No real voice was created."))
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.Palette.danger)
+        } else if person.hasVoice {
+            HStack(spacing: 6) {
+                Circle().fill(Theme.Palette.sage).frame(width: 5, height: 5)
+                Text(L("Recreated voice ready"))
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.Palette.sage)
+            }
+        } else {
+            Text(L("No recreated voice yet"))
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.Palette.inkSoft)
         }
-        return parts.isEmpty ? L("Recreated voice ready") : parts.joined(separator: " · ")
     }
 }
 
-/// Creating a profile is deliberately two fields. Nothing here needs an account.
+/// Creating a profile is two fields. Nothing here needs an account.
 struct AddPersonView: View {
     @EnvironmentObject private var library: Library
     @Environment(\.dismiss) private var dismiss
@@ -209,23 +280,17 @@ struct AddPersonView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Theme.Palette.ivory.ignoresSafeArea()
-                VStack(alignment: .leading, spacing: Theme.Space.m) {
+                Theme.Palette.paper.ignoresSafeArea()
+                VStack(alignment: .leading, spacing: 0) {
                     Text(L("Add a person"))
-                        .font(Theme.Font.title)
+                        .font(Theme.Font.display(28))
                         .foregroundStyle(Theme.Palette.ink)
+                        .padding(.bottom, 13)
+                    SubText(text: L("Start with a name. Add a recording when you are ready."))
 
-                    Panel {
-                        VStack(alignment: .leading, spacing: Theme.Space.s) {
-                            Field(title: L("Name"), text: $name, placeholder: "جدّتي")
-                            Divider().overlay(Theme.Palette.hairline)
-                            Field(title: L("Relationship"), text: $relationship, placeholder: L("Grandmother"))
-                        }
-                    }
-
-                    Text(L("Start with a name. Add a recording when you are ready."))
-                        .font(Theme.Font.caption)
-                        .foregroundStyle(Theme.Palette.inkSoft)
+                    Field(title: L("Name"), text: $name, placeholder: "جدّتي")
+                    Field(title: L("Relationship"), text: $relationship,
+                          placeholder: L("Grandmother"))
 
                     Spacer()
 
@@ -239,7 +304,7 @@ struct AddPersonView: View {
                         enabled: !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
                     .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
-                .padding(Theme.Space.m)
+                .padding(Theme.Metric.screenPadding)
             }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -256,14 +321,25 @@ struct Field: View {
     let placeholder: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 7) {
             Text(title)
-                .font(Theme.Font.caption)
+                .font(.system(size: 12))
                 .foregroundStyle(Theme.Palette.inkSoft)
             TextField(placeholder, text: $text)
-                .font(Theme.Font.body)
+                .font(.system(size: 16))
                 .foregroundStyle(Theme.Palette.ink)
                 .textInputAutocapitalization(.words)
+                .padding(.horizontal, 14)
+                .frame(minHeight: 50)
+                .background(
+                    RoundedRectangle(cornerRadius: Theme.Metric.buttonRadius, style: .continuous)
+                        .fill(Color(hex: 0xFFFAF4))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.Metric.buttonRadius, style: .continuous)
+                        .stroke(Theme.Palette.hairline, lineWidth: 1)
+                )
         }
+        .padding(.top, 18)
     }
 }

@@ -103,11 +103,19 @@ struct MemoriesView: View {
     }
 
     var body: some View {
-        ZStack {
-            Theme.Palette.ivory.ignoresSafeArea()
+        VStack(spacing: 0) {
+            AppBar(title: L("Saved"))
 
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Space.m) {
+                    if let person {
+                        Breadcrumb(name: person.name,
+                                   relationship: person.relationship,
+                                   photo: library.photoURL(for: person))
+                        Headline(text: L("Carefully kept."))
+                        SubText(text: L("Original recordings and the new words you chose to save."))
+                    }
+
                     if availableOrigins.count > 2 {
                         filterRow(L("Origin"), availableOrigins, selected: origin) { origin = $0 }
                     }
@@ -134,12 +142,12 @@ struct MemoriesView: View {
                         }
                     }
                 }
-                .padding(Theme.Space.m)
+                .padding(.horizontal, Theme.Metric.screenPadding)
                 .padding(.bottom, Theme.Space.xl)
             }
         }
-        .navigationTitle(person?.name ?? L("Everything saved"))
-        .navigationBarTitleDisplayMode(.inline)
+        .background(Theme.Palette.paper)
+        .navigationBarHidden(true)
         .navigationDestination(item: $opened) { asset in
             PlayerView(asset: asset)
         }

@@ -8,7 +8,7 @@ struct JaddatiApp: App {
 
     var body: some Scene {
         WindowGroup {
-            HomeView()
+            RootView()
                 .environmentObject(library)
                 .environmentObject(player)
                 .environmentObject(localization)

@@ -89,7 +89,7 @@ enum Theme {
 
     enum Radius {
         static let card: CGFloat = 20
-        static let control: CGFloat = 14
+        static let control: CGFloat = 15
         static let pill: CGFloat = 999
     }
 }
@@ -152,9 +152,9 @@ struct PrimaryButtonStyle: ButtonStyle {
 
         var body: some View {
             configuration.label
-                .font(Theme.Font.label)
-                .foregroundStyle(Theme.Palette.ivory)
-                .frame(maxWidth: .infinity, minHeight: 52)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color(hex: 0xF9EFE6))
+                .frame(maxWidth: .infinity, minHeight: Theme.Metric.buttonHeight)
                 .background(
                     RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                         .fill(live ? (configuration.isPressed ? Theme.Palette.forestDeep

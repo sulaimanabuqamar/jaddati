@@ -54,13 +54,15 @@ struct AddVoiceView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Theme.Palette.ivory.ignoresSafeArea()
+                Theme.Palette.paper.ignoresSafeArea()
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: Theme.Space.m) {
-                        Text(L(replacingExistingVoice ? "Create a new voice version" : "Add their voice"))
-                            .font(Theme.Font.title)
-                            .foregroundStyle(Theme.Palette.ink)
+                        Headline(text: replacingExistingVoice
+                                 ? L("A new voice\nversion.")
+                                 : (pickedURL == nil ? L("Begin with\na recording.")
+                                                     : L("A voice deserves\ncareful permission.")),
+                                 size: 33)
 
                         if !AppConfig.isConfigured {
                             ErrorNote(message: L("Connect a voice service to create a voice or new audio. Original recordings remain available."))
