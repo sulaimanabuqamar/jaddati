@@ -194,7 +194,9 @@ struct SectionLabel: View {
     var body: some View {
         Text(text.uppercased())
             .font(.system(size: 11, weight: .semibold))
-            .tracking(1)
+            // Letter spacing breaks the joins in Arabic — Theme says so, and
+            // these two components were the place still doing it.
+            .tracking(uiIsArabic ? 0 : 1)
             .foregroundStyle(Theme.Palette.inkSoft)
     }
 }
@@ -205,7 +207,7 @@ struct Eyebrow: View {
     var body: some View {
         Text(text.uppercased())
             .font(.system(size: 10, weight: .bold))
-            .tracking(1.7)
+            .tracking(uiIsArabic ? 0 : 1.7)
             .foregroundStyle(Theme.Palette.inkSoft)
     }
 }

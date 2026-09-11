@@ -53,14 +53,19 @@ struct DictateButton: View {
 
     private func beginRecording() async {
         problem = nil
+        // Order matters. Asking iOS for the microphone and then refusing to use
+        // it spends the one system prompt the app ever gets, on a feature that
+        // was never going to run.
+        guard AppConfig.isTranscriptionConfigured else {
+            problem = AppConfig.isOffByChoice
+                ? AppConfig.unavailableMessage
+                : TranscriptionError.notConfigured.errorDescription
+            return
+        }
         guard await recorder.requestPermission() else {
             problem = recorder.permissionDenied
                 ? L("Microphone access is off. Turn it on in Settings.")
                 : L("Microphone access was not granted.")
-            return
-        }
-        guard AppConfig.isTranscriptionConfigured else {
-            problem = TranscriptionError.notConfigured.errorDescription
             return
         }
         recorder.start(purpose: .dictation)

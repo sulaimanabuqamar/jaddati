@@ -29,6 +29,7 @@ struct ElevenLabsClient: VoiceService {
     // MARK: Voice creation
 
     func createVoice(name: String, sampleURL: URL) async throws -> CreatedVoice {
+        guard Consent.networkAllowed else { throw ConsentMissing() }
         guard !key.isEmpty else { throw VoiceServiceError.notConfigured }
 
         let sampleData: Data
@@ -78,7 +79,9 @@ struct ElevenLabsClient: VoiceService {
         var request = URLRequest(url: base.appendingPathComponent("v1/voices/add"))
         request.httpMethod = "POST"
         request.setValue(key, forHTTPHeaderField: "xi-api-key")
-        request.setValue(AppConfig.deviceId, forHTTPHeaderField: "X-Jaddati-Device")
+        if AppConfig.sendsDeviceHeader {
+            request.setValue(AppConfig.deviceId, forHTTPHeaderField: "X-Jaddati-Device")
+        }
         request.setValue("multipart/form-data; boundary=\(boundary)",
                          forHTTPHeaderField: "Content-Type")
 
@@ -111,6 +114,7 @@ struct ElevenLabsClient: VoiceService {
 
     func synthesize(text: String, voiceId: String, modelId: String,
                     tuning: VoiceTuning) async throws -> Data {
+        guard Consent.networkAllowed else { throw ConsentMissing() }
         guard !key.isEmpty else { throw VoiceServiceError.notConfigured }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count <= AppConfig.maxCharactersPerGeneration else {
@@ -126,7 +130,9 @@ struct ElevenLabsClient: VoiceService {
         var request = URLRequest(url: components.url!)
         request.httpMethod = "POST"
         request.setValue(key, forHTTPHeaderField: "xi-api-key")
-        request.setValue(AppConfig.deviceId, forHTTPHeaderField: "X-Jaddati-Device")
+        if AppConfig.sendsDeviceHeader {
+            request.setValue(AppConfig.deviceId, forHTTPHeaderField: "X-Jaddati-Device")
+        }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("audio/mpeg", forHTTPHeaderField: "Accept")
         // Both dictionaries are annotated. `data(withJSONObject:)` takes `Any`,
@@ -153,6 +159,31 @@ struct ElevenLabsClient: VoiceService {
         }
         guard data.count > 500 else { throw VoiceServiceError.badResponse }
         return data
+    }
+
+    // MARK: Deletion
+
+    func deleteVoice(voiceId: String) async throws {
+        guard Consent.networkAllowed else { throw ConsentMissing() }
+        guard !key.isEmpty else { throw VoiceServiceError.notConfigured }
+        // A voice minted by the offline test mode never existed at the
+        // provider. Reporting a failure for it would be a lie.
+        guard !voiceId.hasPrefix(AppConfig.placeholderVoicePrefix) else { return }
+
+        var request = URLRequest(url: base.appendingPathComponent("v1/voices/\(voiceId)"))
+        request.httpMethod = "DELETE"
+        request.setValue(key, forHTTPHeaderField: "xi-api-key")
+        if AppConfig.sendsDeviceHeader {
+            request.setValue(AppConfig.deviceId, forHTTPHeaderField: "X-Jaddati-Device")
+        }
+
+        let (data, response) = try await perform(request)
+        guard let http = response as? HTTPURLResponse else { throw VoiceServiceError.badResponse }
+        // Already gone is the outcome we wanted.
+        if http.statusCode == 404 { return }
+        guard (200..<300).contains(http.statusCode) else {
+            throw mapError(status: http.statusCode, body: data, kind: .voiceCreation)
+        }
     }
 
     // MARK: Plumbing

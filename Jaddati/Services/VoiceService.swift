@@ -17,6 +17,15 @@ protocol VoiceService {
     func createVoice(name: String, sampleURL: URL) async throws -> CreatedVoice
     func synthesize(text: String, voiceId: String, modelId: String,
                     tuning: VoiceTuning) async throws -> Data
+    /// Remove the cloned voice from the provider.
+    ///
+    /// This exists because the app has to be able to answer "how do I get this
+    /// deleted?" with something a person can actually do. The voice is held
+    /// under the developer's provider account, not the user's — so without
+    /// this call the honest answer was "you cannot", and a family who changed
+    /// their mind had no way to act on it. A voice that is already gone counts
+    /// as success: the point is that it is not there any more.
+    func deleteVoice(voiceId: String) async throws
 }
 
 /// Failures the user might actually see, each with wording that says what to do.

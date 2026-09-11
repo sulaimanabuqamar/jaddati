@@ -12,6 +12,9 @@ struct AddVoiceView: View {
     let personId: UUID
 
     @EnvironmentObject private var library: Library
+    /// Same reason as PersonView: the availability flags depend on consent,
+    /// and consent publishes nothing of its own.
+    @EnvironmentObject private var consent: Consent
     @Environment(\.dismiss) private var dismiss
 
     @State private var pickedURL: URL?
@@ -84,7 +87,7 @@ struct AddVoiceView: View {
                                  size: 33)
 
                         if !AppConfig.isConfigured {
-                            ErrorNote(message: L("This build has no voice service key, so no new audio can be created. Original recordings still play."))
+                            ErrorNote(message: AppConfig.unavailableMessage)
                         }
 
                         if replacingExistingVoice {
@@ -591,6 +594,11 @@ struct AddVoiceView: View {
                 errorAllowsRetry = false
                 errorText = L("The voice was created, but the original recording could not be saved to this phone. Import it again from the profile so it appears in the archive.")
             }
+        } catch is ConsentMissing {
+            isWorking = false
+            if Task.isCancelled { return }
+            errorAllowsRetry = false
+            errorText = AppConfig.unavailableMessage
         } catch {
             isWorking = false
             // Stopping on purpose is not a failure to report at someone.

@@ -186,7 +186,8 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Jaddati;
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Jaddati uses the microphone only if you choose to record a voice sample yourself.";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Jaddati uses the microphone when you record a voice sample, and when you speak instead of typing. Audio you dictate is sent to Groq to be written down as text; nothing is recorded in the background.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
@@ -214,7 +215,8 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Jaddati;
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Jaddati uses the microphone only if you choose to record a voice sample yourself.";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Jaddati uses the microphone when you record a voice sample, and when you speak instead of typing. Audio you dictate is sent to Groq to be written down as text; nothing is recorded in the background.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;

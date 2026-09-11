@@ -236,6 +236,9 @@ struct BookReaderView: View {
 
     @EnvironmentObject private var library: Library
     @EnvironmentObject private var player: AudioPlayer
+    /// Same reason as PersonView: the availability flags depend on consent,
+    /// and consent publishes nothing of its own.
+    @EnvironmentObject private var consent: Consent
 
     @State private var pageIndex: Int = 0
     @State private var isGenerating = false
@@ -373,12 +376,15 @@ struct BookReaderView: View {
                 // Name the thing that is actually missing. Inferring it from
                 // hasVoice alone reported a key problem for an empty page.
                 Text(!AppConfig.isConfigured
-                     ? L("Voice service is not connected.")
+                     ? AppConfig.unavailableMessage
                      : (person?.hasVoice == true
                         ? L("There is nothing on this page to read.")
                         : L("Add a voice before creating audio.")))
                     .font(Theme.Font.caption)
                     .foregroundStyle(Theme.Palette.inkSoft)
+                    // unavailableMessage is two sentences, not the one this
+                    // slot used to hold.
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
 
@@ -427,7 +433,8 @@ struct BookReaderView: View {
                     Text(L("Stop and ask"))
                         .font(Theme.Font.label)
                         .foregroundStyle(Theme.Palette.ink)
-                    Text(L("Questions are not set up on this build."))
+                    Text(AppConfig.isOffByChoice ? AppConfig.unavailableMessage
+                              : L("Questions are not set up on this build."))
                         .font(Theme.Font.caption)
                         .foregroundStyle(Theme.Palette.inkSoft)
                         .fixedSize(horizontal: false, vertical: true)
@@ -610,6 +617,10 @@ struct BookReaderView: View {
                 questionAllowsRetry = false
                 questionError = L("The answer was written but the audio could not be saved to this phone.")
             }
+        } catch is ConsentMissing {
+            isAnswering = false
+            questionAllowsRetry = false
+            questionError = AppConfig.unavailableMessage
         } catch {
             isAnswering = false
             questionAllowsRetry = true
@@ -664,6 +675,10 @@ struct BookReaderView: View {
                 errorAllowsRetry = false
                 errorText = L("The page was read but the audio could not be saved to this phone.")
             }
+        } catch is ConsentMissing {
+            isGenerating = false
+            errorAllowsRetry = false
+            errorText = AppConfig.unavailableMessage
         } catch {
             isGenerating = false
             let known = error as? VoiceServiceError

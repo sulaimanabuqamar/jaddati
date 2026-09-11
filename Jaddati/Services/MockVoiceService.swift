@@ -21,6 +21,11 @@ struct MockVoiceService: VoiceService {
                             requiresVerification: false)
     }
 
+    func deleteVoice(voiceId: String) async throws {
+        // Nothing was ever created anywhere. Succeeding quietly keeps the
+        // offline demo path identical in shape to the real one.
+    }
+
     func synthesize(text: String, voiceId: String, modelId: String,
                     tuning: VoiceTuning) async throws -> Data {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)

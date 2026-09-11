@@ -19,6 +19,7 @@ struct LLMClient: StoryCompanion {
     }()
 
     func answer(question: String, page: PageContext) async throws -> String {
+        guard Consent.networkAllowed else { throw ConsentMissing() }
         guard !apiKey.isEmpty else { throw CompanionError.notConfigured }
         guard let url = URL(string: baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
                             + "/chat/completions") else {
@@ -28,7 +29,9 @@ struct LLMClient: StoryCompanion {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue(AppConfig.deviceId, forHTTPHeaderField: "X-Jaddati-Device")
+        if AppConfig.sendsDeviceHeader {
+            request.setValue(AppConfig.deviceId, forHTTPHeaderField: "X-Jaddati-Device")
+        }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let payload: [String: Any] = [

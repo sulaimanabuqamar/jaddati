@@ -7,6 +7,8 @@ struct HomeView: View {
 
     @EnvironmentObject private var library: Library
     @State private var addingPerson = false
+    @State private var showingPrivacy = false
+    @EnvironmentObject private var consent: Consent
     #if DEBUG
     @AppStorage(AppConfig.mockDefaultsKey) private var useMockVoices = false
     #endif
@@ -32,6 +34,7 @@ struct HomeView: View {
                         }
 
                         people
+                        privacyRow
                     }
                     .padding(.horizontal, Theme.Metric.screenPadding)
                     .padding(.bottom, Theme.Space.xl)
@@ -47,6 +50,7 @@ struct HomeView: View {
                     .onAppear { selectedPersonId = person.id }
             }
             .sheet(isPresented: $addingPerson) { AddPersonView() }
+            .sheet(isPresented: $showingPrivacy) { PrivacyScreen(consent: consent) }
             .swipeBackEnabled()
         }
     }
@@ -192,13 +196,49 @@ struct HomeView: View {
     }
     #endif
 
+    /// Reachable from the front door on purpose.
+    ///
+    /// The privacy notice has to be openable inside the app, not only from a
+    /// link on the store page, and "inside the app" means somewhere a person
+    /// would actually find it. The home screen is the one place everyone
+    /// passes through. It also states the current answer in a word, so the
+    /// mode the app is in is never a thing you have to go and look up.
+    private var privacyRow: some View {
+        Button { showingPrivacy = true } label: {
+            HStack(spacing: Theme.Space.s) {
+                Image(systemName: consent.allowsNetwork ? "lock.open" : "lock")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.Palette.inkSoft)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(L("Privacy and data"))
+                        .font(Theme.Font.label)
+                        .foregroundStyle(Theme.Palette.ink)
+                    Text(consent.allowsNetwork
+                         ? L("Two services outside this phone are in use.")
+                         : L("Everything is being kept on this phone."))
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.Palette.inkSoft)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.forward")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.Palette.hairline)
+            }
+            .padding(Theme.Space.s)
+            .frame(minHeight: Theme.Metric.touchTarget)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.top, Theme.Space.m)
+    }
+
     private var notConfiguredNote: some View {
         Panel {
             VStack(alignment: .leading, spacing: 6) {
-                Text(L("Voice service not connected"))
+                Text(AppConfig.unavailableTitle)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Theme.Palette.ink)
-                SubText(text: L("This build has no voice service key, so no new audio can be created. Original recordings still play."))
+                SubText(text: AppConfig.unavailableMessage)
             }
         }
     }

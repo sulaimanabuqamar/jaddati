@@ -14,8 +14,21 @@ struct PersonView: View {
     /// publishes nothing, so without this the voice gating would show stale.
     @AppStorage(AppConfig.mockDefaultsKey) private var useMockVoices = false
     #endif
+    /// Declared but never read, like the mock flag above it. `AppConfig`'s
+    /// three availability flags now depend on the consent answer, which lives
+    /// in UserDefaults and publishes nothing — so without an observer here,
+    /// withdrawing consent from the home screen would leave this screen's
+    /// controls live until something else happened to redraw it. The pager
+    /// keeps every tab alive, so that "something else" may never come.
+    ///
+    /// Outside the DEBUG block on purpose: inside it, the shipping build —
+    /// the only one a reviewer or a family ever runs — would not observe it.
+    @EnvironmentObject private var consent: Consent
     @Environment(\.dismiss) private var dismiss
     @State private var confirmingDelete = false
+    @State private var isDeleting = false
+    @State private var deleteProblem: String?
+    @State private var confirmingLocalOnlyDelete = false
     @State private var photoPick: PhotosPickerItem?
     @State private var checkingAvailability = false
     @State private var availabilityNote: String?
@@ -256,6 +269,9 @@ struct PersonView: View {
             updated.voiceRequiresVerification = false
             library.update(updated)
             checkingAvailability = false
+        } catch is ConsentMissing {
+            checkingAvailability = false
+            availabilityNote = AppConfig.unavailableMessage
         } catch {
             checkingAvailability = false
             availabilityNote = (error as? VoiceServiceError)?.errorDescription
@@ -266,10 +282,10 @@ struct PersonView: View {
     private var notConnectedNote: some View {
         Panel {
             VStack(alignment: .leading, spacing: 6) {
-                Text(L("Voice service not connected"))
+                Text(AppConfig.unavailableTitle)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Theme.Palette.ink)
-                SubText(text: L("This build has no voice service key, so no new audio can be created. Original recordings still play."))
+                SubText(text: AppConfig.unavailableMessage)
             }
         }
     }
@@ -383,6 +399,45 @@ struct PersonView: View {
         .padding(.top, 22)
     }
 
+    /// Delete at the provider first, then here.
+    ///
+    /// The order is the whole point. The voice id lives only in this app's
+    /// index, so removing the person first would leave a clone of a real
+    /// person's voice sitting on someone else's server with nothing left that
+    /// knows its name. If the provider call fails we stop and say so, and the
+    /// person is still here to try again with.
+    private func remove(_ person: Person) async {
+        deleteProblem = nil
+
+        guard let voiceId = person.voiceId else {
+            library.delete(person)
+            // Without this the screen stays up with `person` gone, showing an
+            // empty state under an app bar, and the only way out is an edge
+            // swipe.
+            dismiss()
+            return
+        }
+
+        isDeleting = true
+        do {
+            try await AppConfig.voiceService().deleteVoice(voiceId: voiceId)
+        } catch is ConsentMissing {
+            isDeleting = false
+            deleteProblem = AppConfig.unavailableMessage
+            confirmingLocalOnlyDelete = true
+            return
+        } catch {
+            isDeleting = false
+            deleteProblem = (error as? VoiceServiceError)?.errorDescription
+                ?? L("The voice could not be removed from the voice service.")
+            confirmingLocalOnlyDelete = true
+            return
+        }
+        isDeleting = false
+        library.delete(person)
+        dismiss()
+    }
+
     private func deleteRow(_ person: Person) -> some View {
         VStack(spacing: 0) {
             Button(role: .destructive) {
@@ -398,17 +453,38 @@ struct PersonView: View {
                                 isPresented: $confirmingDelete,
                                 titleVisibility: .visible) {
                 Button(L("Delete permanently"), role: .destructive) {
-                    library.delete(person)
-                    // Without this the screen stays up with `person` gone,
-                    // showing an empty state under an app bar, and the only
-                    // way out is an edge swipe.
-                    dismiss()
+                    Task { await remove(person) }
                 }
                 Button(L("Cancel"), role: .cancel) { }
             } message: {
                 Text(L("This removes their profile, original recordings, saved clips and imported books from Jaddati.")
                      + "\n\n"
-                     + L("Deleting from Jaddati does not confirm deletion by the voice service."))
+                     + (person.voiceId == nil
+                        ? L("Nothing was ever sent to the voice service for this person.")
+                        : L("The voice built for them is deleted from the voice service first. If that fails, nothing here is removed, so you can try again.")))
+            }
+            .confirmationDialog(L("Remove from this phone anyway?"),
+                                isPresented: $confirmingLocalOnlyDelete,
+                                titleVisibility: .visible) {
+                Button(L("Remove from this phone"), role: .destructive) {
+                    library.delete(person)
+                    dismiss()
+                }
+                Button(L("Cancel"), role: .cancel) { }
+            } message: {
+                Text(L("The voice will stay at the voice service and this app will no longer know its name, so it cannot be removed from here later."))
+            }
+
+            if isDeleting {
+                Text(L("Removing the voice from the voice service…"))
+                    .font(Theme.Font.caption)
+                    .foregroundStyle(Theme.Palette.inkSoft)
+                    .padding(.top, Theme.Space.xs)
+            }
+
+            if let deleteProblem {
+                ErrorNote(message: deleteProblem)
+                    .padding(.top, Theme.Space.xs)
             }
         }
         .padding(.top, 18)

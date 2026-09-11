@@ -7,6 +7,9 @@ struct CreateView: View {
     let intent: Intent
 
     @EnvironmentObject private var library: Library
+    /// Same reason as PersonView: the availability flags depend on consent,
+    /// and consent publishes nothing of its own.
+    @EnvironmentObject private var consent: Consent
 
     @State private var text: String = ""
     @State private var isGenerating = false
@@ -94,7 +97,7 @@ struct CreateView: View {
                     }
 
                     if !AppConfig.isConfigured {
-                        ErrorNote(message: L("Voice service is not connected."))
+                        ErrorNote(message: AppConfig.unavailableMessage)
                     }
 
                     // On the shelf screen the kept items are the reason you
@@ -631,6 +634,13 @@ struct CreateView: View {
                 errorAllowsRetry = false
                 errorText = L("The audio arrived but could not be saved to this phone.")
             }
+        } catch is ConsentMissing {
+            isGenerating = false
+            // Not a failure to retry: nothing is wrong at the far end, the app
+            // has simply been told not to reach it.
+            errorAllowsRetry = false
+            failure = nil
+            errorText = AppConfig.unavailableMessage
         } catch {
             isGenerating = false
             // The typed text is deliberately left untouched.

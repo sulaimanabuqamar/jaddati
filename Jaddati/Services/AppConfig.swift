@@ -46,6 +46,15 @@ enum AppConfig {
     static let deviceId: String =
         UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
 
+    /// True only when calls go somewhere we run. Against ElevenLabs and Groq
+    /// directly the meter header means nothing to the recipient, so sending it
+    /// would be handing an identifier to a third party for a purpose that does
+    /// not exist there. Only the proxy is told which phone is asking.
+    static var sendsDeviceHeader: Bool {
+        voiceBaseURL != "https://api.elevenlabs.io"
+            || llmBaseURL != "https://api.groq.com/openai/v1"
+    }
+
     /// Key for the debug-only offline mode. Never consulted in a Release build.
     static let mockDefaultsKey = "jaddati.useMockVoices"
 
@@ -63,9 +72,38 @@ enum AppConfig {
         #endif
     }
 
+    /// Whether the voice service can actually be called right now.
+    ///
+    /// Consent is part of this, not a separate check bolted on at each call
+    /// site. Every screen in the app already asks this question before showing
+    /// a control that would reach the network, so folding consent in here is
+    /// what makes "keep everything on this phone" a real mode rather than a
+    /// promise the interface forgets in one place.
     static var isConfigured: Bool {
+        // Mock first, consent second. The offline test mode reaches no network
+        // at all, so gating it behind a network-consent answer would let "keep
+        // everything on this phone" switch off features that already do. The
+        // real calls stay guarded at their own call sites regardless.
         if isUsingMock { return true }
+        guard Consent.networkAllowed else { return false }
         return !elevenLabsKey.isEmpty
+    }
+
+    /// Which of the two reasons a network feature is unavailable. Saying "no
+    /// key" to someone who simply declined is a lie, and saying "you declined"
+    /// to someone on a keyless build sends them to the wrong screen.
+    static var isOffByChoice: Bool { !isUsingMock && !Consent.networkAllowed }
+
+    /// One sentence, true in either case, for the several screens that have to
+    /// explain why a button is not there.
+    static var unavailableMessage: String {
+        isOffByChoice
+            ? L("Everything is being kept on this phone, so this is switched off. You can change that under Privacy and data.")
+            : L("This build has no voice service key, so no new audio can be created. Original recordings still play.")
+    }
+
+    static var unavailableTitle: String {
+        isOffByChoice ? L("Kept on this phone") : L("Voice service not connected")
     }
 
     /// The only place that decides which implementation the app talks to.
@@ -131,7 +169,12 @@ enum AppConfig {
     static let fallbackLLMModel = "qwen/qwen3.8-27b"
 
     static var isCompanionConfigured: Bool {
+        // Mock first, consent second. The offline test mode reaches no network
+        // at all, so gating it behind a network-consent answer would let "keep
+        // everything on this phone" switch off features that already do. The
+        // real calls stay guarded at their own call sites regardless.
         if isUsingMock { return true }
+        guard Consent.networkAllowed else { return false }
         return !llmKey.isEmpty
     }
 
@@ -153,7 +196,12 @@ enum AppConfig {
     }
 
     static var isTranscriptionConfigured: Bool {
+        // Mock first, consent second. The offline test mode reaches no network
+        // at all, so gating it behind a network-consent answer would let "keep
+        // everything on this phone" switch off features that already do. The
+        // real calls stay guarded at their own call sites regardless.
         if isUsingMock { return true }
+        guard Consent.networkAllowed else { return false }
         return !llmKey.isEmpty
     }
 

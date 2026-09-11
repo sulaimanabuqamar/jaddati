@@ -50,6 +50,7 @@ struct WhisperClient: Transcriber {
     var model: String = AppConfig.whisperModel
 
     func transcribe(fileURL: URL) async throws -> String {
+        guard Consent.networkAllowed else { throw ConsentMissing() }
         guard !apiKey.isEmpty else { throw TranscriptionError.notConfigured }
         guard let url = URL(string: baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
                             + "/audio/transcriptions") else {
@@ -65,7 +66,9 @@ struct WhisperClient: Transcriber {
         request.httpMethod = "POST"
         request.timeoutInterval = AppConfig.companionTimeout
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue(AppConfig.deviceId, forHTTPHeaderField: "X-Jaddati-Device")
+        if AppConfig.sendsDeviceHeader {
+            request.setValue(AppConfig.deviceId, forHTTPHeaderField: "X-Jaddati-Device")
+        }
         request.setValue("multipart/form-data; boundary=\(boundary)",
                          forHTTPHeaderField: "Content-Type")
 
