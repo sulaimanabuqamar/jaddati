@@ -23,10 +23,10 @@ struct BooksView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Space.m) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Read me a book")
+                        Text(L("Read me a book"))
                             .font(Theme.Font.title)
                             .foregroundStyle(Theme.Palette.ink)
-                        Text("A page at a time, so it never runs away with your credits.")
+                        Text(L("A text you bring, read one page at a time."))
                             .font(Theme.Font.caption)
                             .foregroundStyle(Theme.Palette.inkSoft)
                     }
@@ -46,13 +46,13 @@ struct BooksView: View {
                     if isImporting {
                         HStack(spacing: 8) {
                             ProgressView()
-                            Text("Splitting it into pages. Nothing is generated yet.")
+                            Text(L("Importing…"))
                                 .font(Theme.Font.caption)
                                 .foregroundStyle(Theme.Palette.inkSoft)
                         }
                     }
 
-                    Text("Bring a plain text file or a PDF you have the right to have read aloud — something you wrote, or a text that is out of copyright. A scanned PDF has no text inside it, so it cannot be read.")
+                    Text(L("Only import text you have the right to have read aloud.") + " " + L("We could not read this file. Try another supported text file."))
                         .font(Theme.Font.caption)
                         .foregroundStyle(Theme.Palette.inkSoft)
                         .fixedSize(horizontal: false, vertical: true)
@@ -78,7 +78,7 @@ struct BooksView: View {
             }
             Button("Cancel", role: .cancel) { pendingDeletion = nil }
         } message: {
-            Text("The pages you have already had read will be removed from this phone too.")
+            Text(L("This removes the imported text and its generated page audio."))
         }
         .fileImporter(isPresented: $showingPicker,
                       // Deliberately NOT `.text`: that is the parent type and
@@ -282,12 +282,12 @@ struct BookReaderView: View {
 
     private func header(_ book: Book) -> some View {
         HStack {
-            Text("Page \(pageIndex + 1) of \(book.pageCount)")
+            Text(Counts.pagePosition(pageIndex + 1, of: book.pageCount))
                 .font(Theme.Font.label)
                 .foregroundStyle(Theme.Palette.ink)
             Spacer()
             if alreadyRead != nil {
-                Text("Already read")
+                Text(L("Page already read"))
                     .font(Theme.Font.caption)
                     .foregroundStyle(Theme.Palette.bronze)
             } else {
@@ -303,6 +303,7 @@ struct BookReaderView: View {
             Text(pageText)
                 .font(Theme.Font.body)
                 .foregroundStyle(Theme.Palette.ink)
+                .lineSpacing(Theme.textLineSpacing)
                 .multilineTextAlignment(TextDirection.isArabic(pageText) ? .trailing : .leading)
                 .frame(maxWidth: .infinity,
                        alignment: TextDirection.isArabic(pageText) ? .trailing : .leading)
@@ -337,15 +338,15 @@ struct BookReaderView: View {
         }
 
         HStack(spacing: Theme.Space.s) {
-            Button("Previous") { move(by: -1, in: book) }
+            Button(L("Previous page")) { move(by: -1, in: book) }
                 .buttonStyle(QuietButtonStyle())
                 .disabled(pageIndex == 0)
-            Button("Next") { move(by: 1, in: book) }
+            Button(L("Next page")) { move(by: 1, in: book) }
                 .buttonStyle(QuietButtonStyle())
                 .disabled(pageIndex >= book.pageCount - 1)
         }
 
-        Text("Only the page you ask for is generated. Nothing is read ahead.")
+        Text(L("Page audio is an AI recreation of the voice.") + " " + L("Only import text you have the right to have read aloud."))
             .font(Theme.Font.caption)
             .foregroundStyle(Theme.Palette.inkSoft)
             .frame(maxWidth: .infinity, alignment: .center)
@@ -373,7 +374,7 @@ struct BookReaderView: View {
         if AppConfig.isCompanionConfigured, person?.hasVoice == true {
             Panel {
                 VStack(alignment: .leading, spacing: Theme.Space.xs) {
-                    Text("Stop and ask")
+                    Text(L("Stop and ask"))
                         .font(Theme.Font.label)
                         .foregroundStyle(Theme.Palette.ink)
 
@@ -388,7 +389,7 @@ struct BookReaderView: View {
                         }
                     }
 
-                    Text("Answers are written by AI. They are not their words and not their memories.")
+                    Text(L("Answers are written by AI. They are not their words and not their memories."))
                         .font(.system(size: 11))
                         .foregroundStyle(Theme.Palette.inkSoft)
                         .fixedSize(horizontal: false, vertical: true)
@@ -398,7 +399,7 @@ struct BookReaderView: View {
     }
 
     @ViewBuilder private var askControls: some View {
-        TextField("What do you want to ask?", text: $question, axis: .vertical)
+        TextField(L("What do you want to ask?"), text: $question, axis: .vertical)
             .font(Theme.Font.body)
             .foregroundStyle(Theme.Palette.ink)
             .lineLimit(1...3)
@@ -409,9 +410,9 @@ struct BookReaderView: View {
             )
             .disabled(isAnswering)
 
-        DictateButton(text: $question, prompt: "Say the question instead")
+        DictateButton(text: $question, prompt: L("Say the question instead"))
 
-        Button(isAnswering ? "Thinking\u{2026}" : "Ask") {
+        Button(isAnswering ? L("Thinking…") : L("Ask")) {
             Task { await ask() }
         }
         .buttonStyle(PrimaryButtonStyle(enabled: canAsk))
@@ -435,7 +436,7 @@ struct BookReaderView: View {
                     }
                     .buttonStyle(QuietButtonStyle())
                 }
-                Button("Continue the story") { continueStory() }
+                Button(L("Continue the story")) { continueStory() }
                     .buttonStyle(QuietButtonStyle())
                     .disabled(alreadyRead == nil)
             }
@@ -514,8 +515,9 @@ struct BookReaderView: View {
                                            text: reply,
                                            duration: duration,
                                            modelId: AppConfig.defaultModelId,
-                                           provenance: "Answered a question while reading \(book.title).",
+                                           provenance: L("A question asked while reading"),
                                            intent: .saySomething,
+                                           content: .answerWhileReading,
                                            isSaved: false,
                                            fileExtension: CreateView.audioExtension(for: data))
             isAnswering = false
@@ -563,8 +565,9 @@ struct BookReaderView: View {
                                            text: words,
                                            duration: duration,
                                            modelId: AppConfig.defaultModelId,
-                                           provenance: "Read from your file, page \(index + 1).",
+                                           provenance: L("From your imported text") + " · " + Counts.pagePosition(index + 1, of: book.pageCount),
                                            intent: .readBook,
+                                           content: .importedText,
                                            bookId: book.id,
                                            pageIndex: index,
                                            isSaved: true,

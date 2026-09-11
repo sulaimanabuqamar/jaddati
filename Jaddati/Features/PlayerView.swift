@@ -33,7 +33,13 @@ struct PlayerView: View {
             VStack(spacing: Theme.Space.l) {
                 Spacer(minLength: Theme.Space.m)
 
-                SourceBadge(isGenerated: asset.isGenerated)
+                // Provenance first, words second. Which of the two things this
+                // is — a recording of them, or audio a machine made — has to be
+                // settled before anyone reads a single word of it.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 6) { provenanceBadges }
+                    VStack(spacing: 6) { provenanceBadges }
+                }
 
                 if !asset.text.isEmpty {
                     Text(asset.text)
@@ -42,7 +48,7 @@ struct PlayerView: View {
                         .multilineTextAlignment(TextDirection.isArabic(asset.text) ? .trailing : .center)
                         .environment(\.layoutDirection,
                                       TextDirection.isArabic(asset.text) ? .rightToLeft : .leftToRight)
-                        .lineSpacing(6)
+                        .lineSpacing(6 + Theme.textLineSpacing)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, Theme.Space.s)
                 }
@@ -52,8 +58,9 @@ struct PlayerView: View {
                 if let note = asset.provenance, !note.isEmpty {
                     Text(note)
                         .font(Theme.Font.caption)
-                        .foregroundStyle(Theme.Palette.bronze)
+                        .foregroundStyle(Theme.Palette.wine)
                         .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer(minLength: 0)
@@ -61,7 +68,7 @@ struct PlayerView: View {
                 if fileIsPresent {
                     transport
                 } else {
-                    ErrorNote(message: "The audio file for this memory is no longer on this phone. The text is kept, but there is nothing to play.")
+                    ErrorNote(message: L("This audio file is not available. Playback is unavailable."))
                 }
 
                 if let problem = player.playbackError {
@@ -124,10 +131,47 @@ struct PlayerView: View {
             }
             .buttonStyle(.plain)
             .animation(.easeInOut(duration: 0.35), value: player.isPlaying(assetId: asset.id))
-            .accessibilityLabel(player.isPlaying(assetId: asset.id) ? "Pause" : "Play")
+            .accessibilityLabel(player.isPlaying(assetId: asset.id) ? L("Pause") : L("Play"))
             .padding(.top, Theme.Space.xs)
+
+            speedControl
         }
     }
+
+    /// Slows a clip that has ALREADY been generated and paid for. Distinct from
+    /// the Pace control on the compose screen, which changes how the provider
+    /// reads the NEXT thing: this one costs nothing and applies to anything,
+    /// including audio made before that setting existed.
+    ///
+    /// It is a rate applied to the real audio file, not a re-generation, so the
+    /// timeline and the elapsed clock stay truthful while it is in effect.
+    private var speedControl: some View {
+        HStack(spacing: 4) {
+            ForEach(Self.speeds, id: \.self) { rate in
+                let selected = abs(player.playbackRate - rate) < 0.01
+                Button {
+                    player.playbackRate = rate
+                } label: {
+                    Text(rate == 1.0 ? L("Normal") : String(format: "%.2g\u{00D7}", rate))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(selected ? Theme.Palette.ivory : Theme.Palette.forest)
+                        .padding(.horizontal, 14)
+                        .frame(minHeight: 38)
+                        .background(
+                            Capsule().fill(selected ? Theme.Palette.forest : Theme.Palette.ivorySunk)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L("Playback speed"))
+                .accessibilityValue(String(format: "%.2g", rate))
+                .accessibilityAddTraits(selected ? [.isSelected] : [])
+            }
+        }
+        .frame(minHeight: 44)
+        .padding(.top, Theme.Space.xs)
+    }
+
+    private static let speeds: [Float] = [0.75, 1.0, 1.25]
 
     private var track: some View {
         GeometryReader { geometry in
@@ -182,7 +226,7 @@ struct PlayerView: View {
                 kept = true          // already gone; don't delete twice on disappear
                 dismiss()
             } label: {
-                Text("Discard")
+                Text(L("Discard"))
                     .font(Theme.Font.label)
                     .foregroundStyle(Theme.Palette.danger)
                     .frame(maxWidth: .infinity, minHeight: 48)
@@ -199,5 +243,13 @@ struct PlayerView: View {
         guard seconds.isFinite, seconds >= 0 else { return "0:00" }
         let total = Int(seconds.rounded())
         return String(format: "%d:%02d", total / 60, total % 60)
+    }
+
+    /// Both labels, always. Colour alone never carries which is which.
+    @ViewBuilder private var provenanceBadges: some View {
+        SourceBadge(isGenerated: asset.isGenerated)
+        if asset.isGenerated, let content = asset.contentProvenance {
+            ContentBadge(provenance: content)
+        }
     }
 }

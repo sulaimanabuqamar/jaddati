@@ -18,21 +18,60 @@ struct VoiceTuning: Codable, Equatable, Hashable {
     /// an elderly voice reading to someone should not be brisk.
     var speed: Double = 0.88
 
+    /// The three presets are named for how the voice DELIVERS the words, never
+    /// for how close it gets to the person. A preset called "Exactly them"
+    /// would be a promise the technology cannot keep.
+    ///
+    /// `steady` and `warm` are kept as stored names so tunings already saved on
+    /// a person still decode; the interface calls them Gentle and Storytelling.
+
     /// Balanced. What a first-time listener should hear.
     static let natural = VoiceTuning(stability: 0.45, similarity: 0.80, style: 0.0,
                                      speed: 0.88)
-    /// Predictable and even. The safest thing to put on a stage.
+    /// Even and unhurried. The safest thing to put on a stage.
     static let steady = VoiceTuning(stability: 0.75, similarity: 0.80, style: 0.0,
                                     speed: 0.85)
-    /// More life, more risk. Occasionally produces an odd reading.
+    /// More shape to the reading, for a story. Occasionally an odd line.
     static let warm = VoiceTuning(stability: 0.30, similarity: 0.85, style: 0.30,
                                   speed: 0.92)
 
+    static var gentle: VoiceTuning { .steady }
+    static var storytelling: VoiceTuning { .warm }
+
+    /// Decoded field by field, tolerating anything missing.
+    ///
+    /// This is not defensiveness for its own sake. `speed` was added to this
+    /// struct after people already had libraries on disk, and Swift's
+    /// synthesised Codable does NOT fall back to a property's default value for
+    /// a key that is absent — it throws. That throw propagates VoiceTuning →
+    /// Person → [Person] → the whole index, which the loader then quarantines
+    /// as corrupt, and every person, clip and book disappears from the app while
+    /// the audio files sit untouched on disk with nothing pointing at them.
+    ///
+    /// Any future field added here must be read the same way.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        stability    = try c.decodeIfPresent(Double.self, forKey: .stability) ?? 0.45
+        similarity   = try c.decodeIfPresent(Double.self, forKey: .similarity) ?? 0.80
+        style        = try c.decodeIfPresent(Double.self, forKey: .style) ?? 0.0
+        speakerBoost = try c.decodeIfPresent(Bool.self, forKey: .speakerBoost) ?? true
+        speed        = try c.decodeIfPresent(Double.self, forKey: .speed) ?? 0.88
+    }
+
+    init(stability: Double = 0.45, similarity: Double = 0.80, style: Double = 0.0,
+         speakerBoost: Bool = true, speed: Double = 0.88) {
+        self.stability = stability
+        self.similarity = similarity
+        self.style = style
+        self.speakerBoost = speakerBoost
+        self.speed = speed
+    }
+
     var presetName: String? {
         switch self {
-        case Self.natural: return "Natural"
-        case Self.steady:  return "Steady"
-        case Self.warm:    return "Warm"
+        case Self.natural: return L("Natural")
+        case Self.steady:  return L("Gentle")
+        case Self.warm:    return L("Storytelling")
         default:           return nil
         }
     }
@@ -139,6 +178,17 @@ struct AudioAsset: Identifiable, Codable, Equatable, Hashable {
 
     /// Set only for generated book pages, so an already-read page can be found
     /// and replayed instead of paid for twice.
+    /// `ContentProvenance.rawValue`. Optional because Swift's synthesised
+    /// Codable does not fall back to a property default for a key that is
+    /// absent, so every library written before this field existed must still
+    /// decode.
+    var contentKind: String? = nil
+
+    var contentProvenance: ContentProvenance? {
+        contentKind.flatMap(ContentProvenance.init(rawValue:))
+            ?? intent?.defaultContentProvenance
+    }
+
     var bookId: UUID? = nil
     var pageIndex: Int? = nil
 
@@ -185,6 +235,45 @@ struct FamilyNote: Identifiable, Codable, Equatable {
 
 /// What kind of thing the user asked for. Drives the copy on the player and
 /// the label stored with the result.
+/// What the WORDS are, as distinct from whose voice says them. Stored on the
+/// asset rather than derived from whichever screen is showing it, so an
+/// invented story is still marked invented three weeks later in the archive.
+///
+/// The raw values are persisted. Never rename one.
+enum ContentProvenance: String, Codable, CaseIterable {
+    case wordsSuppliedByYou
+    case comfortLine
+    case inventedStory
+    case keptWords
+    case importedText
+    case answerWhileReading
+
+    var label: String {
+        switch self {
+        case .wordsSuppliedByYou: return L("Words supplied by you")
+        case .comfortLine:        return L("Comfort line")
+        case .inventedStory:      return L("Invented story")
+        case .keptWords:          return L("Saved words")
+        case .importedText:       return L("From an imported file")
+        case .answerWhileReading: return L("Answer to a question")
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .wordsSuppliedByYou: return "pencil"
+        case .comfortLine:        return "leaf"
+        case .inventedStory:      return "sparkles"
+        case .keptWords:          return "tray.full"
+        case .importedText:       return "doc.text"
+        case .answerWhileReading: return "questionmark.bubble"
+        }
+    }
+
+    /// Fiction is the one that must never be quietly dropped.
+    var mustAlwaysShow: Bool { self == .inventedStory }
+}
+
 enum Intent: String, Codable, CaseIterable {
     case saySomething
     case comfort
@@ -192,13 +281,19 @@ enum Intent: String, Codable, CaseIterable {
     case storyFromMemories
     case readBook
 
+    /// Display names only. `rawValue` is what every stored clip points at, so
+    /// renaming a case would orphan audio the user has already kept.
+    ///
+    /// "Comfort me" and "A memory, retold" both addressed the dead person as if
+    /// they were doing something. They are now named for what they actually
+    /// are: a line the user picked, and a collection the user wrote.
     var title: String {
         switch self {
-        case .saySomething:      return "Say something"
-        case .comfort:           return "Comfort me"
-        case .storyFiction:      return "Tell me a story"
-        case .storyFromMemories: return "A memory, retold"
-        case .readBook:          return "Read me a book"
+        case .saySomething:      return L("Say something")
+        case .comfort:           return L("Words of comfort")
+        case .storyFiction:      return L("A bedtime story")
+        case .storyFromMemories: return L("Kept words")
+        case .readBook:          return L("Read me a book")
         }
     }
 
@@ -216,11 +311,22 @@ enum Intent: String, Codable, CaseIterable {
 
     var subtitle: String {
         switch self {
-        case .saySomething:      return "Words you choose, in their voice"
-        case .comfort:           return "Something steadying to hear"
-        case .storyFiction:      return "An invented bedtime story"
-        case .storyFromMemories: return "Words you keep, in one place"
-        case .readBook:          return "A book you bring, read a page at a time"
+        case .saySomething:      return L("Words you choose, spoken in their recreated voice.")
+        case .comfort:           return L("A short line to help you feel steadier.")
+        case .storyFiction:      return L("An invented bedtime story in their recreated voice.")
+        case .storyFromMemories: return L("Words you have kept, together in one place.")
+        case .readBook:          return L("A text you bring, read one page at a time.")
+        }
+    }
+
+    /// The content label a clip from this experience is born with.
+    var defaultContentProvenance: ContentProvenance {
+        switch self {
+        case .saySomething:      return .wordsSuppliedByYou
+        case .comfort:           return .comfortLine
+        case .storyFiction:      return .inventedStory
+        case .storyFromMemories: return .keptWords
+        case .readBook:          return .importedText
         }
     }
 

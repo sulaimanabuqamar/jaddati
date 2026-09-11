@@ -51,10 +51,10 @@ struct PersonView: View {
                                 Panel {
                                     HStack {
                                         VStack(alignment: .leading, spacing: 2) {
-                                            Text("Saved memories")
+                                            Text(L("Everything saved"))
                                                 .font(Theme.Font.label)
                                                 .foregroundStyle(Theme.Palette.ink)
-                                            Text("\(memories.count) kept")
+                                            Text(Counts.savedClips(memories.count))
                                                 .font(Theme.Font.caption)
                                                 .foregroundStyle(Theme.Palette.inkSoft)
                                         }
@@ -116,21 +116,21 @@ struct PersonView: View {
             .accessibilityLabel(photo == nil ? "Add a photo" : "Change photo")
 
             VStack(alignment: .leading, spacing: 6) {
-                Text(person.name)
-                    .font(Theme.Font.display(34))
-                    .foregroundStyle(Theme.Palette.forest)
+                BidiText(value: person.name,
+                         font: Theme.Font.display(34),
+                         colour: Theme.Palette.forest)
                     .fixedSize(horizontal: false, vertical: true)
                 if !person.relationship.isEmpty {
-                    Text(person.relationship)
-                        .font(Theme.Font.body)
-                        .foregroundStyle(Theme.Palette.inkSoft)
+                    BidiText(value: person.relationship,
+                             font: Theme.Font.body,
+                             colour: Theme.Palette.inkSoft)
                 }
                 if person.hasVoice {
                     HStack(spacing: 6) {
-                        Circle().fill(Theme.Palette.bronze).frame(width: 6, height: 6)
-                        Text("Voice ready")
+                        Circle().fill(Theme.Palette.sage).frame(width: 6, height: 6)
+                        Text(L("Recreated voice ready"))
                             .font(Theme.Font.caption)
-                            .foregroundStyle(Theme.Palette.bronze)
+                            .foregroundStyle(Theme.Palette.sage)
                     }
                     .padding(.top, 2)
                 }
@@ -174,7 +174,7 @@ struct PersonView: View {
                     .font(Theme.Font.body)
                     .foregroundStyle(Theme.Palette.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
-                Button("Create the real voice") { addingVoice = true }
+                Button(L("Create a real voice")) { addingVoice = true }
                     .buttonStyle(PrimaryButtonStyle())
                     .padding(.top, 2)
             }
@@ -186,10 +186,10 @@ struct PersonView: View {
     private var pendingVerification: some View {
         Panel {
             VStack(alignment: .leading, spacing: Theme.Space.s) {
-                Text("Voice created, not yet usable")
+                Text(L("Voice is being prepared"))
                     .font(Theme.Font.heading)
                     .foregroundStyle(Theme.Palette.ink)
-                Text("The voice service accepted the recording but is holding the voice for verification. It cannot speak until that clears. Check the voice in your ElevenLabs account.")
+                Text(L("The voice has been created, but the service has not made it available yet."))
                     .font(Theme.Font.body)
                     .foregroundStyle(Theme.Palette.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
@@ -200,14 +200,14 @@ struct PersonView: View {
     private var noVoiceYet: some View {
         Panel {
             VStack(alignment: .leading, spacing: Theme.Space.s) {
-                Text("No voice yet")
+                Text(L("No recreated voice yet"))
                     .font(Theme.Font.heading)
                     .foregroundStyle(Theme.Palette.ink)
-                Text("Add a recording of about a minute — a voice note, an old video's audio — and Jaddati can speak new words in that voice.")
+                Text(L("Add an original recording to create a voice.") + " " + L("About a minute. One voice. A quiet room."))
                     .font(Theme.Font.body)
                     .foregroundStyle(Theme.Palette.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
-                Button("Add their voice") { addingVoice = true }
+                Button(L("Add their voice")) { addingVoice = true }
                     .buttonStyle(PrimaryButtonStyle())
                     .padding(.top, 2)
             }
@@ -255,19 +255,19 @@ struct PersonView: View {
         let items = library.assets(for: person, source: .original)
         return VStack(alignment: .leading, spacing: Theme.Space.s) {
             HStack {
-                Text("Their own voice")
+                Text(L("Original recordings"))
                     .font(Theme.Font.heading)
                     .foregroundStyle(Theme.Palette.ink)
                 Spacer()
                 if person.hasVoice || person.voicePendingVerification {
-                    Button("Replace") { addingVoice = true }
+                    Button(L("Create a new voice version")) { addingVoice = true }
                         .font(Theme.Font.caption)
                         .foregroundStyle(Theme.Palette.forest)
                 }
             }
 
             if items.isEmpty {
-                Text("Nothing here yet.")
+                Text(L("No recordings yet"))
                     .font(Theme.Font.caption)
                     .foregroundStyle(Theme.Palette.inkSoft)
             } else {
@@ -284,19 +284,19 @@ struct PersonView: View {
             Button(role: .destructive) {
                 confirmingDelete = true
             } label: {
-                Text("Delete \(person.name) and all their audio")
+                Text(L("Delete person and audio"))
                     .font(Theme.Font.caption)
                     .foregroundStyle(Theme.Palette.danger)
             }
-            .confirmationDialog("Delete \(person.name)?",
+            .confirmationDialog(L("Delete this person?"),
                                 isPresented: $confirmingDelete,
                                 titleVisibility: .visible) {
-                Button("Delete everything on this phone", role: .destructive) {
+                Button(L("Delete permanently"), role: .destructive) {
                     library.delete(person)
                 }
-                Button("Cancel", role: .cancel) { }
+                Button(L("Cancel"), role: .cancel) { }
             } message: {
-                Text("This removes the profile, the original recordings and every generated memory from this phone. The voice created at the provider is not deleted by this action — remove it in your ElevenLabs account.")
+                Text(L("This removes their profile, original recordings, and saved clips from Jaddati.") + "\n\n" + L("Deleting from Jaddati does not confirm deletion by the voice service."))
             }
         }
         .padding(.top, Theme.Space.m)
@@ -333,16 +333,32 @@ struct AudioRow: View {
 
                 VStack(alignment: .leading, spacing: 5) {
                     if !asset.text.isEmpty {
-                        Text(asset.text)
-                            .font(Theme.Font.body)
-                            .foregroundStyle(Theme.Palette.ink)
-                            .lineLimit(2)
+                        // The clip's own words follow the clip's own direction,
+                        // whichever way the interface happens to be facing.
+                        BidiText(value: asset.text,
+                                 font: Theme.Font.body,
+                                 colour: Theme.Palette.ink,
+                                 lineLimit: 2)
                     } else {
                         Text(asset.createdAt.formatted(date: .abbreviated, time: .shortened))
                             .font(Theme.Font.body)
                             .foregroundStyle(Theme.Palette.ink)
                     }
-                    SourceBadge(isGenerated: asset.isGenerated)
+
+                    // Both labels sit in the row, so an invented story is
+                    // identifiable without opening it. They wrap rather than
+                    // truncate: a provenance label that runs out of room and
+                    // disappears is the one case that must not happen.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 6) { badges }
+                        VStack(alignment: .leading, spacing: 5) { badges }
+                    }
+
+                    if asset.durationSeconds > 0 {
+                        Text(Counts.duration(asset.durationSeconds))
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.Palette.inkSoft)
+                    }
                 }
 
                 Spacer(minLength: 0)
@@ -356,10 +372,17 @@ struct AudioRow: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Open")
+                    .accessibilityLabel(L("View all"))
                 }
             }
         }
         .opacity(present ? 1 : 0.5)
+    }
+
+    @ViewBuilder private var badges: some View {
+        SourceBadge(isGenerated: asset.isGenerated)
+        if asset.isGenerated, let content = asset.contentProvenance {
+            ContentBadge(provenance: content)
+        }
     }
 }

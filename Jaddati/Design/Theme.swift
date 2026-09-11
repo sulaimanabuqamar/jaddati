@@ -19,6 +19,15 @@ enum Theme {
         static let inkSoft     = Color(hex: 0x6E6558)   // secondary text
         static let hairline    = Color(hex: 0xE0D8C8)
         static let danger      = Color(hex: 0x9B3B2E)
+
+        // Origin colours. Sage always means a real recording of the person;
+        // wine always means audio the machine made. They are never swapped and
+        // never used decoratively, because a colour that means two things means
+        // nothing. Colour is also never the only carrier — see SourceBadge.
+        static let sage        = Color(hex: 0x4E6853)   // original recording
+        static let sageSoft    = Color(hex: 0xDCE5DC)
+        static let wine        = Color(hex: 0x6E2433)   // AI-recreated
+        static let wineSoft    = Color(hex: 0xF0DDE0)
     }
 
     // MARK: Type
@@ -40,6 +49,10 @@ enum Theme {
     }
 
     // MARK: Metrics
+
+    /// Arabic sets its vowel marks above the line, so a Latin line height
+    /// crowds them. Never apply letter spacing to Arabic — it breaks the joins.
+    static var textLineSpacing: CGFloat { uiIsArabic ? 5 : 2 }
 
     enum Space {
         static let xs: CGFloat = 6
@@ -198,22 +211,101 @@ struct PersonAvatar: View {
 struct SourceBadge: View {
     let isGenerated: Bool
 
+    private var tint: Color { isGenerated ? Theme.Palette.wine : Theme.Palette.sage }
+    private var fill: Color { isGenerated ? Theme.Palette.wineSoft : Theme.Palette.sageSoft }
+
     var body: some View {
         HStack(spacing: 5) {
+            // The icon and the words both carry the meaning. Someone who cannot
+            // separate sage from wine still reads the label, and a screenshot
+            // that loses colour still says which one it is.
             Image(systemName: isGenerated ? "waveform.badge.exclamationmark" : "mic.fill")
                 .font(.system(size: 10, weight: .semibold))
-            Text(isGenerated ? "AI-recreated voice" : "Original recording")
+            Text(L(isGenerated ? "AI-recreated voice" : "Original recording"))
                 .font(.system(size: 11, weight: .semibold))
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 5)
-        .foregroundStyle(isGenerated ? Theme.Palette.bronze : Theme.Palette.forest)
-        .background(
-            Capsule().fill((isGenerated ? Theme.Palette.bronze : Theme.Palette.forest).opacity(0.10))
-        )
-        .accessibilityLabel(isGenerated
-                            ? "AI recreated voice"
-                            : "Original recording of this person")
+        .foregroundStyle(tint)
+        .background(Capsule().fill(fill))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(L(isGenerated ? "AI-recreated voice" : "Original recording"))
+    }
+}
+
+/// What the words are, as opposed to who is speaking them. A story stays marked
+/// as invented on its saved row and on every later playback, because a label
+/// that disappears once the clip is filed is not a label.
+struct ContentBadge: View {
+    let provenance: ContentProvenance
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: provenance.icon)
+                .font(.system(size: 10, weight: .semibold))
+            Text(provenance.label)
+                .font(.system(size: 11, weight: .semibold))
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .foregroundStyle(Theme.Palette.inkSoft)
+        .background(Capsule().fill(Theme.Palette.ivorySunk))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(provenance.label)
+    }
+}
+
+/// Text whose direction follows its own content rather than the paragraph
+/// around it — the equivalent of wrapping a run in `<bdi dir="auto">`. A Latin
+/// filename inside an Arabic screen, or an Arabic name inside an English one,
+/// otherwise gets dragged the wrong way and reads back to front.
+struct BidiText: View {
+    let value: String
+    var font: Font = Theme.Font.body
+    var colour: Color = Theme.Palette.ink
+    var lineLimit: Int? = nil
+
+    var body: some View {
+        let rtl = TextDirection.isArabic(value)
+        Text(value)
+            .font(font)
+            .foregroundStyle(colour)
+            .lineLimit(lineLimit)
+            .multilineTextAlignment(rtl ? .trailing : .leading)
+            .environment(\.layoutDirection, rtl ? .rightToLeft : .leftToRight)
+    }
+}
+
+/// Each language named in its own script. Not a flag — a flag names a country,
+/// and Arabic is not one country.
+struct LanguageSwitch: View {
+    @ObservedObject private var localization = Localization.shared
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(AppLanguage.allCases, id: \.self) { language in
+                let selected = localization.language == language
+                Button {
+                    localization.language = language
+                } label: {
+                    Text(language.endonym)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(selected ? Theme.Palette.ivory : Theme.Palette.forest)
+                        .padding(.horizontal, 14)
+                        .frame(minHeight: 34)
+                        .background(
+                            Capsule().fill(selected ? Theme.Palette.forest : Color.clear)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(language.endonym)
+                .accessibilityAddTraits(selected ? [.isSelected] : [])
+            }
+        }
+        .padding(3)
+        .background(Capsule().fill(Theme.Palette.ivorySunk))
+        // 44pt minimum target, including the tap area around the capsules.
+        .frame(minHeight: 44)
     }
 }
 

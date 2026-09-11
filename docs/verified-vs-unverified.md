@@ -14,7 +14,7 @@ second table.
 | There is no automatic overage on this plan — credits are topped up manually | Same page: "You can still top up anytime" + a manual Add credits button |
 | `eleven_multilingual_v2` supports Arabic (Saudi, UAE variants) | ElevenLabs models documentation |
 | API shapes: `POST /v1/voices/add` (multipart `name`, `files`) returns `voice_id`; `POST /v1/text-to-speech/{voice_id}` takes `{text, model_id}` | ElevenLabs API reference, read 10 Sep 2026 |
-| **The app compiles** | Clean build in Xcode against a physical iPhone, 10 Sep 2026, twice — before and after the review fixes. Commit `bfba2d7`. |
+| The app compiled at commit `bfba2d7` | Clean build in Xcode against a physical iPhone, 10 Sep 2026, twice. **Nothing since `bfba2d7` has been compiled.** Two build-breaking defects were found by reading, not by building — see the second table. |
 | The 13 review fixes compile | Same build. Compiling is not the same as behaving: each fix still needs exercising on the phone. |
 | **The app installs and runs on the iPhone** | Screenshots from the device, 10 Sep 2026 16:50. Home, profile creation, person detail, and voice import all render and navigate. |
 | **The app reaches ElevenLabs and is authenticated** | 10 Sep 2026 16:59, from the device. A text-to-speech request was accepted, authenticated with the key in `Secrets.plist`, and rejected only on the voice id: *"An invalid ID has been received: 'mock-voice-…'"* — the provider's own words, surfaced through the app's error mapping. Not a 401, so the key is valid. |
@@ -33,6 +33,14 @@ second table.
 | Claim | Why not |
 |---|---|
 
+| **`VoiceRecorder.swift` did not compile as committed** | Found 10 Sep by review: the class uses `@Published` and `ObservableObject` with no `import Combine`, while both sibling classes import it. Shipped in the recording commit. Fixed. This is why "the app compiles" above is now dated to `bfba2d7`. |
+| **A non-optional `speed` in `VoiceTuning` could erase a user's whole library** | Found 10 Sep by review. `speed` was added to a `Codable` struct as a non-optional `Double`; Swift's synthesised Codable does not fall back to a property default for a missing key, it throws. Any library saved before that commit, for a person whose tuning had been touched, would throw on decode, quarantine the entire index, and leave every person, clip and book unreachable with the audio still on disk. Now decoded with `decodeIfPresent`. **Never verified against a real pre-existing library** — the reasoning is sound, the test has not been run. |
+| The corrupt-index recovery had the wrong condition | `loadFailed` was set on any decode failure but never read, so the guard its own comment described did not exist; and the file move used `try?`, so a failed move left the real file in place to be overwritten. Now `loadFailed` is set only when the move fails, and `save()` honours it. Untested. |
+| **The whole Arabic interface** | Written, never run. A complete second locale, RTL layout, Arabic-Indic numerals and real Arabic plural forms — none of it has rendered on a phone. Expect layout breakage on first run and budget time for it. |
+| Content provenance surviving into saved rows and replay | `contentKind` is stored on the asset and read back through a fallback, so old clips get a label without a migration. Written, not exercised. |
+| The rebuilt consent card | Two separate confirmations now gate creation instead of one. Never run, and never tested with VoiceOver or at large Dynamic Type sizes. |
+| Playback speed on an already-generated clip | The control now exists in the player (0.75× / normal / 1.25×) and drives `AVAudioPlayer.rate`. Earlier notes claimed this worked; **the engine was there but no control ever called it.** Still unverified on device. |
+
 | **Emirati dialect** in the output | Tested and **failed**. An Emirati sample produced Egyptian-leaning Arabic and General American English. Instant cloning carries timbre, not accent. Say this plainly if a judge asks; do not promise dialect. |
 | Generation latency | Unmeasured. The UI copy avoids promising a number. |
 | The multipart field name is `files` rather than `files[]` | Taken from docs, never exercised. `spike/voice_spike.sh` tries `files` and falls back to `files[]` — run it to settle this. |
@@ -41,7 +49,6 @@ second table.
 | That a ~1 minute sample is enough for a convincing result | Provider's stated minimum, not our measurement. |
 | The `speed` field is accepted by `voice_settings` | Taken from the API reference, sent but never observed succeeding. If it is rejected the call 400s — generate once after pulling this change, before the demo. |
 | The Pace slider audibly slows new generations | Written, not exercised on device. |
-| Playback rate slowing works on already-generated clips | `AVAudioPlayer.enableRate` is set before `prepareToPlay`; not yet driven from any control. |
 | Profile photos import, shrink and persist across a reinstall | Written, not exercised on device. Photos are stored by filename, like audio, so the container UUID cannot break them — but that is reasoning, not a test. |
 | The book Q&A flow end to end | Written, never run. Asking pauses the page, answers, speaks the answer, and resumes from the same second — none of that has been exercised on the phone. |
 | **The microphone has never been run in this app** | `VoiceRecorder` is written and the mic usage string is already in the build settings, but no recording has been made on the phone. This is the single most important thing to test — V1 lost days to a recorder that reported success and wrote empty files. The silence check (`RecordingResult.capturedSound`, >8 KB and peak above -40 dB) is there for that reason and is itself untested. |

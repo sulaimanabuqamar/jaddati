@@ -223,6 +223,7 @@ final class Library: ObservableObject {
                     modelId: String? = nil,
                     provenance: String? = nil,
                     intent: Intent? = nil,
+                    content: ContentProvenance? = nil,
                     bookId: UUID? = nil,
                     pageIndex: Int? = nil,
                     isSaved: Bool = true,
@@ -244,6 +245,9 @@ final class Library: ObservableObject {
         asset.isSaved = isSaved
         asset.provenance = provenance
         asset.intentRaw = intent?.rawValue
+        // Falls back to the experience's own label rather than nil, so a clip is
+        // never filed without a content provenance.
+        asset.contentKind = (content ?? intent?.defaultContentProvenance)?.rawValue
         asset.bookId = bookId
         asset.pageIndex = pageIndex
         assets.append(asset)
@@ -315,15 +319,29 @@ final class Library: ObservableObject {
             // A corrupt index must not wedge the app on launch, and must not be
             // overwritten by the next save. Move it aside first, so the data is
             // recoverable, then start from an empty list.
-            loadFailed = true
             let backup = root.appendingPathComponent(
                 "library.corrupt-\(Int(Date().timeIntervalSince1970)).json")
-            try? FileManager.default.moveItem(at: indexURL, to: backup)
-            storageError = "Saved memories could not be read, so they have been set aside rather than overwritten. The audio files are still on this phone."
+            do {
+                try FileManager.default.moveItem(at: indexURL, to: backup)
+                // The unreadable file is now safely aside under its own name, so
+                // saving a fresh index destroys nothing and the app stays usable.
+                storageError = "Saved memories could not be read, so they have been set aside rather than overwritten. The audio files are still on this phone."
+            } catch {
+                // The move failed, so the unreadable file is STILL at indexURL.
+                // Saving now would write an empty index straight over it and
+                // orphan every recording permanently. Refuse to write at all.
+                loadFailed = true
+                storageError = "Saved memories could not be read and could not be set aside, so nothing new will be saved until this is resolved. No audio has been deleted."
+            }
         }
     }
 
     private func save() {
+        // Set only when an unreadable index could NOT be moved aside, meaning
+        // the real file is still sitting at indexURL. Writing then would put an
+        // empty index over it and orphan every recording for good.
+        guard !loadFailed else { return }
+
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

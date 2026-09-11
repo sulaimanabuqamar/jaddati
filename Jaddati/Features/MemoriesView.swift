@@ -1,81 +1,104 @@
 import SwiftUI
 
 /// Everything kept for one person, originals and generated together, always
-/// distinguishable at a glance — and filterable by the experience that made it,
-/// so a comfort line saved last week is findable without scrolling past
-/// everything else.
+/// distinguishable at a glance.
+///
+/// Origin and experience are two different questions — "was this really them?"
+/// and "which screen made it?" — so they are two independent controls. The one
+/// long strip they replaced forced a choice between them and made it impossible
+/// to ask for, say, every recreated bedtime story.
 struct MemoriesView: View {
     let personId: UUID
-    @State private var filter: Filter
 
     @EnvironmentObject private var library: Library
     @EnvironmentObject private var player: AudioPlayer
     @State private var opened: AudioAsset?
+    @State private var origin: OriginFilter = .all
+    @State private var experience: ExperienceFilter = .all
+
+    /// Kept so callers that opened this screen pre-filtered still compile and
+    /// still land where they meant to.
+    enum Filter: Hashable { case all, original, recreated }
 
     init(personId: UUID, filter: Filter = .all) {
         self.personId = personId
-        _filter = State(initialValue: filter)
+        switch filter {
+        case .all:       _origin = State(initialValue: .all)
+        case .original:  _origin = State(initialValue: .original)
+        case .recreated: _origin = State(initialValue: .recreated)
+        }
     }
 
-    enum Filter: Hashable, CaseIterable {
-        case all, original, recreated, saySomething, comfort, stories, memories, books
-
+    enum OriginFilter: Hashable, CaseIterable {
+        case all, original, recreated
         var title: String {
             switch self {
-            case .all:          return "All"
-            case .original:     return "Their voice"
-            case .recreated:    return "Recreated"
-            case .saySomething: return "Said"
-            case .comfort:      return "Comfort"
-            case .stories:      return "Stories"
-            case .memories:     return "Memories"
-            case .books:        return "Book pages"
+            case .all:       return L("All")
+            case .original:  return L("Original recording")
+            case .recreated: return L("AI recreated")
             }
         }
+        func matches(_ asset: AudioAsset) -> Bool {
+            switch self {
+            case .all:       return true
+            case .original:  return asset.source == .original
+            case .recreated: return asset.source == .generated
+            }
+        }
+    }
 
-        /// The intent this filter narrows to, if it narrows to one.
+    enum ExperienceFilter: Hashable, CaseIterable {
+        case all, saySomething, comfort, story, kept, book
+        var title: String {
+            switch self {
+            case .all:  return L("All")
+            case .saySomething: return Intent.saySomething.title
+            case .comfort:      return Intent.comfort.title
+            case .story:        return Intent.storyFiction.title
+            case .kept:         return Intent.storyFromMemories.title
+            case .book:         return Intent.readBook.title
+            }
+        }
         var intent: Intent? {
             switch self {
+            case .all:          return nil
             case .saySomething: return .saySomething
             case .comfort:      return .comfort
-            case .stories:      return .storyFiction
-            case .memories:     return .storyFromMemories
-            case .books:        return .readBook
-            default:            return nil
+            case .story:        return .storyFiction
+            case .kept:         return .storyFromMemories
+            case .book:         return .readBook
             }
+        }
+        func matches(_ asset: AudioAsset) -> Bool {
+            guard let wanted = intent else { return true }
+            return asset.intentRaw == wanted.rawValue
         }
     }
 
     private var person: Person? { library.person(withId: personId) }
 
-    private var items: [AudioAsset] {
+    /// Unkept drafts stay hidden; originals are always kept.
+    private var everything: [AudioAsset] {
         guard let person else { return [] }
-        // Unkept drafts stay hidden; originals are always kept.
-        let all = library.assets(for: person)
-            .filter { $0.source == .original || $0.isSaved }
-        switch filter {
-        case .all:       return all
-        case .original:  return all.filter { $0.source == .original }
-        case .recreated: return all.filter { $0.source == .generated }
-        default:
-            guard let wanted = filter.intent else { return all }
-            return all.filter { $0.intentRaw == wanted.rawValue }
+        return library.assets(for: person).filter { $0.source == .original || $0.isSaved }
+    }
+
+    private var items: [AudioAsset] {
+        everything.filter { origin.matches($0) && experience.matches($0) }
+    }
+
+    private var isFiltered: Bool { origin != .all || experience != .all }
+
+    /// Only offer a control that would change anything.
+    private var availableOrigins: [OriginFilter] {
+        OriginFilter.allCases.filter { candidate in
+            candidate == .all || everything.contains { candidate.matches($0) }
         }
     }
 
-    /// Only offer a filter that would show something.
-    private var availableFilters: [Filter] {
-        guard let person else { return [.all] }
-        let all = library.assets(for: person).filter { $0.source == .original || $0.isSaved }
-        return Filter.allCases.filter { candidate in
-            switch candidate {
-            case .all:       return true
-            case .original:  return all.contains { $0.source == .original }
-            case .recreated: return all.contains { $0.source == .generated }
-            default:
-                guard let wanted = candidate.intent else { return false }
-                return all.contains { $0.intentRaw == wanted.rawValue }
-            }
+    private var availableExperiences: [ExperienceFilter] {
+        ExperienceFilter.allCases.filter { candidate in
+            candidate == .all || everything.contains { candidate.matches($0) }
         }
     }
 
@@ -85,12 +108,15 @@ struct MemoriesView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Space.m) {
-                    filterRow
+                    if availableOrigins.count > 2 {
+                        filterRow(L("Origin"), availableOrigins, selected: origin) { origin = $0 }
+                    }
+                    if availableExperiences.count > 2 {
+                        filterRow(L("Experience"), availableExperiences, selected: experience) { experience = $0 }
+                    }
 
                     if items.isEmpty {
-                        EmptyHint(icon: "tray",
-                                  title: "Nothing here yet",
-                                  message: "Anything you keep will be waiting here, and it plays without a connection.")
+                        emptyState
                     } else {
                         // Deliberately NOT a NavigationLink wrapping the row:
                         // AudioRow contains its own play button, and a button
@@ -102,7 +128,7 @@ struct MemoriesView: View {
                                         if player.playingAssetId == asset.id { player.stop() }
                                         library.delete(asset)
                                     } label: {
-                                        Label("Delete", systemImage: "trash")
+                                        Label(L("Delete clip"), systemImage: "trash")
                                     }
                                 }
                         }
@@ -112,39 +138,88 @@ struct MemoriesView: View {
                 .padding(.bottom, Theme.Space.xl)
             }
         }
-        .navigationTitle(person?.name ?? "Memories")
+        .navigationTitle(person?.name ?? L("Everything saved"))
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $opened) { asset in
             PlayerView(asset: asset)
         }
-        .onChange(of: availableFilters) { _, now in
+        .onChange(of: everything.count) { _, _ in
             // Deleting the last clip of a kind removes its chip. Without this
             // the selection sticks to a chip that is no longer on screen and
             // the list reads as empty for no visible reason.
-            if !now.contains(filter) { filter = .all }
+            if !availableOrigins.contains(origin) { origin = .all }
+            if !availableExperiences.contains(experience) { experience = .all }
         }
     }
 
-    private var filterRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: Theme.Space.xs) {
-                ForEach(availableFilters, id: \.self) { candidate in
-                    Button { filter = candidate } label: {
-                        Text(candidate.title)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(filter == candidate
-                                             ? Theme.Palette.ivory : Theme.Palette.forest)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .background(
-                                Capsule().fill(filter == candidate
-                                               ? Theme.Palette.forest : Theme.Palette.ivorySunk)
-                            )
-                    }
-                    .buttonStyle(.plain)
+    /// An empty list means two different things, and saying the wrong one is a
+    /// lie about the person's collection.
+    @ViewBuilder private var emptyState: some View {
+        if isFiltered {
+            VStack(alignment: .leading, spacing: Theme.Space.s) {
+                EmptyHint(icon: "line.3.horizontal.decrease.circle",
+                          title: L("No clips match this filter"),
+                          message: activeFilterSummary)
+                Button(L("Clear filters")) {
+                    origin = .all
+                    experience = .all
                 }
+                .buttonStyle(QuietButtonStyle())
+                .frame(maxWidth: .infinity)
             }
-            .padding(.horizontal, 2)
+        } else {
+            EmptyHint(icon: "tray",
+                      title: L("Nothing saved yet"),
+                      message: L("Clips you choose to keep will appear here."))
+        }
+    }
+
+    private var activeFilterSummary: String {
+        var parts: [String] = []
+        if origin != .all { parts.append(L("Origin") + ": " + origin.title) }
+        if experience != .all { parts.append(L("Experience") + ": " + experience.title) }
+        return parts.joined(separator: " · ") + "\n" + L("Try another filter or show all clips.")
+    }
+
+    private func filterRow<F: Hashable>(_ label: String,
+                                        _ options: [F],
+                                        selected: F,
+                                        choose: @escaping (F) -> Void) -> some View
+    where F: FilterChip {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Theme.Palette.inkSoft)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: Theme.Space.xs) {
+                    ForEach(options, id: \.self) { candidate in
+                        let isOn = candidate == selected
+                        Button { choose(candidate) } label: {
+                            Text(candidate.title)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(isOn ? Theme.Palette.ivory : Theme.Palette.forest)
+                                .padding(.horizontal, 14)
+                                .frame(minHeight: 40)
+                                .background(
+                                    Capsule().fill(isOn ? Theme.Palette.forest
+                                                        : Theme.Palette.ivorySunk)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(label + ", " + candidate.title)
+                        .accessibilityAddTraits(isOn ? [.isSelected] : [])
+                    }
+                }
+                .padding(.horizontal, 2)
+            }
         }
     }
 }
+
+/// Lets one generic chip row serve both filter dimensions.
+protocol FilterChip: Hashable {
+    var title: String { get }
+}
+
+extension MemoriesView.OriginFilter: FilterChip {}
+extension MemoriesView.ExperienceFilter: FilterChip {}

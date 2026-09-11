@@ -22,6 +22,7 @@ struct AddVoiceView: View {
     @State private var pickedDuration: Double = 0
     @State private var showingPicker = false
     @State private var consented = false
+    @State private var understandsSynthetic = false
     @State private var isWorking = false
     @State private var errorText: String?
     /// False for messages that report a completed action. Retrying those would
@@ -42,8 +43,11 @@ struct AddVoiceView: View {
     private var durationIsUnusable: Bool { pickedDuration > 0 && pickedDuration < 20 }
     private var durationIsShort: Bool { pickedDuration > 0 && pickedDuration < 45 }
 
+    /// Both confirmations are required, and they are different questions. One
+    /// is about authorisation; the other is about understanding what comes out
+    /// the far end. A single bundled checkbox obscures which was given.
     private var canSubmit: Bool {
-        pickedURL != nil && consented && !isWorking
+        pickedURL != nil && consented && understandsSynthetic && !isWorking
             && !durationIsUnusable && AppConfig.isConfigured
     }
 
@@ -54,12 +58,12 @@ struct AddVoiceView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: Theme.Space.m) {
-                        Text(replacingExistingVoice ? "Replace their voice" : "Add their voice")
+                        Text(L(replacingExistingVoice ? "Create a new voice version" : "Add their voice"))
                             .font(Theme.Font.title)
                             .foregroundStyle(Theme.Palette.ink)
 
                         if !AppConfig.isConfigured {
-                            ErrorNote(message: "Voices aren't set up on this build, so a voice can't be created yet.")
+                            ErrorNote(message: L("Connect a voice service to create a voice or new audio. Original recordings remain available."))
                         }
 
                         if replacingExistingVoice {
@@ -81,7 +85,7 @@ struct AddVoiceView: View {
                             }
                         }
 
-                        Button(isWorking ? "Building the voice…" : "Create the voice") {
+                        Button(isWorking ? L("Creating voice…") : L("Create voice")) {
                             Task { await createVoice() }
                         }
                         .buttonStyle(PrimaryButtonStyle(enabled: canSubmit))
@@ -90,7 +94,7 @@ struct AddVoiceView: View {
                         if isWorking {
                             HStack(spacing: 8) {
                                 ProgressView()
-                                Text("This usually takes a few seconds. Keep the app open.")
+                                Text(L("Uploading recording…"))
                                     .font(Theme.Font.caption)
                                     .foregroundStyle(Theme.Palette.inkSoft)
                             }
@@ -102,7 +106,7 @@ struct AddVoiceView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button(L("Cancel")) {
                         discardTempFile()
                         dismiss()
                     }
@@ -132,10 +136,12 @@ struct AddVoiceView: View {
     private var replacementWarning: some View {
         Panel {
             VStack(alignment: .leading, spacing: 6) {
-                Text("This creates a new voice")
+                Text(L("Create a new voice version"))
                     .font(Theme.Font.label)
                     .foregroundStyle(Theme.Palette.ink)
-                Text("The current voice is replaced for this person, but it is not deleted from your ElevenLabs account and keeps using one of its voice slots. Delete it there if you no longer want it.")
+                Text(L("This creates another voice. The previous voice is not deleted.") + " "
+                     + L("Existing saved clips keep their original audio.")
+                     + " It keeps occupying a voice slot at \(AppConfig.providerName) until you delete it there.")
                     .font(Theme.Font.caption)
                     .foregroundStyle(Theme.Palette.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
@@ -164,7 +170,7 @@ struct AddVoiceView: View {
                         // Deselect rather than jumping straight to Files —
                         // that returns to the list, which offers both the
                         // already-saved recordings and the file picker.
-                        Button("Change") { discardTempFile() }
+                        Button(L("Change recording")) { discardTempFile() }
                             .font(Theme.Font.caption)
                             .foregroundStyle(Theme.Palette.forest)
                     }
@@ -173,7 +179,7 @@ struct AddVoiceView: View {
                         let stored = library.assets(for: person, source: .original)
                             .filter { library.fileExists(for: $0) }
                         if !stored.isEmpty {
-                            Text("Already saved for \(person.name)")
+                            Text(L("From this person’s recordings"))
                                 .font(Theme.Font.caption)
                                 .foregroundStyle(Theme.Palette.inkSoft)
                             ForEach(stored) { asset in
@@ -191,7 +197,7 @@ struct AddVoiceView: View {
                                                 .foregroundStyle(Theme.Palette.inkSoft)
                                         }
                                         Spacer(minLength: 0)
-                                        Text("Use")
+                                        Text(L("Use"))
                                             .font(.system(size: 12, weight: .semibold))
                                             .foregroundStyle(Theme.Palette.forest)
                                     }
@@ -211,10 +217,10 @@ struct AddVoiceView: View {
                                 .font(.system(size: 20))
                                 .foregroundStyle(Theme.Palette.forest)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Choose a recording")
+                                Text(L("Choose a file"))
                                     .font(Theme.Font.label)
                                     .foregroundStyle(Theme.Palette.ink)
-                                Text("From Files, iCloud Drive, or anywhere on this phone")
+                                Text(L("Use a saved recording"))
                                     .font(Theme.Font.caption)
                                     .foregroundStyle(Theme.Palette.inkSoft)
                             }
@@ -282,10 +288,10 @@ struct AddVoiceView: View {
                         .font(.system(size: 20))
                         .foregroundStyle(Theme.Palette.forest)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Record now")
+                        Text(L("Record now"))
                             .font(Theme.Font.label)
                             .foregroundStyle(Theme.Palette.ink)
-                        Text("Speak into this phone for about a minute")
+                        Text(L("About a minute. One voice. A quiet room."))
                             .font(Theme.Font.caption)
                             .foregroundStyle(Theme.Palette.inkSoft)
                     }
@@ -346,28 +352,67 @@ struct AddVoiceView: View {
 
     private var guidance: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("What works best")
+            Text(L("A clear sample makes a difference."))
                 .font(Theme.Font.label)
                 .foregroundStyle(Theme.Palette.ink)
-            Text("About a minute of them talking, one voice only, as little background noise as possible. Short clips and noisy rooms make a thinner result.")
+            Text(L("About a minute. One voice. A quiet room.") + " " + L("Choose a recording without background music or overlapping voices."))
                 .font(Theme.Font.caption)
                 .foregroundStyle(Theme.Palette.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
+    /// One card, but the decisions inside it are separate and each is visible.
+    /// What leaves the phone, who it goes to, what gets made, and what the user
+    /// is asserting are four different things; a single broad checkbox hides
+    /// which of them was actually agreed to.
+    ///
+    /// Authorisation is stated as a requirement THIS APP makes. It deliberately
+    /// stops short of claiming who owns a dead person's voice, because that
+    /// answer differs by country and the app is in no position to assert it.
     private var consentPanel: some View {
         Panel {
             VStack(alignment: .leading, spacing: Theme.Space.s) {
-                Toggle(isOn: $consented) {
-                    Text("I have the right to use this recording and to have this voice recreated.")
-                        .font(Theme.Font.body)
-                        .foregroundStyle(Theme.Palette.ink)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .tint(Theme.Palette.forest)
+                Text(L("Before you create this voice"))
+                    .font(Theme.Font.heading)
+                    .foregroundStyle(Theme.Palette.ink)
 
-                Text("The recording is uploaded to ElevenLabs, which creates the voice and stores it under this app's account. It does not stay on this phone only. If the person has died, the right to use their voice sits with their family or estate, and rules differ by country — this app cannot check that for you.")
+                disclosure(icon: "arrow.up.circle",
+                           title: L("This recording will be uploaded to a third-party voice service."),
+                           detail: providerDisclosure)
+
+                disclosure(icon: "person.badge.shield.checkmark",
+                           title: L("Voice service") + ": " + AppConfig.providerName,
+                           detail: L("If the person has died, this app requires authorization from the family or the representative responsible for granting it. Jaddati cannot verify that authorization."))
+
+                Divider().overlay(Theme.Palette.hairline)
+
+                consentToggle($consented,
+                              L("I have the right to use this recording and to create new speech in this voice."))
+                consentToggle($understandsSynthetic,
+                              L("I understand that this creates new AI audio, not a recording of words this person actually said."))
+            }
+        }
+    }
+
+    private var providerDisclosure: String {
+        uiIsArabic
+            ? "سيُرفع تسجيلك إلى \(AppConfig.providerName)، وهي خدمة صوت تابعة لجهة خارجية، لإنشاء صوت قابل لإعادة الاستخدام يُخزَّن في حساب هذا التطبيق. لا يبقى التسجيل على هذا الهاتف وحده، وحذف الشخص من هنا لا يحذفه هناك."
+            : "The recording is sent to \(AppConfig.providerName), which builds a reusable voice and stores it under this app's account. It does not stay on this phone only, and deleting a person here does not delete it there."
+    }
+
+    private func disclosure(icon: String, title: String, detail: String) -> some View {
+        HStack(alignment: .top, spacing: Theme.Space.s) {
+            Image(systemName: icon)
+                .font(.system(size: 15))
+                .foregroundStyle(Theme.Palette.wine)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(Theme.Font.label)
+                    .foregroundStyle(Theme.Palette.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(detail)
                     .font(Theme.Font.caption)
                     .foregroundStyle(Theme.Palette.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
@@ -375,10 +420,22 @@ struct AddVoiceView: View {
         }
     }
 
+    private func consentToggle(_ binding: Binding<Bool>, _ words: String) -> some View {
+        Toggle(isOn: binding) {
+            Text(words)
+                .font(Theme.Font.body)
+                .foregroundStyle(Theme.Palette.ink)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .tint(Theme.Palette.forest)
+        .frame(minHeight: 44)
+        .accessibilityLabel(words)
+    }
+
     // MARK: Behaviour
 
     private var durationLabel: String {
-        guard pickedDuration > 0 else { return "Length unknown" }
+        guard pickedDuration > 0 else { return L("Length unknown") }
         let seconds = Int(pickedDuration.rounded())
         let text = seconds >= 60 ? "\(seconds / 60)m \(seconds % 60)s" : "\(seconds)s"
         if durationIsUnusable { return "\(text) — too short to build a voice from" }

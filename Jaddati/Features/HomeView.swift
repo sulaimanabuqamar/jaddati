@@ -35,10 +35,10 @@ struct HomeView: View {
                         if library.people.isEmpty {
                             EmptyHint(
                                 icon: "waveform",
-                                title: "No one here yet",
-                                message: "Add someone whose voice you have a recording of, and Jaddati will keep it for you."
+                                title: L("No people yet"),
+                                message: L("Start with a name. Add a recording when you are ready.")
                             )
-                            Button("Add someone") { addingPerson = true }
+                            Button(L("Add someone")) { addingPerson = true }
                                 .buttonStyle(PrimaryButtonStyle())
                         } else {
                             ForEach(library.people) { person in
@@ -51,7 +51,7 @@ struct HomeView: View {
                                 .buttonStyle(.plain)
                             }
 
-                            Button("Add someone else") { addingPerson = true }
+                            Button(L("Add someone")) { addingPerson = true }
                                 .buttonStyle(QuietButtonStyle())
                                 .padding(.top, Theme.Space.xs)
                         }
@@ -72,18 +72,27 @@ struct HomeView: View {
         }
     }
 
+    /// The identity stays bilingual in both locales — the name of the app is
+    /// جدّتي whichever language the interface is in.
     private var masthead: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("جدّتي")
-                .font(Theme.Font.display(40))
-                .foregroundStyle(Theme.Palette.forest)
-                .environment(\.layoutDirection, .rightToLeft)
-            Text("Jaddati")
-                .font(Theme.Font.displayMedium(20))
-                .foregroundStyle(Theme.Palette.ink)
-            Text("a familiar voice, whenever you need it")
-                .font(Theme.Font.caption)
-                .foregroundStyle(Theme.Palette.inkSoft)
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("جدّتي")
+                    .font(Theme.Font.display(40))
+                    .foregroundStyle(Theme.Palette.forest)
+                    .environment(\.layoutDirection, .rightToLeft)
+                Text("Jaddati")
+                    .font(Theme.Font.displayMedium(20))
+                    .foregroundStyle(Theme.Palette.ink)
+                // Describes what the app does, not a message from a person.
+                Text(L("Keep their recordings. Create new words in a recreated voice."))
+                    .font(Theme.Font.caption)
+                    .foregroundStyle(Theme.Palette.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: Theme.Space.s)
+            LanguageSwitch()
+                .padding(.top, 4)
         }
         .padding(.top, Theme.Space.s)
         .padding(.bottom, Theme.Space.xs)
@@ -125,10 +134,10 @@ struct HomeView: View {
     private var notConfiguredNote: some View {
         Panel {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Voices are not set up on this build")
+                Text(L("Voice service not connected"))
                     .font(Theme.Font.label)
                     .foregroundStyle(Theme.Palette.ink)
-                Text("Saved audio still plays. Creating a new voice or new speech needs the key in Secrets.plist.")
+                Text(L("Connect a voice service to create a voice or new audio. Original recordings remain available."))
                     .font(Theme.Font.caption)
                     .foregroundStyle(Theme.Palette.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
@@ -149,9 +158,10 @@ struct PersonCard: View {
                 PersonAvatar(name: person.name, imageURL: photo)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(person.name)
-                        .font(Theme.Font.heading)
-                        .foregroundStyle(Theme.Palette.ink)
+                    BidiText(value: person.name,
+                             font: Theme.Font.heading,
+                             colour: Theme.Palette.ink,
+                             lineLimit: 1)
                     Text(subtitle)
                         .font(Theme.Font.caption)
                         .foregroundStyle(Theme.Palette.inkSoft)
@@ -166,16 +176,25 @@ struct PersonCard: View {
         }
     }
 
+    /// Describes a collection and a voice status, and nothing else. No streak,
+    /// no total, no reason to come back — this is not that kind of app.
+    ///
+    /// Counts go through a formatter rather than string interpolation so Arabic
+    /// gets Arabic-Indic digits, and plurals use the locale's own rules instead
+    /// of an English singular/plural template.
     private var subtitle: String {
-        if person.voiceIsUnavailableHere { return "Voice needs creating for real" }
-        if person.voicePendingVerification { return "Voice awaiting verification" }
-        if !person.hasVoice {
-            return originals == 0 ? "No recordings yet" : "Voice not created yet"
-        }
+        if person.voiceIsUnavailableHere { return L("Test voice · No real voice was created.") }
+        if person.voicePendingVerification { return L("Voice is being prepared") }
+
         var parts: [String] = []
-        if originals > 0 { parts.append("\(originals) original\(originals == 1 ? "" : "s")") }
-        if memories > 0 { parts.append("\(memories) memor\(memories == 1 ? "y" : "ies")") }
-        return parts.isEmpty ? "Voice ready" : parts.joined(separator: " · ")
+        if originals > 0 { parts.append(Counts.originals(originals)) }
+        if memories > 0 { parts.append(Counts.savedClips(memories)) }
+
+        if !person.hasVoice {
+            let status = L("No recreated voice yet")
+            return parts.isEmpty ? status : (parts + [status]).joined(separator: " · ")
+        }
+        return parts.isEmpty ? L("Recreated voice ready") : parts.joined(separator: " · ")
     }
 }
 
@@ -192,25 +211,25 @@ struct AddPersonView: View {
             ZStack {
                 Theme.Palette.ivory.ignoresSafeArea()
                 VStack(alignment: .leading, spacing: Theme.Space.m) {
-                    Text("Who is this?")
+                    Text(L("Add a person"))
                         .font(Theme.Font.title)
                         .foregroundStyle(Theme.Palette.ink)
 
                     Panel {
                         VStack(alignment: .leading, spacing: Theme.Space.s) {
-                            Field(title: "What you call them", text: $name, placeholder: "Jaddati")
+                            Field(title: L("Name"), text: $name, placeholder: "جدّتي")
                             Divider().overlay(Theme.Palette.hairline)
-                            Field(title: "Relationship (optional)", text: $relationship, placeholder: "Grandmother")
+                            Field(title: L("Relationship"), text: $relationship, placeholder: L("Grandmother"))
                         }
                     }
 
-                    Text("You can add their recordings on the next screen.")
+                    Text(L("Start with a name. Add a recording when you are ready."))
                         .font(Theme.Font.caption)
                         .foregroundStyle(Theme.Palette.inkSoft)
 
                     Spacer()
 
-                    Button("Add") {
+                    Button(L("Add someone")) {
                         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !trimmed.isEmpty else { return }
                         library.add(Person(name: trimmed, relationship: relationship))
@@ -224,7 +243,7 @@ struct AddPersonView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(L("Cancel")) { dismiss() }
                 }
             }
         }

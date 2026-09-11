@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import Combine
 
 /// What a finished recording turned out to be.
 ///

@@ -23,25 +23,30 @@ enum Composer {
         let arabic: String
     }
 
+    /// Non-personified on purpose. The previous bank said things like "I am
+    /// proud of you. I always was." — which is the app asserting what a dead
+    /// person felt. These lines steady the listener without claiming anyone's
+    /// feelings, wishes, presence, or approval. They are attributed to whoever
+    /// chose them, never to the person whose voice reads them.
     static let affirmations: [Affirmation] = [
-        .init(id: "time",
-              english: "Take your time. You don't have to figure everything out today.",
-              arabic: "خذي وقتك. ما لازم تفهمين كل شي اليوم."),
-        .init(id: "proud",
-              english: "I am proud of you. I always was.",
-              arabic: "أنا فخورة فيك. وكنت دايماً فخورة فيك."),
-        .init(id: "rest",
-              english: "Rest, my dear. The work will still be there tomorrow.",
-              arabic: "ارتاحي يا عمري. الشغل باقي لين باچر."),
-        .init(id: "enough",
-              english: "You have done enough today. Come and sit with me.",
-              arabic: "كفايه عليك اليوم. تعالي اقعدي عندي."),
-        .init(id: "home",
-              english: "Wherever you go, you carry this house with you.",
-              arabic: "وين ما تروحين، هالبيت معك."),
-        .init(id: "afraid",
-              english: "It is alright to be afraid. Go slowly, and keep going.",
-              arabic: "ما عليه إذا خفتِ. امشي على مهلك، بس لا توقفين.")
+        .init(id: "words",
+              english: "You do not have to put everything into words.",
+              arabic: "ليس عليك أن تعبّر عن كل شيء بالكلمات."),
+        .init(id: "quiet",
+              english: "One quiet moment is enough for now.",
+              arabic: "تكفي الآن لحظة هدوء واحدة."),
+        .init(id: "pace",
+              english: "There is no right pace for grief.",
+              arabic: "لا وتيرة واحدة صحيحة للحزن."),
+        .init(id: "pause",
+              english: "You can pause. Nothing needs to be decided now.",
+              arabic: "يمكنك التمهّل. لا يلزم أن تحسم شيئًا الآن."),
+        .init(id: "small",
+              english: "Let today be as small as it needs to be.",
+              arabic: "اكتفِ اليوم بما تستطيع."),
+        .init(id: "breath",
+              english: "If it helps, take one slow breath.",
+              arabic: "إن كان ذلك يساعدك، خذ نفسًا بطيئًا.")
     ]
 
     /// Turns a free-text wish ("I'm nervous about my exam") into words to say.
@@ -74,7 +79,7 @@ enum Composer {
         // with "that is what your family wrote down" would be a false claim, and
         // the ordering meant the newest memories were the ones dropped.
         let terminators: Set<Character> = [".", "!", "?", "؟", "…", ":", "؛"]
-        var out = "Let me tell you something we remember.\n\n"
+        var out = "These are words your family wrote down.\n\n"
         for line in lines {
             let sentence = terminators.contains(line.last ?? " ") ? line : line + "."
             out += sentence + "\n"
@@ -97,25 +102,25 @@ enum Composer {
     /// button.
     static let bedtimeStories: [Story] = [
         .init(
-            id: "lamp",
-            title: "The lamp that waited",
-            titleArabic: "المصباح الذي انتظر",
-            text: "There was a small lamp in the hallway that never went out. It was not a brave lamp, and it was not a bright one. It simply stayed on, so that whoever came home late would not have to find the door in the dark. Sleep now. The lamp is still on.",
-            textArabic: "كان في الممر مصباح صغير لا ينطفئ. ما كان مصباحاً شجاعاً، ولا كان ساطعاً. كان فقط يبقى مضيئاً، حتى لا يبحث من يتأخر في العودة عن الباب في العتمة. نامي الآن. المصباح ما زال مضيئاً."
+            id: "moon",
+            title: "The moon\u{2019}s little garden",
+            titleArabic: "حديقة القمر الصغيرة",
+            text: "High above the rooftops, the moon kept a small garden. Nothing grew there but quiet, and the quiet grew very well. Every night the moon watered it, and every night a little of it drifted down to the sleeping town, settling on windowsills and on the backs of cats and on the eyelids of children who were not quite asleep. If you are still awake, that is only because your share is still on its way. It is coming. It always comes.",
+            textArabic: "فوق سطوح البيوت، كان للقمر حديقة صغيرة. لم يكن ينبت فيها سوى الهدوء، وكان الهدوء ينمو فيها نموًا جميلًا. في كل ليلة يسقيها القمر، وفي كل ليلة ينزل شيء منها إلى البلدة النائمة، فيستقرّ على حوافّ النوافذ، وعلى ظهور القطط، وعلى جفون الأطفال الذين لم يناموا بعد. وإن كنت ما زلت مستيقظًا، فذلك لأن نصيبك في الطريق. سيصل. إنه يصل دائمًا."
         ),
         .init(
-            id: "palm",
-            title: "The date palm",
-            titleArabic: "النخلة",
-            text: "A girl once planted a date stone and watched it every morning for a week. Nothing happened, so she stopped watching. Years later she came back and stood in its shade. Some things grow whether or not anyone is looking. Sleep now, and let them grow.",
-            textArabic: "زرعت بنتٌ نواة تمرة، وصارت تراقبها كل صباح لمدة أسبوع. ما صار شي، فتركت المراقبة. وبعد سنين رجعت ووقفت في ظلها. بعض الأشياء تكبر سواء نظرنا إليها أو ما نظرنا. نامي الآن، وخليها تكبر."
+            id: "lantern",
+            title: "The lantern by the sea",
+            titleArabic: "الفانوس عند البحر",
+            text: "There was a lantern at the end of a stone pier who believed her light was too small to matter. The sea was so wide, and she was only one small flame. But every night the fishing boats turned toward her, and every night they came home. She never learned how far her light reached. That is the way with small lights. They do not get to see the whole distance they travel.",
+            textArabic: "كان عند طرف رصيف حجري فانوسٌ يظنّ أن ضوءه أصغر من أن يعني شيئًا. فالبحر واسع، وهو شعلة صغيرة واحدة. لكن قوارب الصيد كانت في كل ليلة تلتفت إليه، وفي كل ليلة تعود إلى بيتها. ولم يعرف الفانوس قط إلى أي مدى يصل ضوءه. هكذا هي الأضواء الصغيرة: لا يُتاح لها أن ترى المسافة التي تقطعها كاملة."
         ),
         .init(
-            id: "sea",
-            title: "The sea at night",
-            titleArabic: "البحر في الليل",
-            text: "The fishermen used to say the sea is loudest just before it turns calm. When you hear it roaring, that is not the storm arriving. That is the storm leaving. Close your eyes. It is already leaving.",
-            textArabic: "كان الصيادون يقولون إن البحر يعلو صوته قبل أن يهدأ مباشرة. فإذا سمعتِه يهدر، فليست العاصفة قادمة — العاصفة راحلة. أغمضي عينيك. هي راحلة من زمان."
+            id: "olive",
+            title: "The sleepy olive tree",
+            titleArabic: "شجرة الزيتون النعسانة",
+            text: "An old olive tree on the hill had been standing for four hundred years and had decided, that evening, to have a rest. The wind came to argue with her, as the wind does. She did not argue back. She simply held still, and held her leaves, and held the small brown bird that had chosen her for the night. In the morning the wind had gone somewhere else, and the bird was still there, and so was she.",
+            textArabic: "على التلّة شجرة زيتون عتيقة، واقفة منذ أربعمئة عام، قرّرت في ذلك المساء أن تستريح. جاءت الريح لتجادلها، كعادة الريح. فلم تجادلها الشجرة. اكتفت بأن تثبت، وأن تمسك أوراقها، وأن تحمي ذلك الطائر البنيّ الصغير الذي اختارها لليلته. وفي الصباح كانت الريح قد ذهبت إلى مكان آخر، وكان الطائر ما زال هناك، وكانت هي كذلك."
         )
     ]
 }

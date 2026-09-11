@@ -211,29 +211,29 @@ struct CreateView: View {
         DisclosureGroup(isExpanded: $showingTuning) {
             VStack(alignment: .leading, spacing: Theme.Space.s) {
                 HStack(spacing: Theme.Space.xs) {
-                    tuningPreset("Natural", .natural)
-                    tuningPreset("Steady", .steady)
-                    tuningPreset("Warm", .warm)
+                    tuningPreset(L("Gentle"), .gentle)
+                    tuningPreset(L("Natural"), .natural)
+                    tuningPreset(L("Storytelling"), .storytelling)
                 }
 
-                slider("Steadiness",
-                       help: "Higher is more even and predictable. Lower carries more feeling, and occasionally a strange reading.",
+                slider(L("Steadiness"),
+                       help: L("More expressive") + " \u{2194} " + L("More steady"),
                        value: $draftTuning.stability)
 
-                slider("Likeness",
-                       help: "How hard to push towards the original recording. Very high also reproduces any noise in it.",
+                slider(L("Likeness to the original"),
+                       help: L("Source quality and language both affect the result. A high likeness value is not a guarantee."),
                        value: $draftTuning.similarity)
 
                 paceSlider
 
-                Text("Changes apply to the next thing you generate.")
+                Text(L("Results may differ from the original recording."))
                     .font(Theme.Font.caption)
                     .foregroundStyle(Theme.Palette.inkSoft)
             }
             .padding(.top, Theme.Space.xs)
         } label: {
             HStack {
-                Text("Voice character")
+                Text(L("Voice delivery"))
                     .font(Theme.Font.caption)
                     .foregroundStyle(Theme.Palette.inkSoft)
                 if let name = draftTuning.presetName {
@@ -278,6 +278,8 @@ struct CreateView: View {
                 if !editing { commitTuning() }      // save on release, not per tick
             }
             .tint(Theme.Palette.bronze)
+            .accessibilityLabel(title)
+            .accessibilityValue("\(Int((value.wrappedValue * 100).rounded())) percent")
             Text(help)
                 .font(.system(size: 11))
                 .foregroundStyle(Theme.Palette.inkSoft)
@@ -291,7 +293,7 @@ struct CreateView: View {
     private var paceSlider: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
-                Text("Pace")
+                Text(L("Pace"))
                     .font(Theme.Font.caption)
                     .foregroundStyle(Theme.Palette.ink)
                 Spacer()
@@ -303,7 +305,9 @@ struct CreateView: View {
                 if !editing { commitTuning() }      // save on release, not per tick
             }
             .tint(Theme.Palette.bronze)
-            Text("Lower is slower and easier to follow. Much below 0.80 the voice starts to drag.")
+            .accessibilityLabel(L("Pace"))
+            .accessibilityValue(String(format: "%.2f", draftTuning.speed))
+            Text(L("Slower") + " \u{2194} " + L("Faster"))
                 .font(.system(size: 11))
                 .foregroundStyle(Theme.Palette.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
@@ -331,7 +335,7 @@ struct CreateView: View {
                                   TextDirection.isArabic(text) ? .rightToLeft : .leftToRight)
                     .overlay(alignment: .topLeading) {
                         if trimmed.isEmpty {
-                            Text("Type the words you want to hear…")
+                            Text(L("Write the words here…"))
                                 .font(Theme.Font.spoken)
                                 .foregroundStyle(Theme.Palette.inkSoft.opacity(0.6))
                                 .padding(.top, 8)
@@ -342,7 +346,7 @@ struct CreateView: View {
                 HStack {
                     DictateButton(text: $text)
                     Spacer()
-                    Text("\(trimmed.count) / \(intent.characterLimit)")
+                    Text(Counts.characters(trimmed.count, limit: intent.characterLimit))
                         .font(Theme.Font.caption)
                         .foregroundStyle(trimmed.count > intent.characterLimit
                                          ? Theme.Palette.danger : Theme.Palette.inkSoft)
@@ -353,14 +357,14 @@ struct CreateView: View {
 
     private var comfortPicker: some View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
-            Text("Tap a line to load it, or write your own below")
+            Text(L("Ready-made lines"))
                 .font(Theme.Font.label)
                 .foregroundStyle(Theme.Palette.ink)
 
             if let person {
                 let mine = library.affirmations(for: person)
                 if !mine.isEmpty {
-                    Text("Yours")
+                    Text(L("Your lines"))
                         .font(Theme.Font.caption)
                         .foregroundStyle(Theme.Palette.bronze)
                     ForEach(mine) { line in
@@ -384,11 +388,11 @@ struct CreateView: View {
                                         .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
-                                .accessibilityLabel("Remove this line")
+                                .accessibilityLabel(L("Remove line"))
                             }
                         }
                     }
-                    Text("Ready-made")
+                    Text(L("Ready-made lines"))
                         .font(Theme.Font.caption)
                         .foregroundStyle(Theme.Palette.inkSoft)
                 }
@@ -430,7 +434,7 @@ struct CreateView: View {
 
     private var fictionPicker: some View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
-            Text("Tap a story to load it, in either language")
+            Text(L("Choose a story"))
                 .font(Theme.Font.label)
                 .foregroundStyle(Theme.Palette.ink)
             ForEach(Composer.bedtimeStories) { story in
@@ -443,7 +447,7 @@ struct CreateView: View {
                                         .font(Theme.Font.label)
                                         .foregroundStyle(Theme.Palette.ink)
                                     Spacer(minLength: 0)
-                                    Text("English")
+                                    Text(L("Load in English"))
                                         .font(.system(size: 11, weight: .semibold))
                                         .foregroundStyle(Theme.Palette.forest)
                                 }
@@ -463,7 +467,7 @@ struct CreateView: View {
                         Button { text = story.textArabic } label: {
                             VStack(alignment: .trailing, spacing: 3) {
                                 HStack {
-                                    Text("العربية")
+                                    Text(L("Load in Arabic"))
                                         .font(.system(size: 11, weight: .semibold))
                                         .foregroundStyle(Theme.Palette.bronze)
                                     Spacer(minLength: 0)
@@ -548,12 +552,10 @@ struct CreateView: View {
     /// are, not which screen produced them.
     private func provenanceForCurrentText() -> String? {
         switch intent {
-        case .saySomething, .comfort:
-            return nil
         case .storyFiction:
-            return "An invented story. Not a real memory."
-        case .storyFromMemories, .readBook:
-            // Words a person typed. Nothing to disclaim.
+            return L("These are invented stories, not memories or stories told by this person.")
+        case .saySomething, .comfort, .storyFromMemories, .readBook:
+            // Words a person typed. The content badge already says whose.
             return nil
         }
     }
@@ -588,6 +590,7 @@ struct CreateView: View {
                                            modelId: model,
                                            provenance: provenance,
                                            intent: intent,
+                                           content: intent.defaultContentProvenance,
                                            isSaved: false,
                                            fileExtension: Self.audioExtension(for: data))
             isGenerating = false

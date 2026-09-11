@@ -56,6 +56,10 @@ enum AppConfig {
         return ElevenLabsClient()
     }
 
+    /// Named in the consent card. A disclosure that says "a third-party voice
+    /// service" without saying which one is not a disclosure.
+    static var providerName: String { isUsingMock ? "Offline test mode" : "ElevenLabs" }
+
     /// Arabic-capable and stable on long-form.
     static let defaultModelId = "eleven_multilingual_v2"
 

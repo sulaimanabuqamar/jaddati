@@ -5,7 +5,7 @@ import SwiftUI
 /// already there.
 struct DictateButton: View {
     @Binding var text: String
-    var prompt: String = "Speak instead"
+    var prompt: String = L("Speak instead")
 
     @StateObject private var recorder = VoiceRecorder()
     @State private var isTranscribing = false
@@ -19,7 +19,7 @@ struct DictateButton: View {
                 Button {
                     Task { await beginRecording() }
                 } label: {
-                    Label(isTranscribing ? "Writing it down\u{2026}" : prompt,
+                    Label(isTranscribing ? L("Writing it down…") : prompt,
                           systemImage: "mic.fill")
                         .font(Theme.Font.caption)
                 }
@@ -59,7 +59,7 @@ struct DictateButton: View {
                 .font(Theme.Font.caption.monospacedDigit())
                 .foregroundStyle(Theme.Palette.inkSoft)
 
-            Button("Stop") { Task { await finishRecording() } }
+            Button(L("Pause")) { Task { await finishRecording() } }
                 .buttonStyle(QuietButtonStyle())
         }
     }
