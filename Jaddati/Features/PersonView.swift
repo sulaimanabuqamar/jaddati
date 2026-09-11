@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import ImageIO
 
 /// One loved one. The voice and the ways to hear it are the whole screen.
 struct PersonView: View {
@@ -13,19 +14,26 @@ struct PersonView: View {
     /// publishes nothing, so without this the voice gating would show stale.
     @AppStorage(AppConfig.mockDefaultsKey) private var useMockVoices = false
     #endif
+    @Environment(\.dismiss) private var dismiss
     @State private var confirmingDelete = false
     @State private var photoPick: PhotosPickerItem?
+    @State private var checkingAvailability = false
+    @State private var availabilityNote: String?
 
     private var person: Person? { library.person(withId: personId) }
 
     var body: some View {
         VStack(spacing: 0) {
-            AppBar(title: L("A family archive"))
+            AppBar(title: person?.name ?? L("Jaddati"))
 
             if let person {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         profile(person)
+
+                        if !AppConfig.isConfigured {
+                            notConnectedNote.padding(.top, 21)
+                        }
 
                         if person.hasVoice {
                             intents(person)
@@ -87,7 +95,7 @@ struct PersonView: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(photo == nil ? L("Add a person") : L("Change recording"))
+                .accessibilityLabel(photo == nil ? L("Add photo") : L("Change photo"))
 
                 VStack(alignment: .leading, spacing: 5) {
                     BidiText(value: person.name,
@@ -148,19 +156,27 @@ struct PersonView: View {
     }
 
 
-    /// A library photo is many times larger than a 78-point circle needs, and
-    /// `PersonAvatar` re-reads the file from disk on every render. Shrink once,
-    /// on import, so that read stays cheap.
+    /// A library photo is many times larger than an 88-point arch needs, so it
+    /// is shrunk once on import and the small version is what gets stored.
+    ///
+    /// Deliberately ImageIO rather than `UIImage(data:)` + redraw. A photo off
+    /// the camera roll is around 12 megapixels, which decodes to roughly 48MB
+    /// of bitmap, and drawing it into a smaller context holds a second buffer
+    /// at the same time. That spike — on one tap, on top of everything else the
+    /// app was holding — is what the OS killed the app for. This path never
+    /// materialises the full-size image: the decoder is told the size we want
+    /// and produces only that.
     private static func downscale(_ data: Data, to maxSide: CGFloat = 600) -> Data? {
-        guard let image = UIImage(data: data) else { return nil }
-        let longest = max(image.size.width, image.size.height)
-        guard longest > maxSide else { return image.jpegData(compressionQuality: 0.85) }
-        let scale = maxSide / longest
-        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-        let shrunk = UIGraphicsImageRenderer(size: size).image { _ in
-            image.draw(in: CGRect(origin: .zero, size: size))
-        }
-        return shrunk.jpegData(compressionQuality: 0.85)
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,   // honour EXIF rotation
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: Int(maxSide)
+        ]
+        guard let thumb = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+        else { return nil }
+        return UIImage(cgImage: thumb).jpegData(compressionQuality: 0.85)
     }
 
     /// This voice was minted by the offline test mode and does not exist at the
@@ -170,10 +186,10 @@ struct PersonView: View {
     private var placeholderVoice: some View {
         Panel {
             VStack(alignment: .leading, spacing: Theme.Space.s) {
-                Text("This voice was made in test mode")
+                Text(L("Test voice only"))
                     .font(Theme.Font.heading)
                     .foregroundStyle(Theme.Palette.ink)
-                Text("It only works while offline test mode is on. To speak for real, add the recording again now that the voice service is connected — it takes a few seconds.")
+                Text(L("Created in offline test mode. This is not a usable voice."))
                     .font(Theme.Font.body)
                     .foregroundStyle(Theme.Palette.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
@@ -196,6 +212,64 @@ struct PersonView: View {
                     .font(Theme.Font.body)
                     .foregroundStyle(Theme.Palette.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
+
+                Button(checkingAvailability ? L("Checking…") : L("Check availability")) {
+                    Task { await checkAvailability() }
+                }
+                .buttonStyle(PrimaryButtonStyle(enabled: canCheckAvailability))
+                .disabled(!canCheckAvailability)
+                .padding(.top, 2)
+
+                if let availabilityNote {
+                    Text(availabilityNote)
+                        .font(Theme.Font.caption)
+                        .foregroundStyle(Theme.Palette.danger)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Text(L("Checking asks the service to say one short word."))
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.Palette.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var canCheckAvailability: Bool {
+        !checkingAvailability && AppConfig.isConfigured && person?.voiceId != nil
+    }
+
+    /// There is no "is it ready" endpoint. The only honest test is to use the
+    /// voice: if the service speaks, the voice is available, and the flag that
+    /// was holding the whole screen closed can come off.
+    private func checkAvailability() async {
+        guard let person, let voiceId = person.voiceId, canCheckAvailability else { return }
+        checkingAvailability = true
+        availabilityNote = nil
+        do {
+            _ = try await AppConfig.voiceService().synthesize(
+                text: L("Hello"),
+                voiceId: voiceId,
+                modelId: AppConfig.defaultModelId,
+                tuning: person.voiceTuning)
+            var updated = person
+            updated.voiceRequiresVerification = false
+            library.update(updated)
+            checkingAvailability = false
+        } catch {
+            checkingAvailability = false
+            availabilityNote = (error as? VoiceServiceError)?.errorDescription
+                ?? L("The service has not made this voice available yet.")
+        }
+    }
+
+    private var notConnectedNote: some View {
+        Panel {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(L("Voice service not connected"))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Theme.Palette.ink)
+                SubText(text: L("Connect a voice service to create a voice or new audio. Original recordings remain available."))
             }
         }
     }
@@ -272,8 +346,7 @@ struct PersonView: View {
     /// they are kept automatically so they are never paid for twice, and
     /// counting them would drown the things the user actually chose to keep.
     @ViewBuilder private func savedLink(_ person: Person) -> some View {
-        let memories = library.assets(for: person, source: .generated)
-            .filter { $0.isSaved && $0.intentRaw != Intent.readBook.rawValue }
+        let memories = library.keptClips(for: person)
         if !memories.isEmpty {
             NavigationLink {
                 MemoriesView(personId: person.id, filter: .recreated)
@@ -308,7 +381,7 @@ struct PersonView: View {
             Button(role: .destructive) {
                 confirmingDelete = true
             } label: {
-                Text(L("Manage voice"))
+                Text(L("Remove this person"))
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Theme.Palette.inkSoft)
                     .underline()
@@ -319,10 +392,14 @@ struct PersonView: View {
                                 titleVisibility: .visible) {
                 Button(L("Delete permanently"), role: .destructive) {
                     library.delete(person)
+                    // Without this the screen stays up with `person` gone,
+                    // showing an empty state under an app bar, and the only
+                    // way out is an edge swipe.
+                    dismiss()
                 }
                 Button(L("Cancel"), role: .cancel) { }
             } message: {
-                Text(L("This removes their profile, original recordings, and saved clips from Jaddati.")
+                Text(L("This removes their profile, original recordings, saved clips and imported books from Jaddati.")
                      + "\n\n"
                      + L("Deleting from Jaddati does not confirm deletion by the voice service."))
             }

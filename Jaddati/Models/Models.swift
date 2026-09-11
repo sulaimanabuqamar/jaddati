@@ -193,6 +193,40 @@ struct AudioAsset: Identifiable, Codable, Equatable, Hashable {
     var pageIndex: Int? = nil
 
     var isGenerated: Bool { source == .generated }
+
+    /// Decoded field by field, like `VoiceTuning`, and for the same reason.
+    /// `isSaved` was added after libraries already existed on disk, and Swift's
+    /// synthesised decoder throws on an absent key rather than using the
+    /// property default. That throw propagates to the whole index, which the
+    /// loader then quarantines — every person, clip and book gone at launch
+    /// while the audio sits on disk with nothing pointing at it.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id              = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        personId        = try c.decode(UUID.self, forKey: .personId)
+        source          = try c.decodeIfPresent(AudioSource.self, forKey: .source) ?? .generated
+        filename        = try c.decode(String.self, forKey: .filename)
+        text            = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
+        createdAt       = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        durationSeconds = try c.decodeIfPresent(Double.self, forKey: .durationSeconds) ?? 0
+        modelId         = try c.decodeIfPresent(String.self, forKey: .modelId)
+        isSaved         = try c.decodeIfPresent(Bool.self, forKey: .isSaved) ?? true
+        provenance      = try c.decodeIfPresent(String.self, forKey: .provenance)
+        intentRaw       = try c.decodeIfPresent(String.self, forKey: .intentRaw)
+        contentKind     = try c.decodeIfPresent(String.self, forKey: .contentKind)
+        bookId          = try c.decodeIfPresent(UUID.self, forKey: .bookId)
+        pageIndex       = try c.decodeIfPresent(Int.self, forKey: .pageIndex)
+    }
+
+    init(personId: UUID, source: AudioSource, filename: String, text: String = "",
+         durationSeconds: Double = 0, modelId: String? = nil) {
+        self.personId = personId
+        self.source = source
+        self.filename = filename
+        self.text = text
+        self.durationSeconds = durationSeconds
+        self.modelId = modelId
+    }
 }
 
 /// A text the user brought in and wants read aloud, already split into pages.
@@ -212,6 +246,24 @@ struct Book: Identifiable, Codable, Equatable, Hashable {
 
     func page(_ index: Int) -> String? {
         pages.indices.contains(index) ? pages[index] : nil
+    }
+
+    /// Same tolerance as AudioAsset and VoiceTuning: an absent key must not
+    /// take the whole library down with it.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id          = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        personId    = try c.decode(UUID.self, forKey: .personId)
+        title       = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
+        pages       = try c.decodeIfPresent([String].self, forKey: .pages) ?? []
+        currentPage = try c.decodeIfPresent(Int.self, forKey: .currentPage) ?? 0
+        addedAt     = try c.decodeIfPresent(Date.self, forKey: .addedAt) ?? Date()
+    }
+
+    init(personId: UUID, title: String, pages: [String]) {
+        self.personId = personId
+        self.title = title
+        self.pages = pages
     }
 }
 
@@ -269,9 +321,6 @@ enum ContentProvenance: String, Codable, CaseIterable {
         case .answerWhileReading: return "questionmark.bubble"
         }
     }
-
-    /// Fiction is the one that must never be quietly dropped.
-    var mustAlwaysShow: Bool { self == .inventedStory }
 }
 
 enum Intent: String, Codable, CaseIterable {
@@ -367,9 +416,9 @@ enum Intent: String, Codable, CaseIterable {
     var provenanceNote: String? {
         switch self {
         case .storyFiction:
-            return "An invented story. Not a real memory."
+            return L("An invented story. Not a real memory.")
         case .readBook:
-            return "Read from a file you provided."
+            return L("Read from a file you provided.")
         default:
             // Everything else is words a person typed. Nothing to disclaim.
             return nil

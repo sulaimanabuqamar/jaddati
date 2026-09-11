@@ -137,7 +137,7 @@ final class AudioPlayer: NSObject, ObservableObject {
 
     private func startTicking() {
         stopTicking()
-        let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
             guard let self, let player = self.player else { return }
             self.currentTime = player.currentTime
         }

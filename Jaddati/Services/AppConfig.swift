@@ -70,7 +70,7 @@ enum AppConfig {
     /// real risk is wasted credits, not a surprise bill.
     static let maxCharactersPerGeneration = 2_500
 
-    static let requestTimeout: TimeInterval = 45
+    static let requestTimeout: TimeInterval = 120
 
     // MARK: Questions during a story
 

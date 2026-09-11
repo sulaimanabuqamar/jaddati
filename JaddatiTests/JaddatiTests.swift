@@ -117,7 +117,7 @@ final class JaddatiTests: XCTestCase {
         library.delete(person)
 
         XCTAssertTrue(library.people.isEmpty)
-        XCTAssertTrue(library.notes(for: person).isEmpty)
+        XCTAssertTrue(library.notes.filter { $0.personId == person.id }.isEmpty)
         XCTAssertFalse(FileManager.default.fileExists(atPath: library.url(for: original).path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: library.url(for: generated).path))
     }

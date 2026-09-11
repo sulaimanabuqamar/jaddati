@@ -5,6 +5,9 @@ import UniformTypeIdentifiers
 /// The shelf. Books the user brought in, and the way to bring in another.
 struct BooksView: View {
     let personId: UUID
+    /// True when this is the Books tab itself rather than a push from a person,
+    /// so the tab root does not draw a chevron that goes nowhere.
+    var isTabRoot: Bool = false
 
     @EnvironmentObject private var library: Library
     @EnvironmentObject private var player: AudioPlayer
@@ -17,18 +20,20 @@ struct BooksView: View {
     private var person: Person? { library.person(withId: personId) }
 
     var body: some View {
-        ZStack {
-            Theme.Palette.paper.ignoresSafeArea()
+        VStack(spacing: 0) {
+            AppBar(title: L("Books"), showsBack: !isTabRoot)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Space.m) {
+                    if let person {
+                        Breadcrumb(name: person.name,
+                                   relationship: person.relationship,
+                                   photo: library.photoURL(for: person))
+                    }
+
                     VStack(alignment: .leading, spacing: 4) {
                         Headline(text: L("A shelf of\nfamiliar pages."))
-                            .font(Theme.Font.title)
-                            .foregroundStyle(Theme.Palette.ink)
                         SubText(text: L("Bring a text. Hear it in a recreated voice, one page at a time."))
-                            .font(Theme.Font.caption)
-                            .foregroundStyle(Theme.Palette.inkSoft)
                     }
 
                     if let errorText {
@@ -37,7 +42,7 @@ struct BooksView: View {
 
                     shelf
 
-                    Button(isImporting ? "Reading the file…" : "Import a book") {
+                    Button(isImporting ? L("Importing…") : L("Import book")) {
                         showingPicker = true
                     }
                     .buttonStyle(PrimaryButtonStyle(enabled: !isImporting))
@@ -52,31 +57,33 @@ struct BooksView: View {
                         }
                     }
 
-                    Text(L("Only import text you have the right to have read aloud.") + " " + L("We could not read this file. Try another supported text file."))
+                    Text(L("Only import text you have the right to have read aloud."))
                         .font(Theme.Font.caption)
                         .foregroundStyle(Theme.Palette.inkSoft)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(Theme.Space.m)
+                .padding(.horizontal, Theme.Metric.screenPadding)
+                .padding(.top, Theme.Space.s)
                 .padding(.bottom, Theme.Space.xl)
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
+        .background(Theme.Palette.paper)
+        .navigationBarHidden(true)
         .navigationDestination(item: $openedBookId) { id in
             BookReaderView(bookId: id, personId: personId)
         }
-        .confirmationDialog("Delete this book?",
+        .confirmationDialog(L("Delete this book?"),
                             isPresented: Binding(get: { pendingDeletion != nil },
                                                  set: { if !$0 { pendingDeletion = nil } }),
                             titleVisibility: .visible) {
-            Button("Delete book and its audio", role: .destructive) {
+            Button(L("Delete book and its audio"), role: .destructive) {
                 if let book = pendingDeletion {
                     player.stop()               // it may be reading this book
                     library.delete(book)
                 }
                 pendingDeletion = nil
             }
-            Button("Cancel", role: .cancel) { pendingDeletion = nil }
+            Button(L("Cancel"), role: .cancel) { pendingDeletion = nil }
         } message: {
             Text(L("This removes the imported text and its generated page audio."))
         }
@@ -98,7 +105,9 @@ struct BooksView: View {
                           title: L("No books yet"),
                           message: L("Your first book belongs here."))
             } else {
-                ForEach(Array(books.enumerated()), id: \.element) { index, book in
+                // Keyed on the id, not the whole value: Book carries currentPage,
+                // so turning a page changed its hash and tore down the row.
+                ForEach(Array(books.enumerated()), id: \.element.id) { index, book in
                     HStack(alignment: .top, spacing: 16) {
                         // A book, drawn as a book. The cover alternates so a
                         // shelf of two reads as a shelf, not a list.
@@ -120,9 +129,14 @@ struct BooksView: View {
 
                             // An example figure, marked as one. Only the page
                             // you ask for is ever generated.
-                            Text(L("Whole text estimate") + ": "
+                            // The remaining cost, not the whole book: pages
+                            // already read are paid for, and showing the full
+                            // figure under "3 of 12 read" says the wrong thing.
+                            Text(L("Estimated remaining cost") + ": "
                                  + String(format: "$%.2f USD",
-                                          max(Double(book.totalCharacters) * 0.00011, 0.01)))
+                                          max(Double(book.totalCharacters)
+                                              * Double(max(book.pageCount - library.pagesRead(of: book), 0))
+                                              / Double(max(book.pageCount, 1)) * 0.00011, 0.0)))
                                 .font(.system(size: 12))
                                 .foregroundStyle(Theme.Palette.inkSoft)
 
@@ -160,7 +174,7 @@ struct BooksView: View {
         switch result {
         case .failure(let error):
             if (error as? CocoaError)?.code == .userCancelled { return }
-            errorText = "That file could not be opened."
+            errorText = L("That file could not be opened.")
         case .success(let urls):
             guard let url = urls.first, let person else { return }
 
@@ -175,7 +189,7 @@ struct BooksView: View {
                 try FileManager.default.copyItem(at: url, to: temp)
             } catch {
                 if scoped { url.stopAccessingSecurityScopedResource() }
-                errorText = "That file could not be read from its location."
+                errorText = L("That file could not be read from its location.")
                 return
             }
             if scoped { url.stopAccessingSecurityScopedResource() }
@@ -196,7 +210,7 @@ struct BooksView: View {
                         return ImportOutcome(book: book, message: nil)
                     } catch {
                         let message = (error as? BookImporter.ImportError)?.errorDescription
-                            ?? "That file could not be turned into pages."
+                            ?? L("That file could not be turned into pages.")
                         return ImportOutcome(book: nil, message: message)
                     }
                 }.value
@@ -225,12 +239,19 @@ struct BookReaderView: View {
     @State private var pageIndex: Int = 0
     @State private var isGenerating = false
     @State private var errorText: String?
+    /// False when the page WAS read and only the write to disk failed. Reading
+    /// it again would pay the provider a second time for audio we already have,
+    /// so that message arrives without a Try again button.
+    @State private var errorAllowsRetry = true
 
     @State private var question = ""
     @State private var isAnswering = false
     @State private var answer: String?
     @State private var answerAsset: AudioAsset?
     @State private var questionError: String?
+    /// As with the page above: an answer that was spoken and then failed to
+    /// save must not offer a button that pays for it again.
+    @State private var questionAllowsRetry = true
     /// How far into the page the story had got when it was interrupted, as a
     /// fraction. Playing the answer replaces the audio player, so the position
     /// is gone by the time the story is asked to carry on.
@@ -248,8 +269,8 @@ struct BookReaderView: View {
     }
 
     var body: some View {
-        ZStack {
-            Theme.Palette.paper.ignoresSafeArea()
+        VStack(spacing: 0) {
+            AppBar(title: book?.title ?? L("Untitled book"))
 
             if let book {
                 ScrollView {
@@ -257,9 +278,13 @@ struct BookReaderView: View {
                         header(book)
                         pagePanel
                         if let errorText {
-                            ErrorNote(message: errorText) {
-                                self.errorText = nil
-                                Task { await readPage() }
+                            if errorAllowsRetry {
+                                ErrorNote(message: errorText) {
+                                    self.errorText = nil
+                                    Task { await readPage() }
+                                }
+                            } else {
+                                ErrorNote(message: errorText)
                             }
                         }
                         controls(book)
@@ -270,12 +295,13 @@ struct BookReaderView: View {
                 }
             } else {
                 EmptyHint(icon: "book.closed",
-                          title: "Removed",
-                          message: "This book is no longer on the phone.")
+                          title: L("Book removed"),
+                          message: L("This book is no longer on the phone."))
+                Spacer(minLength: 0)
             }
         }
-        .navigationTitle(book?.title ?? "Book")
-        .navigationBarTitleDisplayMode(.inline)
+        .background(Theme.Palette.paper)
+        .navigationBarHidden(true)
         .onAppear {
             // Clamped at both ends: a book with no pages would otherwise land
             // on index -1.
@@ -327,12 +353,12 @@ struct BookReaderView: View {
 
     @ViewBuilder private func controls(_ book: Book) -> some View {
         if let asset = alreadyRead, library.fileExists(for: asset) {
-            Button(player.isPlaying(assetId: asset.id) ? "Pause" : "Play this page") {
+            Button(player.isPlaying(assetId: asset.id) ? L("Pause") : L("Replay this page")) {
                 player.play(url: library.url(for: asset), assetId: asset.id)
             }
             .buttonStyle(PrimaryButtonStyle())
         } else {
-            Button(isGenerating ? "Reading…" : "Read this page") {
+            Button(isGenerating ? L("Creating audio…") : L("Read this page")) {
                 Task { await readPage() }
             }
             .buttonStyle(PrimaryButtonStyle(enabled: canRead))
@@ -342,10 +368,10 @@ struct BookReaderView: View {
                 // Name the thing that is actually missing. Inferring it from
                 // hasVoice alone reported a key problem for an empty page.
                 Text(!AppConfig.isConfigured
-                     ? "Voices aren't set up on this build."
+                     ? L("Voice service is not connected.")
                      : (person?.hasVoice == true
-                        ? "There is nothing on this page to read."
-                        : "This person has no usable voice yet."))
+                        ? L("There is nothing on this page to read.")
+                        : L("Add a voice before creating audio.")))
                     .font(Theme.Font.caption)
                     .foregroundStyle(Theme.Palette.inkSoft)
             }
@@ -397,9 +423,13 @@ struct BookReaderView: View {
                     if let answer { answerPanel(answer) }
 
                     if let questionError {
-                        ErrorNote(message: questionError) {
-                            self.questionError = nil
-                            Task { await ask() }
+                        if questionAllowsRetry {
+                            ErrorNote(message: questionError) {
+                                self.questionError = nil
+                                Task { await ask() }
+                            }
+                        } else {
+                            ErrorNote(message: questionError)
                         }
                     }
 
@@ -445,14 +475,15 @@ struct BookReaderView: View {
 
             HStack(spacing: Theme.Space.s) {
                 if let answerAsset, library.fileExists(for: answerAsset) {
-                    Button(player.isPlaying(assetId: answerAsset.id) ? "Pause" : "Hear it again") {
+                    Button(player.isPlaying(assetId: answerAsset.id) ? L("Pause") : L("Hear it again")) {
                         player.play(url: library.url(for: answerAsset), assetId: answerAsset.id)
                     }
                     .buttonStyle(QuietButtonStyle())
                 }
-                Button(L("Continue the story")) { continueStory() }
-                    .buttonStyle(QuietButtonStyle())
-                    .disabled(alreadyRead == nil)
+                if alreadyRead != nil {
+                    Button(L("Continue the story")) { continueStory() }
+                        .buttonStyle(QuietButtonStyle())
+                }
             }
         }
         .padding(.top, Theme.Space.xs)
@@ -502,6 +533,7 @@ struct BookReaderView: View {
         pauseForQuestion()
         isAnswering = true
         questionError = nil
+        questionAllowsRetry = true
         answer = nil
         answerAsset = nil
 
@@ -540,13 +572,15 @@ struct BookReaderView: View {
                 answerIds.append(asset.id)
                 player.play(url: library.url(for: asset), assetId: asset.id)
             } else {
-                questionError = "The answer was written but the audio could not be saved to this phone."
+                questionAllowsRetry = false
+                questionError = L("The answer was written but the audio could not be saved to this phone.")
             }
         } catch {
             isAnswering = false
+            questionAllowsRetry = true
             questionError = (error as? CompanionError)?.errorDescription
                 ?? (error as? VoiceServiceError)?.errorDescription
-                ?? "That question could not be answered. Try again."
+                ?? L("That question could not be answered. Try again.")
         }
     }
 
@@ -563,6 +597,7 @@ struct BookReaderView: View {
 
         isGenerating = true
         errorText = nil
+        errorAllowsRetry = true
         let words = pageText
         let index = pageIndex
 
@@ -591,12 +626,22 @@ struct BookReaderView: View {
                 library.pruneDuplicatePages(of: book.id, index: index, keeping: asset.id)
                 player.play(url: library.url(for: asset), assetId: asset.id)
             } else {
-                errorText = "The page was read but the audio could not be saved to this phone."
+                errorAllowsRetry = false
+                errorText = L("The page was read but the audio could not be saved to this phone.")
             }
         } catch {
             isGenerating = false
-            errorText = (error as? VoiceServiceError)?.errorDescription
-                ?? "That page could not be read. Try again."
+            let known = error as? VoiceServiceError
+            errorAllowsRetry = !(known == .unauthorised
+                                 || known == .outOfCredits
+                                 || known == .voiceLimitReached
+                                 || known == .notConfigured
+                                 // The request was abandoned client-side after
+                                 // 120s; the provider may well have finished it
+                                 // and billed for it. Retrying pays twice.
+                                 || known == .timedOut)
+            errorText = known?.errorDescription
+                ?? L("That page could not be read. Try again.")
         }
     }
 }

@@ -40,6 +40,11 @@ struct HomeView: View {
             .background(Theme.Palette.paper)
             .navigationDestination(for: Person.self) { person in
                 PersonView(personId: person.id)
+                    // Selecting on the tap gesture alone missed every other way
+                    // in — a pop back to this screen and forward again, or a
+                    // push that did not come from the card — and left Saved and
+                    // Books scoped to whoever was opened before.
+                    .onAppear { selectedPersonId = person.id }
             }
             .sheet(isPresented: $addingPerson) { AddPersonView() }
         }
@@ -133,11 +138,9 @@ struct HomeView: View {
                     PersonCard(person: person,
                                photo: library.photoURL(for: person),
                                originals: library.assets(for: person, source: .original).count,
-                               saved: library.assets(for: person, source: .generated)
-                                   .filter { $0.isSaved }.count)
+                               saved: library.keptClips(for: person).count)
                 }
                 .buttonStyle(.plain)
-                .simultaneousGesture(TapGesture().onEnded { selectedPersonId = person.id })
             }
 
             addButton.padding(.top, 4)

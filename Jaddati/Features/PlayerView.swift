@@ -16,6 +16,7 @@ struct PlayerView: View {
     @State private var kept: Bool
     @State private var scrubbing = false
     @State private var scrubValue: Double = 0
+    @State private var confirmingDiscard = false
 
     init(asset: AudioAsset) {
         self.asset = asset
@@ -90,17 +91,21 @@ struct PlayerView: View {
         .background(Theme.Palette.paper)
         .navigationBarHidden(true)
         .onAppear {
+            // The player is shared, so a complaint about the LAST clip was
+            // still on screen under this one.
+            if player.playingAssetId != asset.id { player.playbackError = nil }
             guard fileIsPresent else { return }
             player.ensurePlaying(url: library.url(for: asset), assetId: asset.id)
         }
         .onDisappear {
             player.stop()
-            // Generated audio arrives unkept. Leaving without keeping it means
-            // it goes, rather than silently accumulating invisible clips that
-            // still cost storage.
-            if asset.isGenerated && !kept {
-                library.delete(asset)
-            }
+            // Deliberately does NOT delete an unkept clip.
+            //
+            // Switching language rebuilds the whole tree, and tapping a tab
+            // tears down the navigation stack — both fire onDisappear. Deleting
+            // here meant that changing to Arabic while the player was open
+            // destroyed the clip that had just been generated and paid for.
+            // Unkept clips are swept at launch instead (see Library.init).
         }
     }
 
@@ -215,7 +220,7 @@ struct PlayerView: View {
 
     private var keepControls: some View {
         HStack(spacing: Theme.Space.s) {
-            Button(kept ? "Kept" : "Keep this one") {
+            Button(kept ? L("Clip saved") : L("Keep this clip")) {
                 guard !kept else { return }
                 var updated = asset
                 updated.isSaved = true
@@ -226,10 +231,7 @@ struct PlayerView: View {
             .disabled(kept)
 
             Button(role: .destructive) {
-                player.stop()
-                library.delete(asset)
-                kept = true          // already gone; don't delete twice on disappear
-                dismiss()
+                confirmingDiscard = true
             } label: {
                 Text(L("Discard"))
                     .font(Theme.Font.label)
@@ -241,6 +243,18 @@ struct PlayerView: View {
                     )
             }
             .buttonStyle(.plain)
+            .confirmationDialog(L("Discard this clip?"),
+                                isPresented: $confirmingDiscard,
+                                titleVisibility: .visible) {
+                Button(L("Discard"), role: .destructive) {
+                    player.stop()
+                    library.delete(asset)
+                    dismiss()
+                }
+                Button(L("Cancel"), role: .cancel) { }
+            } message: {
+                Text(L("The audio is deleted from this phone. Creating it again costs credits."))
+            }
         }
     }
 

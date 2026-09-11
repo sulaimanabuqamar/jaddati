@@ -11,6 +11,10 @@ struct CreateView: View {
     @State private var text: String = ""
     @State private var isGenerating = false
     @State private var errorText: String?
+    /// False when the audio WAS created and only the write to disk failed.
+    /// Retrying then pays the provider a second time for a clip we already
+    /// made, so that message arrives with no Try again button.
+    @State private var errorAllowsRetry = true
     /// Kept alongside the message because some failures have a fix the user can
     /// tap. A message telling someone to "add their voice again" on a screen
     /// with no way to do that is a dead end.
@@ -37,16 +41,7 @@ struct CreateView: View {
 
     /// The screen-level hint. On the retelling screen it must not promise the
     /// family's words when the family has not written any.
-    private var screenNote: String? {
-        switch intent {
-        case .storyFiction:
-            return "An invented story. Not a real memory."
-        case .readBook:
-            return "Read from a file you provided."
-        case .saySomething, .comfort, .storyFromMemories:
-            return nil
-        }
-    }
+    private var screenNote: String? { intent.provenanceNote }
 
     /// Why the button is greyed out. Shown under it, because a disabled control
     /// that gives no reason reads as broken.
@@ -54,21 +49,19 @@ struct CreateView: View {
         if isGenerating || canSpeak { return nil }
         if !AppConfig.isConfigured { return nil }        // has its own error note above
         if person?.voiceIsUnavailableHere == true {
-            return "This voice was made in test mode. Create the real one from the profile."
+            return L("The test voice is not a real voice. Create one to continue.")
         }
-        if person?.hasVoice != true { return "This person has no voice yet." }
+        if person?.hasVoice != true { return L("Add a voice before creating audio.") }
         if trimmed.count > intent.characterLimit {
-            return "That is longer than \(intent.characterLimit) characters."
+            return L("Shorten the text to fit the limit.")
         }
         switch intent {
-        case .saySomething:
-            return "Type something for them to say."
         case .comfort:
-            return "Tap one of the lines above, or write your own."
+            return L("Choose a line, or write what feels right to you.")
         case .storyFiction:
-            return "Tap one of the stories above to load it, or write your own."
-        case .storyFromMemories, .readBook:
-            return "Type something for them to say."
+            return L("Choose a story, or write your own.")
+        case .saySomething, .storyFromMemories, .readBook:
+            return L("Type something for them to say.")
         }
     }
 
@@ -156,26 +149,30 @@ struct CreateView: View {
     @ViewBuilder private var actionSection: some View {
         if let errorText {
             VStack(alignment: .leading, spacing: Theme.Space.xs) {
-                ErrorNote(message: errorText) {
-                    self.errorText = nil
-                    self.failure = nil
-                    Task { await speak() }
+                if errorAllowsRetry {
+                    ErrorNote(message: errorText) {
+                        self.errorText = nil
+                        self.failure = nil
+                        Task { await speak() }
+                    }
+                } else {
+                    ErrorNote(message: errorText)
                 }
                 if isRecoverableByRecreatingVoice {
-                    Button("Add their voice again") { addingVoice = true }
+                    Button(L("Re-create voice")) { addingVoice = true }
                         .buttonStyle(QuietButtonStyle())
                 }
             }
         }
 
-        Button(isGenerating ? "Speaking…" : "Hear it in their voice") {
+        Button(isGenerating ? L("Creating audio…") : L("Create audio")) {
             Task { await speak() }
         }
         .buttonStyle(PrimaryButtonStyle(enabled: canSpeak))
         .disabled(!canSpeak)
 
         if intent == .comfort, let person, !trimmed.isEmpty, !isAlreadySaved(trimmed, for: person) {
-            Button("Add this line to my list") {
+            Button(L("Save this line")) {
                 library.add(FamilyNote(personId: person.id,
                                        text: trimmed,
                                        kind: FamilyNote.affirmationKind))
@@ -194,13 +191,13 @@ struct CreateView: View {
         if isGenerating {
             HStack(spacing: 8) {
                 ProgressView()
-                Text("Generating. Your words stay here if it fails.")
+                Text(L("The words are still here."))
                     .font(Theme.Font.caption)
                     .foregroundStyle(Theme.Palette.inkSoft)
             }
         }
 
-        Toggle("Faster, slightly plainer voice", isOn: $useFastModel)
+        Toggle(L("Faster, slightly plainer voice"), isOn: $useFastModel)
             .font(Theme.Font.caption)
             .foregroundStyle(Theme.Palette.inkSoft)
             .tint(Theme.Palette.bronze)
@@ -320,8 +317,18 @@ struct CreateView: View {
         }
     }
 
-    private func commitTuning() {
-        guard var updated = person else { return }
+    /// Deliberately does nothing now.
+    ///
+    /// This used to write `draftTuning` onto the person on every slider release
+    /// and every preset tap, from a collapsed disclosure on a compose screen.
+    /// Tapping Storytelling while browsing stories permanently changed how the
+    /// book reader sounded too, with no way back. The draft is passed straight
+    /// to `synthesize` instead, and only a generation the user actually asked
+    /// for is allowed to make it stick.
+    private func commitTuning() { }
+
+    private func persistTuningAfterSuccessfulGeneration() {
+        guard var updated = person, updated.voiceTuning != draftTuning else { return }
         updated.tuning = draftTuning
         library.update(updated)
     }
@@ -363,7 +370,7 @@ struct CreateView: View {
 
     private var comfortPicker: some View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
-            Text(L("Ready-made lines"))
+            Text(L("Choose a line"))
                 .font(Theme.Font.label)
                 .foregroundStyle(Theme.Palette.ink)
 
@@ -521,10 +528,10 @@ struct CreateView: View {
 
     private var shelfTitle: String {
         switch intent {
-        case .comfort:           return "Comfort you have kept"
-        case .storyFiction:      return "Stories you have kept"
-        case .storyFromMemories: return "Everything you have kept"
-        default:                 return "Kept from here"
+        case .comfort:           return L("Comfort you have kept")
+        case .storyFiction:      return L("Stories you have kept")
+        case .storyFromMemories: return L("Everything you have kept")
+        default:                 return L("Previously kept")
         }
     }
 
@@ -551,7 +558,7 @@ struct CreateView: View {
     private func seedIfNeeded() {
         draftTuning = person?.voiceTuning ?? .natural
         guard trimmed.isEmpty else { return }
-        if intent == .comfort { text = Composer.affirmations[0].english }
+        if intent == .comfort { text = uiIsArabic ? Composer.affirmations[0].arabic : Composer.affirmations[0].english }
     }
 
     /// The label stored WITH the audio. It describes what these words actually
@@ -575,6 +582,7 @@ struct CreateView: View {
         guard let person, let voiceId = person.voiceId, canSpeak else { return }
         isGenerating = true
         errorText = nil
+        errorAllowsRetry = true
         failure = nil
 
         let model = useFastModel ? AppConfig.fastModelId : AppConfig.defaultModelId
@@ -600,17 +608,27 @@ struct CreateView: View {
                                            isSaved: false,
                                            fileExtension: Self.audioExtension(for: data))
             isGenerating = false
+            persistTuningAfterSuccessfulGeneration()
             if let asset {
                 generated = asset
             } else {
-                errorText = "The audio arrived but could not be saved to this phone."
+                errorAllowsRetry = false
+                errorText = L("The audio arrived but could not be saved to this phone.")
             }
         } catch {
             isGenerating = false
             // The typed text is deliberately left untouched.
             let known = error as? VoiceServiceError
+            errorAllowsRetry = !(known == .unauthorised
+                                 || known == .outOfCredits
+                                 || known == .voiceLimitReached
+                                 || known == .notConfigured
+                                 // The request was abandoned client-side after
+                                 // 120s; the provider may well have finished it
+                                 // and billed for it. Retrying pays twice.
+                                 || known == .timedOut)
             failure = known
-            errorText = known?.errorDescription ?? "Something went wrong. Try again."
+            errorText = known?.errorDescription ?? L("Something went wrong. Try again.")
         }
     }
 }

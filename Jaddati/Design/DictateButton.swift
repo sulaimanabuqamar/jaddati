@@ -73,8 +73,8 @@ struct DictateButton: View {
         problem = nil
         guard await recorder.requestPermission() else {
             problem = recorder.permissionDenied
-                ? "Microphone access is off for Jaddati. Turn it on in Settings."
-                : "Microphone access was not granted."
+                ? L("Microphone access is off. Turn it on in Settings.")
+                : L("Microphone access was not granted.")
             return
         }
         guard AppConfig.isTranscriptionConfigured else {
@@ -90,7 +90,7 @@ struct DictateButton: View {
         defer { try? FileManager.default.removeItem(at: result.url) }
 
         guard result.capturedSound else {
-            problem = "Nothing was heard. Check the microphone and try again."
+            problem = L("Nothing was heard. Check the microphone and try again.")
             return
         }
 
@@ -102,7 +102,7 @@ struct DictateButton: View {
             problem = nil
         } catch {
             problem = (error as? TranscriptionError)?.errorDescription
-                ?? "That could not be written down. Try again."
+                ?? L("That could not be written down. Try again.")
         }
         isTranscribing = false
     }

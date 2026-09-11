@@ -205,8 +205,7 @@ struct PersonAvatar: View {
 
     var body: some View {
         Group {
-            if let imageURL, let data = try? Data(contentsOf: imageURL),
-               let image = UIImage(data: data) {
+            if let image = AvatarCache.image(for: imageURL) {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
@@ -226,8 +225,13 @@ struct PersonAvatar: View {
 
     /// Two quiet fills, chosen from the name so one person keeps the same one
     /// rather than shuffling every time the list redraws.
+    ///
+    /// NOT `hashValue`: Swift seeds string hashing per process, so the colour
+    /// changed on every launch — the opposite of what this is for. `abs` on it
+    /// was also a trap waiting to happen, since `abs(Int.min)` crashes.
     private var fill: Color {
-        abs(name.hashValue) % 2 == 0 ? Theme.Palette.archWarm : Theme.Palette.archSage
+        let sum = name.unicodeScalars.reduce(0) { $0 &+ Int($1.value) }
+        return sum % 2 == 0 ? Theme.Palette.archWarm : Theme.Palette.archSage
     }
 
     private var initial: String {
@@ -236,6 +240,31 @@ struct PersonAvatar: View {
     }
 }
 
+
+/// Decoded portraits, kept once each.
+///
+/// This exists because the obvious version — decode inside `body` — got the app
+/// killed by the OS. A SwiftUI `body` runs on every state change, the audio
+/// player publishes its position twenty times a second, and a 600px JPEG
+/// decodes to about 1.4MB of bitmap. Decoding per render meant tens of
+/// megabytes a second of live allocation while anything was playing.
+///
+/// Stored photos are written under a fresh UUID filename every time one is set
+/// (`Library.setPhoto`), so a path is never reused and an entry can never go
+/// stale. NSCache evicts itself under memory pressure.
+enum AvatarCache {
+    private static let cache = NSCache<NSString, UIImage>()
+
+    static func image(for url: URL?) -> UIImage? {
+        guard let url else { return nil }
+        let key = url.path as NSString
+        if let hit = cache.object(forKey: key) { return hit }
+        guard let data = try? Data(contentsOf: url),
+              let image = UIImage(data: data) else { return nil }
+        cache.setObject(image, forKey: key)
+        return image
+    }
+}
 
 /// The label that keeps original recordings and generated audio visibly distinct.
 /// This appears anywhere audio can be played. It is not decorative — it is the
@@ -409,7 +438,7 @@ struct ErrorNote: View {
                     .foregroundStyle(Theme.Palette.ink)
                     .fixedSize(horizontal: false, vertical: true)
                 if let retry {
-                    Button("Try again", action: retry)
+                    Button(L("Try again"), action: retry)
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Theme.Palette.forest)
                 }

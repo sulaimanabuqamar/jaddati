@@ -27,14 +27,14 @@ struct RootView: View {
                         HomeView(selectedPersonId: $selectedPersonId)
                     case .saved:
                         personScoped { person in
-                            MemoriesView(personId: person.id)
-                        } emptyTitle: {
+                            MemoriesView(personId: person.id, isTabRoot: true)
+                        } emptyMessage: {
                             L("Open a person to see what is kept for them.")
                         }
                     case .books:
                         personScoped { person in
-                            BooksView(personId: person.id)
-                        } emptyTitle: {
+                            BooksView(personId: person.id, isTabRoot: true)
+                        } emptyMessage: {
                             L("Open a person to bring them a text.")
                         }
                     }
@@ -43,27 +43,34 @@ struct RootView: View {
 
                 TabRail(selection: $tab)
             }
-        }
-        .onChange(of: selectedPersonId) { _, id in
-            // Opening someone is what selects them; the other tabs follow.
-            if id != nil, tab == .people { return }
+            // The rail is furniture, not content. Without this it rides up with
+            // the keyboard and covers the line being typed.
+            .ignoresSafeArea(.keyboard, edges: .bottom)
         }
     }
 
+    /// Saved and Books both need a person. When there is not one the screen says
+    /// so AND offers the way out — this used to be a sentence with no control
+    /// under it, on a tab the user had just deliberately chosen.
     @ViewBuilder
     private func personScoped<Content: View>(
         @ViewBuilder _ content: (Person) -> Content,
-        emptyTitle: () -> String
+        emptyMessage: () -> String
     ) -> some View {
         if let person = selectedPerson {
             NavigationStack { content(person) }
         } else {
             VStack(spacing: 0) {
-                AppBar(title: L("Jaddati"))
+                AppBar(title: L("Jaddati"), showsBack: false)
+                Spacer(minLength: 0)
                 EmptyHint(icon: "person.crop.circle",
                           title: L("Choose someone first"),
-                          message: emptyTitle())
-                Spacer()
+                          message: emptyMessage())
+                Button(L("Go to People")) { tab = .people }
+                    .buttonStyle(QuietButtonStyle())
+                    .padding(.horizontal, Theme.Metric.screenPadding)
+                    .padding(.top, Theme.Space.s)
+                Spacer(minLength: 0)
             }
         }
     }

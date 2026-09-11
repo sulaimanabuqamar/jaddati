@@ -20,8 +20,13 @@ struct MemoriesView: View {
     /// still land where they meant to.
     enum Filter: Hashable { case all, original, recreated }
 
-    init(personId: UUID, filter: Filter = .all) {
+    /// True when this is the Saved tab itself rather than a push from a person,
+    /// so the tab root does not draw a chevron that goes nowhere.
+    let isTabRoot: Bool
+
+    init(personId: UUID, filter: Filter = .all, isTabRoot: Bool = false) {
         self.personId = personId
+        self.isTabRoot = isTabRoot
         switch filter {
         case .all:       _origin = State(initialValue: .all)
         case .original:  _origin = State(initialValue: .original)
@@ -80,7 +85,7 @@ struct MemoriesView: View {
     /// Unkept drafts stay hidden; originals are always kept.
     private var everything: [AudioAsset] {
         guard let person else { return [] }
-        return library.assets(for: person).filter { $0.source == .original || $0.isSaved }
+        return library.archive(for: person)
     }
 
     private var items: [AudioAsset] {
@@ -104,7 +109,7 @@ struct MemoriesView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            AppBar(title: L("Saved"))
+            AppBar(title: L("Saved"), showsBack: !isTabRoot)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Space.m) {
@@ -117,9 +122,15 @@ struct MemoriesView: View {
                     }
 
                     if availableOrigins.count > 2 {
-                        filterRow(L("Origin"), availableOrigins, selected: origin) { origin = $0 }
+                        filterRow(L("Origin"), availableOrigins, selected: origin) { candidate in
+                            origin = candidate
+                            if candidate == .original { experience = .all }
+                        }
                     }
-                    if availableExperiences.count > 2 {
+                    // Hidden when the origin is set to real recordings: those
+                    // are stored with no experience, so every chip but All
+                    // would be guaranteed empty and still tappable.
+                    if origin != .original, availableExperiences.count > 2 {
                         filterRow(L("Experience"), availableExperiences, selected: experience) { experience = $0 }
                     }
 

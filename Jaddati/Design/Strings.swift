@@ -89,8 +89,7 @@ let arabicStrings: [String: String] = [
     "Manage voice": "إدارة الصوت",
     "Delete person and audio": "حذف الشخص ومقاطع الصوت",
     "Delete this person?": "هل تريد حذف هذا الشخص؟",
-    "This removes their profile, original recordings, and saved clips from Jaddati.": "سيُحذف الملف والتسجيلات الأصلية والمقاطع المحفوظة من جدّتي.",
-    "Deleting from Jaddati does not confirm deletion by the voice service.": "الحذف من جدّتي لا يؤكّد أن خدمة الصوت حذفت بياناتها.",
+        "Deleting from Jaddati does not confirm deletion by the voice service.": "الحذف من تطبيق جدّتي لا يؤكّد أن خدمة الصوت حذفت بياناتها.",
     "Delete permanently": "الحذف نهائيًا",
     "Say something": "كلمات تختارها",
     "Words you choose, spoken in their recreated voice.": "كلمات تختارها، بصوت يُعاد إنشاؤه بالذكاء الاصطناعي.",
@@ -128,7 +127,7 @@ let arabicStrings: [String: String] = [
     "This recording will be uploaded to a third-party voice service.": "سيُرفع هذا التسجيل إلى خدمة صوت تابعة لجهة خارجية.",
     "Voice service": "خدمة الصوت",
     "Review the provider’s data policy": "مراجعة سياسة بيانات المزوّد",
-    "If the person has died, this app requires authorization from the family or the representative responsible for granting it. Jaddati cannot verify that authorization.": "إذا كان صاحب الصوت متوفّى، يشترط هذا التطبيق وجود صلاحية من أسرته أو من الممثّل المسؤول عن منحها. لا يستطيع جدّتي التحقّق من هذه الصلاحية.",
+    "If the person has died, this app requires authorization from the family or the representative responsible for granting it. Jaddati cannot verify that authorization.": "إذا كان صاحب الصوت متوفّى، يشترط هذا التطبيق وجود صلاحية من أسرته أو من الممثّل المسؤول عن منحها. لا يستطيع تطبيق جدّتي التحقّق من هذه الصلاحية.",
     "I have the right to use this recording and to create new speech in this voice.": "أؤكّد أن لديّ الحق في استخدام هذا التسجيل وإنشاء كلام جديد بهذا الصوت.",
     "I understand that this creates new AI audio, not a recording of words this person actually said.": "أفهم أن هذا ينشئ مقاطع جديدة بالذكاء الاصطناعي، وليست تسجيلًا لكلمات قالها هذا الشخص فعلًا.",
     "Create voice": "إنشاء الصوت",
@@ -193,7 +192,7 @@ let arabicStrings: [String: String] = [
     "Bring a text. Hear it in a recreated voice, one page at a time.": "أضف نصًا، واسمعه بصوت يُعاد إنشاؤه، صفحةً صفحة.",
     "Words of your choosing.": "كلمات من اختيارك.",
     "Write something new to be spoken in a recreated voice.": "اكتب شيئًا جديدًا ليُقال بصوت يُعاد إنشاؤه.",
-    "How it is spoken": "طريقة الإلقاء",
+    "How it is spoken": "الأسلوب",
     "Fine-tune the voice": "ضبط دقيق للصوت",
 
     // Screen headlines, from the design's own copy deck. The line breaks are
@@ -254,7 +253,7 @@ let arabicStrings: [String: String] = [
     "Play": "تشغيل", "Pause": "إيقاف مؤقت", "Replay": "إعادة التشغيل",
     "Playback position": "موضع التشغيل",
     "Keep this clip": "الاحتفاظ بالمقطع",
-    "Discard": "تجاهل المقطع",
+    "Discard": "حذف المقطع",
     "Clip saved": "حُفظ المقطع",
     "Audio file missing": "الملف الصوتي مفقود",
     "This audio file is not available. Playback is unavailable.": "هذا الملف الصوتي غير متاح، لذلك لا يمكن تشغيله.",
@@ -305,6 +304,100 @@ let arabicStrings: [String: String] = [
     "Hear it again": "استمع مرة أخرى",
     "Continue the story": "متابعة القصة",
     "Answers are written by AI. They are not their words and not their memories.": "الإجابات يكتبها الذكاء الاصطناعي. ليست كلماتهم ولا ذكرياتهم.",
+
+    // MARK: Chrome, confirmations and every failure the user can see
+    //
+    // These were English-only. An Arabic demo fell back into English at exactly
+    // the moment it mattered — the moment something went wrong on stage.
+    "Go to People": "الذهاب إلى الأشخاص",
+    "Add photo": "إضافة صورة",
+    "Change photo": "تغيير الصورة",
+    "Remove photo": "إزالة الصورة",
+    "Remove this person": "إزالة هذا الشخص",
+    "This removes their profile, original recordings, saved clips and imported books from Jaddati.": "سيُحذف الملف والتسجيلات الأصلية والمقاطع المحفوظة والكتب المستوردة من تطبيق جدّتي.",
+    "Choose a line": "اختر عبارة",
+    "Type something for them to say.": "اكتب كلمات ليقولوها.",
+    "Choose a story, or write your own.": "اختر قصة، أو اكتب قصتك.",
+    "An invented story. Not a real memory.": "قصة متخيّلة، وليست ذكرى حقيقية.",
+    "Read from a file you provided.": "تُقرأ من ملف قدّمته أنت.",
+    "Faster, slightly plainer voice": "أسرع، بصوت أقل تعبيرًا",
+    "Comfort you have kept": "كلمات المواساة التي حفظتها",
+    "Stories you have kept": "القصص التي حفظتها",
+    "Everything you have kept": "كل ما حفظته",
+    "Tell me a story": "احكِ لي قصة",
+    "FAMILY SHELF": "رفّ العائلة",
+    "USD": "دولار",
+    "Estimated remaining cost": "التكلفة المتبقية التقديرية",
+    "Untitled book": "كتاب بلا عنوان",
+    "Book removed": "حُذف الكتاب",
+    "This book is no longer on the phone.": "لم يعد هذا الكتاب على الهاتف.",
+    "Delete book and its audio": "حذف الكتاب ومقاطعه الصوتية",
+    "There is nothing on this page to read.": "لا يوجد نص في هذه الصفحة لقراءته.",
+    "Discard this clip?": "هل تريد حذف هذا المقطع؟",
+    "The audio is deleted from this phone. Creating it again costs credits.": "سيُحذف المقطع من هذا الهاتف، وإنشاؤه من جديد يستهلك رصيدًا.",
+    "Recorded just now": "سُجِّل الآن",
+    "Discard recording": "حذف التسجيل",
+    "Stop": "إيقاف",
+    "Checking…": "جارٍ التحقّق…",
+    "Checking asks the service to say one short word.": "التحقّق يطلب من الخدمة نطق كلمة واحدة قصيرة.",
+    "The service has not made this voice available yet.": "لم تُتِح الخدمة هذا الصوت بعد.",
+    "Hello": "مرحبًا",
+
+    // Failures
+    "Something went wrong. Try again.": "حدث خطأ ما. حاول مجددًا.",
+    "The audio arrived but could not be saved to this phone.": "وصل المقطع الصوتي لكن تعذّر حفظه على هذا الهاتف.",
+    "The page was read but the audio could not be saved to this phone.": "قُرئت الصفحة لكن تعذّر حفظ المقطع على هذا الهاتف.",
+    "The answer was written but the audio could not be saved to this phone.": "كُتبت الإجابة لكن تعذّر حفظ المقطع على هذا الهاتف.",
+    "That page could not be read. Try again.": "تعذّرت قراءة هذه الصفحة. حاول مجددًا.",
+    "That question could not be answered. Try again.": "تعذّرت الإجابة عن هذا السؤال. حاول مجددًا.",
+    "That file could not be opened.": "تعذّر فتح هذا الملف.",
+    "That file could not be read from its location.": "تعذّرت قراءة الملف من مكانه.",
+    "That file could not be turned into pages.": "تعذّر تحويل هذا الملف إلى صفحات.",
+    "That file could not be read as text. Plain text works best; a scanned PDF has no text in it to read.": "تعذّرت قراءة هذا الملف كنص. الملفات النصية البسيطة هي الأنسب، وملف PDF الممسوح ضوئيًا لا يحتوي على نص يمكن قراءته.",
+    "There was no text in that file.": "لا يوجد نص في هذا الملف.",
+    "That file is larger than this app will take. Import a chapter rather than a whole book.": "هذا الملف أكبر مما يقبله التطبيق. استورد فصلًا واحدًا بدل الكتاب كاملًا.",
+    "The voice could not be created. Try again.": "تعذّر إنشاء الصوت. حاول مجددًا.",
+    "The voice service is not set up on this build.": "خدمة الصوت غير مُعدّة في هذه النسخة.",
+    "The voice service rejected the key on this build.": "رفضت خدمة الصوت المفتاح المستخدم في هذه النسخة.",
+    "The voice service is busy. Wait a moment and try again.": "خدمة الصوت مشغولة. انتظر قليلًا ثم حاول مجددًا.",
+    "The voice service took too long. Your words are still here — try again.": "استغرقت خدمة الصوت وقتًا طويلًا. كلماتك لا تزال هنا — حاول مجددًا.",
+    "The voice service returned an error.": "أعادت خدمة الصوت رسالة خطأ.",
+    "The voice service sent something unexpected.": "أرسلت خدمة الصوت ردًّا غير متوقّع.",
+    "The voice service would not accept that recording.": "لم تقبل خدمة الصوت هذا التسجيل.",
+    "Try a longer, clearer one.": "جرّب تسجيلًا أطول وأوضح.",
+    "That recording could not be read from this phone. Try importing it again.": "تعذّرت قراءة هذا التسجيل من الهاتف. جرّب استيراده مرة أخرى.",
+    "That voice is not available at the voice service.": "هذا الصوت غير متاح لدى خدمة الصوت.",
+    "Add their voice again to create a new one.": "أضف صوتهم مرة أخرى لإنشاء صوت جديد.",
+    "This month's voice credits are used up. Saved memories still play.": "نفد رصيد هذا الشهر. المقاطع المحفوظة ما زالت تُشغَّل.",
+    "This account has no free voice slots left. Remove an unused voice at the voice service, then try again.": "لم تعد في الحساب خانات أصوات متاحة. احذف صوتًا غير مستخدم لدى خدمة الصوت ثم حاول مجددًا.",
+    "No connection. New audio needs the internet — saved memories still play.": "لا يوجد اتصال. إنشاء مقاطع جديدة يحتاج إلى الإنترنت — والمقاطع المحفوظة ما زالت تُشغَّل.",
+    "No internet connection.": "لا يوجد اتصال بالإنترنت.",
+    "Questions are not set up on this build.": "ميزة الأسئلة غير مُعدّة في هذه النسخة.",
+    "The question service is busy right now. Wait a few seconds and ask again.": "خدمة الأسئلة مشغولة الآن. انتظر ثوانٍ ثم اسأل مجددًا.",
+    "The question service reported a problem.": "أبلغت خدمة الأسئلة عن مشكلة.",
+    "The question service replied in a shape the app did not understand.": "ردّت خدمة الأسئلة بصيغة لم يفهمها التطبيق.",
+    "No answer came back. Try asking it a different way.": "لم تصل أي إجابة. جرّب صياغة السؤال بطريقة أخرى.",
+    "That model is not available on this key.": "هذا النموذج غير متاح بهذا المفتاح.",
+    "Speaking into the app is not set up on this build.": "ميزة التحدّث غير مُعدّة في هذه النسخة.",
+    "Nothing was heard. Hold the phone closer and try again.": "لم يُسمع شيء. قرّب الهاتف وحاول مجددًا.",
+    "Nothing was heard. Check the microphone and try again.": "لم يُسمع شيء. تحقّق من الميكروفون وحاول مجددًا.",
+    "The transcription service is busy. Wait a few seconds and try again.": "خدمة تحويل الكلام إلى نص مشغولة. انتظر ثوانٍ ثم حاول مجددًا.",
+    "The transcription came back in a shape the app did not understand.": "عاد النص بصيغة لم يفهمها التطبيق.",
+    "That could not be written down. Try again.": "تعذّر تحويل الكلام إلى نص. حاول مجددًا.",
+    "Microphone access is off. Turn it on in Settings.": "إذن الميكروفون غير مفعّل. فعّله من الإعدادات.",
+    "Microphone access was not granted.": "لم يُمنح إذن الميكروفون.",
+    "That photo could not be saved to this phone.": "تعذّر حفظ هذه الصورة على هذا الهاتف.",
+    "Could not save the audio to this phone.": "تعذّر حفظ المقطع الصوتي على هذا الهاتف.",
+    "Changes could not be saved.": "تعذّر حفظ التغييرات.",
+    "Saved memories could not be read, so they have been set aside rather than overwritten. The audio files are still on this phone.": "تعذّرت قراءة المحفوظات، فوُضعت جانبًا بدل الكتابة فوقها. ملفات الصوت ما زالت على هذا الهاتف.",
+    "Saved memories could not be read and could not be set aside, so nothing new will be saved until this is resolved. No audio has been deleted.": "تعذّرت قراءة المحفوظات وتعذّر وضعها جانبًا، فلن يُحفظ شيء جديد حتى تُحلّ المشكلة. لم يُحذف أي مقطع صوتي.",
+
+    // Stopping an upload that is already in flight
+    "Stop creating the voice?": "هل تريد إيقاف إنشاء الصوت؟",
+    "Stop and close": "إيقاف وإغلاق",
+    "Keep waiting": "متابعة الانتظار",
+    "The recording may already have reached the voice service. If it has, the voice is created and a slot is used.": "قد يكون التسجيل قد وصل إلى خدمة الصوت بالفعل. إن حدث ذلك، يكون الصوت قد أُنشئ واستُهلكت خانة من الحساب.",
+    "The voice was created, but the original recording could not be saved to this phone. Import it again from the profile so it appears in the archive.": "أُنشئ الصوت، لكن تعذّر حفظ التسجيل الأصلي على هذا الهاتف. استورده مرة أخرى من صفحة الشخص ليظهر في الأرشيف.",
 ]
 
 // MARK: - Counts
@@ -351,9 +444,11 @@ enum Counts {
     }
 
     static func pagesRead(_ read: Int, of total: Int) -> String {
-        uiIsArabic
-            ? "\(number(read)) من \(number(total)) صفحة"
-            : "\(number(read)) of \(number(total)) pages read"
+        guard uiIsArabic else { return "\(number(read)) of \(number(total)) pages read" }
+        // The counted noun changes ending with the number, and "read" was
+        // missing altogether — it said "3 of 12 pages" and stopped there.
+        let pages = (3...10).contains(total) ? "صفحات" : "صفحة"
+        return "قُرئت \(number(read)) من \(number(total)) \(pages)"
     }
 
     /// "Page 2 of 12" — the fraction is isolated so the two numerals do not

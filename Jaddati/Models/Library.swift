@@ -43,6 +43,7 @@ final class Library: ObservableObject {
         photoDir = root.appendingPathComponent("Photos", isDirectory: true)
         createDirectoriesIfNeeded()
         load()
+        sweepAbandonedDrafts()
     }
 
     private func createDirectoriesIfNeeded() {
@@ -56,6 +57,18 @@ final class Library: ObservableObject {
 
     /// Resolve a stored filename to a real location, now.
     /// Never store the result — the container path changes between installs.
+    /// Generated audio starts unkept and is removed when the listener leaves
+    /// without keeping it. A force-quit skips that, leaving a row and an mp3 no
+    /// screen will ever list again. One pass at launch, so it cannot accumulate
+    /// across a week of rehearsal and fill the phone.
+    private func sweepAbandonedDrafts() {
+        let doomed = assets.filter { !$0.isSaved && $0.bookId == nil }
+        guard !doomed.isEmpty else { return }
+        for asset in doomed { try? FileManager.default.removeItem(at: url(for: asset)) }
+        assets.removeAll { !$0.isSaved && $0.bookId == nil }
+        save()
+    }
+
     func url(for asset: AudioAsset) -> URL {
         audioDir.appendingPathComponent(asset.filename)
     }
@@ -74,7 +87,7 @@ final class Library: ObservableObject {
         do {
             try data.write(to: photoDir.appendingPathComponent(name), options: .atomic)
         } catch {
-            storageError = "That photo could not be saved to this phone."
+            storageError = L("That photo could not be saved to this phone.")
             return
         }
         if let old = person.photoFilename {
@@ -108,6 +121,25 @@ final class Library: ObservableObject {
 
     // MARK: Books
 
+    /// Clips the user deliberately kept.
+    ///
+    /// Book page audio is stored with `isSaved: true` so a page is never paid
+    /// for twice — that flag means "do not delete", not "the user chose this".
+    /// Reading `isSaved` directly is what put every page of an imported book
+    /// into Saved as its own row, and made the same collection count three
+    /// different numbers on three screens one tap apart.
+    func keptClips(for person: Person) -> [AudioAsset] {
+        assets.filter { $0.personId == person.id && $0.isGenerated
+                        && $0.isSaved && $0.bookId == nil }
+    }
+
+    /// Everything that belongs in the archive: real recordings, plus the clips
+    /// above. Never page cache.
+    func archive(for person: Person) -> [AudioAsset] {
+        assets.filter { $0.personId == person.id
+                        && ($0.source == .original || ($0.isSaved && $0.bookId == nil)) }
+    }
+
     func books(for person: Person) -> [Book] {
         books.filter { $0.personId == person.id }.sorted { $0.addedAt > $1.addedAt }
     }
@@ -138,10 +170,10 @@ final class Library: ObservableObject {
     /// A page already generated. Found by id and index so it is replayed rather
     /// than paid for a second time.
     func readPage(of book: Book, index: Int) -> AudioAsset? {
-        // `last`, not `first`: if a page was ever re-read, the newest row is the
-        // one whose file exists. Returning the oldest left the reader stuck on a
-        // broken row, offering to generate — and bill — the same page again.
-        assets.last { $0.bookId == book.id && $0.pageIndex == index }
+        // The file check belongs HERE, not in the caller. Without it a row whose
+        // audio had gone made the header say "Page already read" and hide the
+        // cost, while the button underneath still charged for it.
+        assets.last { $0.bookId == book.id && $0.pageIndex == index && fileExists(for: $0) }
     }
 
     /// Drops earlier rows for a page that has just been re-read, so a book
@@ -155,7 +187,8 @@ final class Library: ObservableObject {
     }
 
     func pagesRead(of book: Book) -> Int {
-        Set(assets.compactMap { $0.bookId == book.id ? $0.pageIndex : nil }).count
+        Set(assets.filter { $0.bookId == book.id && fileExists(for: $0) }
+                  .compactMap(\.pageIndex)).count
     }
 
     // MARK: Saved lines
@@ -175,14 +208,10 @@ final class Library: ObservableObject {
         let wanted = Set(intents.map(\.rawValue))
         return assets
             .filter {
-                $0.personId == person.id && $0.isSaved
+                $0.personId == person.id && $0.isSaved && $0.bookId == nil
                     && ($0.intentRaw.map(wanted.contains) ?? false)
             }
             .sorted { $0.createdAt > $1.createdAt }
-    }
-
-    func notes(for person: Person) -> [FamilyNote] {
-        notes.filter { $0.personId == person.id }.sorted { $0.createdAt < $1.createdAt }
     }
 
     func person(withId id: UUID) -> Person? {
@@ -233,7 +262,7 @@ final class Library: ObservableObject {
         do {
             try data.write(to: destination, options: .atomic)
         } catch {
-            storageError = "Could not save the audio to this phone. \(error.localizedDescription)"
+            storageError = L("Could not save the audio to this phone.") + " " + error.localizedDescription
             return nil
         }
         var asset = AudioAsset(personId: person.id,
@@ -325,13 +354,13 @@ final class Library: ObservableObject {
                 try FileManager.default.moveItem(at: indexURL, to: backup)
                 // The unreadable file is now safely aside under its own name, so
                 // saving a fresh index destroys nothing and the app stays usable.
-                storageError = "Saved memories could not be read, so they have been set aside rather than overwritten. The audio files are still on this phone."
+                storageError = L("Saved memories could not be read, so they have been set aside rather than overwritten. The audio files are still on this phone.")
             } catch {
                 // The move failed, so the unreadable file is STILL at indexURL.
                 // Saving now would write an empty index straight over it and
                 // orphan every recording permanently. Refuse to write at all.
                 loadFailed = true
-                storageError = "Saved memories could not be read and could not be set aside, so nothing new will be saved until this is resolved. No audio has been deleted."
+                storageError = L("Saved memories could not be read and could not be set aside, so nothing new will be saved until this is resolved. No audio has been deleted.")
             }
         }
     }
@@ -351,7 +380,7 @@ final class Library: ObservableObject {
             try data.write(to: indexURL, options: .atomic)
             storageError = nil
         } catch {
-            storageError = "Changes could not be saved. \(error.localizedDescription)"
+            storageError = L("Changes could not be saved.") + " " + error.localizedDescription
         }
     }
 }

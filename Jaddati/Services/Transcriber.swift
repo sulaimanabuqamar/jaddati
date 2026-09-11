@@ -16,20 +16,22 @@ enum TranscriptionError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .notConfigured:
-            return "Speaking into the app isn't set up on this build."
+            return L("Speaking into the app is not set up on this build.")
         case .tooQuiet:
-            return "Nothing was heard. Hold the phone closer and try again."
+            return L("Nothing was heard. Hold the phone closer and try again.")
         case .rateLimited:
-            return "The transcription service is busy. Wait a few seconds and try again."
+            return L("The transcription service is busy. Wait a few seconds and try again.")
         case .unknownModel(let id):
-            return "The model \"\(id)\" isn't available on this key."
+            return L("That model is not available on this key.") + " (\(id))"
         case .provider(let status, let message):
-            if let message, !message.isEmpty { return "Transcription failed: \(message)" }
-            return "Transcription failed (\(status))."
+            if let message, !message.isEmpty {
+                return L("That could not be written down. Try again.") + " " + message
+            }
+            return L("That could not be written down. Try again.") + " (\(status))"
         case .badResponse:
-            return "The transcription came back in a shape the app didn't understand."
+            return L("The transcription came back in a shape the app did not understand.")
         case .offline:
-            return "No internet connection."
+            return L("No internet connection.")
         }
     }
 }

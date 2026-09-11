@@ -38,33 +38,36 @@ enum VoiceServiceError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .notConfigured:
-            return "Voices aren't set up on this build yet."
+            return L("The voice service is not set up on this build.")
         case .textTooLong(let limit):
-            return "That's a bit long — keep it under \(limit) characters."
+            return L("Shorten the text to fit the limit.") + " (\(limit))"
         case .sampleUnreadable:
-            return "That recording could not be read from this phone. Try importing it again."
+            return L("That recording could not be read from this phone. Try importing it again.")
         case .sampleRejected(let why):
+            let head = L("The voice service would not accept that recording.")
             return why.isEmpty
-                ? "The voice service would not accept that recording. Try a longer, cleaner one."
-                : "The voice service would not accept that recording. \(why)"
+                ? head + " " + L("Try a longer, clearer one.")
+                : head + " " + why
         case .voiceUnavailable(let detail):
-            return "That voice is not available at the voice service\(detail.isEmpty ? "" : " (\(detail))"). Add their voice again to create a new one."
+            let head = L("That voice is not available at the voice service.")
+            return (detail.isEmpty ? head : head + " (\(detail))")
+                + " " + L("Add their voice again to create a new one.")
         case .unauthorised:
-            return "The voice service rejected the key on this build."
+            return L("The voice service rejected the key on this build.")
         case .outOfCredits:
-            return "This month's voice credits are used up. Saved memories still play."
+            return L("This month's voice credits are used up. Saved memories still play.")
         case .voiceLimitReached:
-            return "This account has no free voice slots left. Delete an unused voice in the ElevenLabs account, then try again."
+            return L("This account has no free voice slots left. Remove an unused voice at the voice service, then try again.")
         case .rateLimited:
-            return "The voice service is busy. Wait a moment and try again."
+            return L("The voice service is busy. Wait a moment and try again.")
         case .offline:
-            return "No connection. New audio needs the internet — saved memories still play."
+            return L("No connection. New audio needs the internet — saved memories still play.")
         case .timedOut:
-            return "The voice service took too long. Your words are still here — try again."
+            return L("The voice service took too long. Your words are still here — try again.")
         case .provider(let status, let detail):
-            return "The voice service returned an error (\(status)). \(detail)"
+            return L("The voice service returned an error.") + " (\(status)) " + detail
         case .badResponse:
-            return "The voice service sent something unexpected."
+            return L("The voice service sent something unexpected.")
         }
     }
 }

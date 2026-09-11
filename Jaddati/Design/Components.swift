@@ -20,17 +20,26 @@ extension Theme {
 /// Back chevron, centred title, globe. 53pt, on paper, no bottom rule.
 struct AppBar: View {
     var title: String = ""
+    /// Tab roots have nothing to go back to. Everything else does, and gets a
+    /// chevron by default — this used to be opt-IN and no caller ever opted in,
+    /// so every pushed screen drew a back-button-shaped hole with nothing in it
+    /// and the only way out was an invisible edge swipe.
+    var showsBack: Bool = true
     var onBack: (() -> Void)? = nil
     var trailing: AnyView? = nil
 
+    @Environment(\.dismiss) private var dismiss
     @ObservedObject private var localization = Localization.shared
 
     var body: some View {
         HStack(spacing: 0) {
             Group {
-                if let onBack {
-                    Button(action: onBack) {
-                        Image(systemName: "arrow.left")
+                if showsBack {
+                    Button {
+                        if let onBack { onBack() } else { dismiss() }
+                    } label: {
+                        // Mirrors in Arabic: a back arrow is directional.
+                        Image(systemName: "arrow.backward")
                             .font(.system(size: 17, weight: .medium))
                             .foregroundStyle(Theme.Palette.ink)
                             .frame(width: Theme.Metric.touchTarget,
@@ -301,7 +310,7 @@ struct BookCover: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            Text("JADDATI")
+            Text(L("JADDATI"))
                 .font(.system(size: 7, weight: .semibold))
                 .tracking(1.2)
             Text(title)
@@ -309,7 +318,7 @@ struct BookCover: View {
                 .multilineTextAlignment(.center)
                 .lineLimit(3)
                 .minimumScaleFactor(0.7)
-            Text("FAMILY SHELF")
+            Text(L("FAMILY SHELF"))
                 .font(.system(size: 6, weight: .semibold))
                 .tracking(1.1)
         }
@@ -371,7 +380,7 @@ struct ExampleQuote: View {
             Text(String(format: "$%.2f", max(usd, 0.01)))
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Theme.Palette.ink)
-            Text("USD")
+            Text(L("USD"))
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(Theme.Palette.inkSoft)
         }

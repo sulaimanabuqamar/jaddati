@@ -31,20 +31,22 @@ enum CompanionError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .notConfigured:
-            return "Questions aren't set up on this build."
+            return L("Questions are not set up on this build.")
         case .rateLimited:
-            return "The question service is busy right now. Wait a few seconds and ask again."
+            return L("The question service is busy right now. Wait a few seconds and ask again.")
         case .unknownModel(let id):
-            return "The model \"\(id)\" isn't available on this key. Run spike/llm_spike.sh to see which ones are."
+            return L("That model is not available on this key.") + " (\(id))"
         case .provider(let status, let message):
-            if let message, !message.isEmpty { return "The question service said: \(message)" }
-            return "The question service returned an error (\(status))."
+            if let message, !message.isEmpty {
+                return L("The question service reported a problem.") + " " + message
+            }
+            return L("The question service reported a problem.") + " (\(status))"
         case .badResponse:
-            return "The question service replied in a shape the app didn't understand."
+            return L("The question service replied in a shape the app did not understand.")
         case .emptyAnswer:
-            return "No answer came back. Try asking it a different way."
+            return L("No answer came back. Try asking it a different way.")
         case .offline:
-            return "No internet connection."
+            return L("No internet connection.")
         }
     }
 }

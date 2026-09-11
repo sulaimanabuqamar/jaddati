@@ -30,6 +30,10 @@ struct AddVoiceView: View {
     @State private var errorAllowsRetry = true
     @StateObject private var recorder = VoiceRecorder()
     @State private var recordProblem: String?
+    /// Held so Cancel can actually stop the upload rather than just greying
+    /// itself out until the request times out.
+    @State private var creationTask: Task<Void, Never>?
+    @State private var confirmingCancelUpload = false
 
     private var person: Person? { library.person(withId: personId) }
     private var replacingExistingVoice: Bool {
@@ -88,7 +92,7 @@ struct AddVoiceView: View {
                         }
 
                         Button(isWorking ? L("Creating voice…") : L("Create voice")) {
-                            Task { await createVoice() }
+                            creationTask = Task { await createVoice() }
                         }
                         .buttonStyle(PrimaryButtonStyle(enabled: canSubmit))
                         .disabled(!canSubmit)
@@ -109,16 +113,33 @@ struct AddVoiceView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(L("Cancel")) {
-                        discardTempFile()
-                        dismiss()
+                        if isWorking {
+                            confirmingCancelUpload = true
+                        } else {
+                            discardTempFile()
+                            dismiss()
+                        }
                     }
-                    .disabled(isWorking)
                 }
             }
             .fileImporter(isPresented: $showingPicker,
                           allowedContentTypes: [.audio, .mpeg4Audio, .mp3, .wav],
                           allowsMultipleSelection: false) { result in
                 handlePick(result)
+            }
+            .confirmationDialog(L("Stop creating the voice?"),
+                                isPresented: $confirmingCancelUpload,
+                                titleVisibility: .visible) {
+                Button(L("Stop and close"), role: .destructive) {
+                    creationTask?.cancel()
+                    creationTask = nil
+                    isWorking = false
+                    discardTempFile()
+                    dismiss()
+                }
+                Button(L("Keep waiting"), role: .cancel) { }
+            } message: {
+                Text(L("The recording may already have reached the voice service. If it has, the voice is created and a slot is used."))
             }
         }
         .interactiveDismissDisabled(isWorking)
@@ -272,9 +293,9 @@ struct AddVoiceView: View {
                                                            : Theme.Palette.inkSoft)
 
                 HStack(spacing: Theme.Space.s) {
-                    Button("Stop") { stopRecording() }
+                    Button(L("Stop")) { stopRecording() }
                         .buttonStyle(PrimaryButtonStyle())
-                    Button("Discard") {
+                    Button(L("Discard recording")) {
                         recorder.cancel()
                         recordProblem = nil
                     }
@@ -320,8 +341,8 @@ struct AddVoiceView: View {
         recordProblem = nil
         guard await recorder.requestPermission() else {
             recordProblem = recorder.permissionDenied
-                ? "Microphone access is off for Jaddati. Turn it on in Settings."
-                : "Microphone access was not granted."
+                ? L("Microphone access is off. Turn it on in Settings.")
+                : L("Microphone access was not granted.")
             return
         }
         discardTempFile()
@@ -346,7 +367,7 @@ struct AddVoiceView: View {
 
         pickedURL = result.url
         pickedIsTemporary = true
-        pickedName = "Recorded just now"
+        pickedName = L("Recorded just now")
         pickedDuration = result.duration
         recordProblem = nil
         errorText = nil
@@ -493,7 +514,7 @@ struct AddVoiceView: View {
             // above this note. A "Try again" here would call createVoice() with
             // no file selected and do nothing at all.
             errorAllowsRetry = false
-            errorText = "That file could not be opened."
+            errorText = L("That file could not be opened.")
         case .success(let urls):
             guard let url = urls.first else { return }
             discardTempFile()
@@ -509,7 +530,7 @@ struct AddVoiceView: View {
                 try FileManager.default.copyItem(at: url, to: temp)
             } catch {
                 errorAllowsRetry = false
-                errorText = "That file could not be read from its location."
+                errorText = L("That file could not be read from its location.")
                 return
             }
 
@@ -531,6 +552,9 @@ struct AddVoiceView: View {
         do {
             let voice = try await service.createVoice(name: "Jaddati — \(person.name)",
                                                       sampleURL: sampleURL)
+            // They pressed Stop while this was in flight. The sheet is gone;
+            // do not write a voice onto the profile behind their back.
+            if Task.isCancelled { return }
 
             // Keep the original. The archive must always be able to show what
             // the person actually sounded like, next to anything generated —
@@ -561,12 +585,29 @@ struct AddVoiceView: View {
                 dismiss()
             } else {
                 errorAllowsRetry = false
-                errorText = "The voice was created, but the original recording could not be saved to this phone. Import it again from the profile so it appears in the archive."
+                errorText = L("The voice was created, but the original recording could not be saved to this phone. Import it again from the profile so it appears in the archive.")
             }
         } catch {
             isWorking = false
-            errorText = (error as? VoiceServiceError)?.errorDescription
-                ?? "The voice could not be created. Try again."
+            // Stopping on purpose is not a failure to report at someone.
+            if Task.isCancelled { return }
+            let known = error as? VoiceServiceError
+            // Retrying these cannot succeed, and .badResponse is worse than
+            // useless: the client throws it for a 2xx body it could not parse,
+            // where the voice very likely WAS created. Retrying mints a second
+            // one and spends another slot on an account that has three.
+            errorAllowsRetry = !(known == .unauthorised
+                                 || known == .outOfCredits
+                                 || known == .voiceLimitReached
+                                 || known == .badResponse
+                                 || known == .notConfigured
+                                 // Same reasoning as .badResponse: we gave up
+                                 // waiting, the provider did not necessarily
+                                 // give up working. A retry can mint a second
+                                 // voice on an account with three slots.
+                                 || known == .timedOut)
+            errorText = known?.errorDescription
+                ?? L("The voice could not be created. Try again.")
         }
     }
 }

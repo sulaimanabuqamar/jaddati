@@ -25,11 +25,12 @@ enum BookImporter {
         var errorDescription: String? {
             switch self {
             case .unreadable:
-                return "That file could not be read as text. Plain text works best; a scanned PDF has no text in it to read."
+                return L("That file could not be read as text. Plain text works best; a scanned PDF has no text in it to read.")
             case .empty:
-                return "There was no text in that file."
+                return L("There was no text in that file.")
             case .tooLarge(let characters):
-                return "That file holds about \(characters / 1000)k characters, which is more than this app will take. Import a chapter rather than a whole book."
+                return L("That file is larger than this app will take. Import a chapter rather than a whole book.")
+                    + " (\(characters / 1000)k)"
             }
         }
     }
