@@ -291,8 +291,8 @@ enum Intent: String, Codable, CaseIterable {
         switch self {
         case .saySomething:      return L("Say something")
         case .comfort:           return L("Words of comfort")
-        case .storyFiction:      return L("A bedtime story")
-        case .storyFromMemories: return L("Kept words")
+        case .storyFiction:      return L("Tell me a story")
+        case .storyFromMemories: return L("Words & memories")
         case .readBook:          return L("Read me a book")
         }
     }
@@ -311,11 +311,11 @@ enum Intent: String, Codable, CaseIterable {
 
     var subtitle: String {
         switch self {
-        case .saySomething:      return L("Words you choose, spoken in their recreated voice.")
-        case .comfort:           return L("A short line to help you feel steadier.")
-        case .storyFiction:      return L("An invented bedtime story in their recreated voice.")
-        case .storyFromMemories: return L("Words you have kept, together in one place.")
-        case .readBook:          return L("A text you bring, read one page at a time.")
+        case .saySomething:      return L("Words you choose, in a recreated voice")
+        case .comfort:           return L("A short, steadying line you choose")
+        case .storyFiction:      return L("An invented story for a quiet moment")
+        case .storyFromMemories: return L("The words you have kept, in one place")
+        case .readBook:          return L("Your own text, a page at a time")
         }
     }
 

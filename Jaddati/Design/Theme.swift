@@ -7,38 +7,63 @@ enum Theme {
 
     // MARK: Colour
 
+    /// The design's own tokens, read out of its `:root` block rather than
+    /// eyeballed. Wine is the primary: cards, buttons, and the selected state
+    /// of anything. Sage always means a real recording of the person; wine
+    /// always means audio the machine made.
     enum Palette {
-        static let ivory       = Color(hex: 0xF7F3EA)   // page ground
-        static let ivorySunk   = Color(hex: 0xEFE9DC)   // recessed fills
-        static let card        = Color(hex: 0xFFFCF6)   // raised surfaces
-        static let forest      = Color(hex: 0x1B4234)   // primary
-        static let forestDeep  = Color(hex: 0x0E2A21)   // pressed / deep ground
-        static let bronze      = Color(hex: 0xA9793F)   // accent
-        static let bronzeSoft  = Color(hex: 0xD9BC93)   // accent tint
-        static let ink         = Color(hex: 0x23201A)   // primary text
-        static let inkSoft     = Color(hex: 0x6E6558)   // secondary text
-        static let hairline    = Color(hex: 0xE0D8C8)
-        static let danger      = Color(hex: 0x9B3B2E)
+        static let paper       = Color(hex: 0xF9F5EF)
+        static let ink         = Color(hex: 0x302725)
+        static let inkSoft     = Color(hex: 0x766861)
+        static let hairline    = Color(hex: 0xE4DCD3)
 
-        // Origin colours. Sage always means a real recording of the person;
-        // wine always means audio the machine made. They are never swapped and
-        // never used decoratively, because a colour that means two things means
-        // nothing. Colour is also never the only carrier — see SourceBadge.
-        static let sage        = Color(hex: 0x4E6853)   // original recording
-        static let sageSoft    = Color(hex: 0xDCE5DC)
-        static let wine        = Color(hex: 0x6E2433)   // AI-recreated
-        static let wineSoft    = Color(hex: 0xF0DDE0)
+        static let wine        = Color(hex: 0x592C43)
+        static let wineDeep    = Color(hex: 0x3E2031)
+        static let wineLight   = Color(hex: 0xF0E5EB)
+
+        static let sage        = Color(hex: 0x426858)
+        static let sageLight   = Color(hex: 0xE8EEE5)
+
+        static let amber       = Color(hex: 0x775829)
+        static let amberLight  = Color(hex: 0xF5EAD5)
+        static let danger      = Color(hex: 0x963E3B)
+
+        /// Raised surfaces and recessed fills, derived from paper rather than
+        /// invented — the design uses paper with a line, not a second white.
+        static let card        = Color(hex: 0xFEFAF5)
+        static let bar         = Color(hex: 0xF9F6EF)
+        static let sunk        = Color(hex: 0xF1EBE3)
+
+        static let archWarm    = Color(hex: 0xE9E0D5)
+        static let archSage    = Color(hex: 0xE1E6DD)
+        static let coverGreen  = Color(hex: 0x6C7052)
+        static let coverRust   = Color(hex: 0xA0765E)
+
+        // Older names the rest of the app still refers to.
+        static let ivory       = paper
+        static let ivorySunk   = sunk
+        static let forest      = wine
+        static let forestDeep  = wineDeep
+        static let bronze      = amber
+        static let bronzeSoft  = amberLight
+        static let inkStrong   = ink
+        static let inkFaint    = inkSoft
+        static let wineTint    = wineLight
+        static let sageTint    = sageLight
     }
 
     // MARK: Type
     // Serif for anything emotional (names, spoken words), system for controls.
 
     enum Font {
+        /// Georgia, as the design specifies. It ships with iOS, so this is the
+        /// same face rather than a lookalike. Arabic falls through to the
+        /// system's own Arabic face, which is correct — Georgia has no Arabic.
         static func display(_ size: CGFloat) -> SwiftUI.Font {
-            .system(size: size, weight: .regular, design: .serif)
+            .custom("Georgia", size: size, relativeTo: .largeTitle)
         }
         static func displayMedium(_ size: CGFloat) -> SwiftUI.Font {
-            .system(size: size, weight: .medium, design: .serif)
+            .custom("Georgia-Bold", size: size, relativeTo: .title)
         }
         static let title      = display(32)
         static let heading    = displayMedium(22)
@@ -186,17 +211,23 @@ struct PersonAvatar: View {
                     .resizable()
                     .scaledToFill()
             } else {
-                Theme.Palette.forest.opacity(0.10)
+                fill
                     .overlay(
                         Text(initial)
-                            .font(Theme.Font.displayMedium(size * 0.38))
-                            .foregroundStyle(Theme.Palette.forest)
+                            .font(Theme.Font.displayMedium(size * 0.36))
+                            .foregroundStyle(Theme.Palette.inkStrong.opacity(0.75))
                     )
             }
         }
-        .frame(width: size, height: size)
-        .clipShape(Circle())
-        .overlay(Circle().stroke(Theme.Palette.hairline, lineWidth: 1))
+        .frame(width: size, height: size * 1.14)
+        .clipShape(ArchShape(baseCorner: size * 0.16))
+        .accessibilityHidden(true)
+    }
+
+    /// Two quiet fills, chosen from the name so one person keeps the same one
+    /// rather than shuffling every time the list redraws.
+    private var fill: Color {
+        abs(name.hashValue) % 2 == 0 ? Theme.Palette.archWarm : Theme.Palette.archSage
     }
 
     private var initial: String {
@@ -205,6 +236,7 @@ struct PersonAvatar: View {
     }
 }
 
+
 /// The label that keeps original recordings and generated audio visibly distinct.
 /// This appears anywhere audio can be played. It is not decorative — it is the
 /// product's honesty requirement, so it never gets hidden behind a setting.
@@ -212,17 +244,18 @@ struct SourceBadge: View {
     let isGenerated: Bool
 
     private var tint: Color { isGenerated ? Theme.Palette.wine : Theme.Palette.sage }
-    private var fill: Color { isGenerated ? Theme.Palette.wineSoft : Theme.Palette.sageSoft }
+    private var fill: Color { isGenerated ? Theme.Palette.wineLight : Theme.Palette.sageLight }
 
     var body: some View {
         HStack(spacing: 5) {
             // The icon and the words both carry the meaning. Someone who cannot
             // separate sage from wine still reads the label, and a screenshot
             // that loses colour still says which one it is.
-            Image(systemName: isGenerated ? "waveform.badge.exclamationmark" : "mic.fill")
+            Image(systemName: isGenerated ? "sparkles" : "mic")
                 .font(.system(size: 10, weight: .semibold))
-            Text(L(isGenerated ? "AI-recreated voice" : "Original recording"))
-                .font(.system(size: 11, weight: .semibold))
+            Text(L(isGenerated ? "AI-recreated voice" : "Original recording").uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(0.8)
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 5)
@@ -252,6 +285,31 @@ struct ContentBadge: View {
         .background(Capsule().fill(Theme.Palette.ivorySunk))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(provenance.label)
+    }
+}
+
+/// The archive arch — rounded top, squared-off base. It is the app's one motif,
+/// used for avatars and for the still mark on the listening screen. Never an
+/// animated blob, never a waveform pretending to be a voice.
+struct ArchShape: Shape {
+    var baseCorner: CGFloat = 10
+
+    func path(in rect: CGRect) -> Path {
+        let r = min(rect.width / 2, rect.height / 2)
+        let c = min(baseCorner, r)
+        var p = Path()
+        p.move(to: CGPoint(x: rect.minX, y: rect.maxY - c))
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.minY + r))
+        p.addArc(center: CGPoint(x: rect.midX, y: rect.minY + r),
+                 radius: r, startAngle: .degrees(180), endAngle: .degrees(0), clockwise: false)
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - c))
+        p.addQuadCurve(to: CGPoint(x: rect.maxX - c, y: rect.maxY),
+                       control: CGPoint(x: rect.maxX, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.minX + c, y: rect.maxY))
+        p.addQuadCurve(to: CGPoint(x: rect.minX, y: rect.maxY - c),
+                       control: CGPoint(x: rect.minX, y: rect.maxY))
+        p.closeSubpath()
+        return p
     }
 }
 
