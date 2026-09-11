@@ -19,5 +19,9 @@ build/
 *.xcscmblueprint
 *.moved-aside
 
+# Python
+__pycache__/
+*.pyc
+
 # macOS
 .DS_Store
