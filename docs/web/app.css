@@ -537,3 +537,16 @@ a { color: var(--wine); }
 
 /* Pages swap without a router; only one is mounted at a time. */
 .screen { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+
+/* The panel that hides the key fields. The rehearsal toggle uses the app's own
+   .switch, defined far above — naming a second thing .switch down here quietly
+   overrode the first and flattened every toggle in the app. */
+details > summary { list-style: none; color: var(--wine); font-weight: 600; }
+details > summary::-webkit-details-marker { display: none; }
+details > summary::after {
+  content: "›"; margin-inline-start: 6px; font-size: 18px; line-height: 1;
+  transition: transform .15s ease; display: inline-block;
+}
+details[open] > summary::after { transform: rotate(90deg); }
+[dir="rtl"] details > summary::after { content: "‹"; }
+[dir="rtl"] details[open] > summary::after { transform: rotate(-90deg); }

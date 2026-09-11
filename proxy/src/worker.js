@@ -227,43 +227,82 @@ async function groq(request, env, path) {
 
 // ---------------------------------------------------------------- entry
 
+/**
+ * The web build calls this worker from a different origin than it is served
+ * from, and it sends `xi-api-key` and `x-jaddati-device` — neither of which a
+ * browser will send without asking permission first. So every answer carries
+ * that permission, the failures included: without it the browser hides the
+ * response body, and the app reports a flat network error instead of the
+ * "credits used up" message it has a translation for.
+ *
+ * The origin is left open on purpose. The token the web build sends is readable
+ * in the page by anyone who views source, so turning away unknown origins would
+ * inconvenience honest visitors without stopping anyone who meant harm. What
+ * actually bounds the damage is the metering below: one voice per device, a
+ * hard ceiling across everyone, and a monthly character budget.
+ */
+const CORS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "POST, DELETE, OPTIONS",
+  "access-control-allow-headers": "xi-api-key, authorization, content-type, x-jaddati-device, accept",
+  "access-control-max-age": "86400",
+};
+
+function withCors(response) {
+  const headers = new Headers(response.headers);
+  for (const [name, value] of Object.entries(CORS)) headers.set(name, value);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+async function route(request, env) {
+  const url = new URL(request.url);
+
+  if (url.pathname === "/health") return new Response("ok");
+
+  // DELETE is allowed through for one route: removing a voice. The app has
+  // to be able to answer "how do I get this deleted?", and refusing every
+  // non-POST made that promise undeliverable on exactly the builds that go
+  // through here.
+  const isVoiceDelete =
+    request.method === "DELETE" &&
+    url.pathname.startsWith("/v1/voices/") &&
+    url.pathname !== "/v1/voices/add";
+  if (request.method !== "POST" && !isVoiceDelete) {
+    return json(405, "method not allowed");
+  }
+
+  if (appToken(request) !== env.APP_TOKEN) return json(401, "unauthorised");
+  if (!deviceId(request)) return json(400, "missing device identifier");
+
+  if (isVoiceDelete) {
+    const voiceId = url.pathname.slice("/v1/voices/".length);
+    return voiceId ? deleteVoice(request, env, voiceId) : json(400, "no voice id");
+  }
+
+  if (url.pathname === "/v1/voices/add") return createVoice(request, env);
+
+  if (url.pathname.startsWith("/v1/text-to-speech/")) {
+    const voiceId = url.pathname.slice("/v1/text-to-speech/".length);
+    return voiceId ? speak(request, env, voiceId) : json(400, "no voice id");
+  }
+
+  if (url.pathname.endsWith("/chat/completions")) return groq(request, env, "/chat/completions");
+  if (url.pathname.endsWith("/audio/transcriptions")) return groq(request, env, "/audio/transcriptions");
+
+  return json(404, "no such endpoint");
+}
+
 export default {
   async fetch(request, env) {
-    const url = new URL(request.url);
-
-    if (url.pathname === "/health") return new Response("ok");
-
-    // DELETE is allowed through for one route: removing a voice. The app has
-    // to be able to answer "how do I get this deleted?", and refusing every
-    // non-POST made that promise undeliverable on exactly the builds that go
-    // through here.
-    const isVoiceDelete =
-      request.method === "DELETE" &&
-      url.pathname.startsWith("/v1/voices/") &&
-      url.pathname !== "/v1/voices/add";
-    if (request.method !== "POST" && !isVoiceDelete) {
-      return json(405, "method not allowed");
-    }
-
-    if (appToken(request) !== env.APP_TOKEN) return json(401, "unauthorised");
-    if (!deviceId(request)) return json(400, "missing device identifier");
-
-    if (isVoiceDelete) {
-      const voiceId = url.pathname.slice("/v1/voices/".length);
-      return voiceId ? deleteVoice(request, env, voiceId) : json(400, "no voice id");
-    }
-
-    if (url.pathname === "/v1/voices/add") return createVoice(request, env);
-
-    if (url.pathname.startsWith("/v1/text-to-speech/")) {
-      const voiceId = url.pathname.slice("/v1/text-to-speech/".length);
-      return voiceId ? speak(request, env, voiceId) : json(400, "no voice id");
-    }
-
-    if (url.pathname.endsWith("/chat/completions")) return groq(request, env, "/chat/completions");
-    if (url.pathname.endsWith("/audio/transcriptions")) return groq(request, env, "/audio/transcriptions");
-
-    return json(404, "no such endpoint");
+    // The preflight answers before the token is checked, because a browser
+    // sends it without one. Checking first would reject every real call behind
+    // it, and the rejection would arrive in a shape the page cannot even read.
+    if (request.method === "OPTIONS") return withCors(new Response(null, { status: 204 }));
+    return withCors(await route(request, env));
   },
 
   /**

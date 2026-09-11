@@ -115,6 +115,9 @@ function consentGate() {
             L("A question typed or spoken during a story, with the page it is about — and the audio itself when you speak instead of typing."),
             L("It writes the answer, and turns speech into text. It is never told whose voice will read the answer out.")))),
 
+        h("p", { class: "caption", style: { margin: 0 } },
+          L("Both are reached through a relay Jaddati runs. It passes your request on and keeps no copy of it.")),
+
         h("div", { class: "stack gap-s" },
           h("button", { class: "btn-primary", onClick: () => { Consent.record(true); render(); } }, L("Allow these three things")),
           h("button", { class: "btn-quiet", onClick: () => { Consent.record(false); render(); } }, L("Not now — keep everything on this phone"))),
@@ -154,11 +157,12 @@ function openPrivacy(showControls = true) {
           bullet(L("Names, relationships and photos.")),
           bullet(L("Which language you read the app in.")),
           h("p", { class: "caption", style: { marginTop: "2px" } },
-            L("These are held in this browser's own storage. There is no account, and Jaddati has no server of its own — nothing here is uploaded to us, because there is no us to upload it to.")))),
+            L("These are held in this browser's own storage. There is no account and no sign-in, and none of it is uploaded to us.")))),
 
         panel(h("div", { class: "stack gap-xs" }, sectionLabel(L("Sent to others, only if you allow it")),
           bullet(L("ElevenLabs receives the recording you choose and the words you want spoken. The voice it builds is stored under this app's account there.")),
           bullet(L("Groq receives a question and the page it is about, and the audio when you speak instead of typing.")),
+          bullet(L("Both are reached through a relay Jaddati runs, so that the keys are not sitting inside this web page for anyone to take. It passes the request on and keeps no copy of it. It does count how much each browser has asked for, so that one visitor cannot use up what everyone else needs — a count, against a random code, with no name attached.")),
           h("p", { class: "caption", style: { marginTop: "2px" } },
             L("Both are bound by their own terms, which require them to protect what they are sent. Jaddati does not send them anything else, and does not send anything anywhere else.")))),
 
@@ -181,17 +185,23 @@ function openPrivacy(showControls = true) {
   });
 }
 
-// ── keys ────────────────────────────────────────────────────────────────
+// ── voice service ───────────────────────────────────────────────────────
 // A key shipped inside a web page is a key anyone can read out of it, so this
-// version carries none. Without one it runs as a demo on the browser's own
-// speech; with your own key it is the whole app.
+// version carries none of the real ones and goes through a relay instead.
+// There is nothing to fill in here. What is left is for two people: whoever
+// would rather spend their own allowance than ours, and whoever is about to
+// rehearse this in front of a room and does not want to spend either.
 
 function openSettings() {
   sheet(close => {
-    const eleven = h("input", { type: "password", value: Config.elevenKey, placeholder: "sk_…", autocomplete: "off", spellcheck: "false" });
-    const llm = h("input", { type: "password", value: Config.llmKey, placeholder: "gsk_…", autocomplete: "off", spellcheck: "false" });
+    // The boxes show what the visitor typed, never our relay token. Seeding
+    // them from the effective key would put a credential on screen and, worse,
+    // saving an untouched form would pin it as if they had chosen it.
+    const eleven = h("input", { type: "password", value: Config.personalVoiceKey, placeholder: "sk_…", autocomplete: "off", spellcheck: "false" });
+    const llm = h("input", { type: "password", value: Config.personalTextKey, placeholder: "gsk_…", autocomplete: "off", spellcheck: "false" });
     const voiceURL = h("input", { type: "url", value: Config.voiceBaseURL, placeholder: STOCK_VOICE_URL, autocomplete: "off", spellcheck: "false" });
     const llmURL = h("input", { type: "url", value: Config.llmBaseURL, placeholder: STOCK_LLM_URL, autocomplete: "off", spellcheck: "false" });
+    const demoSwitch = h("input", { type: "checkbox", checked: Config.demoOnly });
 
     const field = (title, input, note) => h("label", { class: "field" },
       h("div", { class: "field__title" }, title), input,
@@ -200,28 +210,37 @@ function openSettings() {
     return h("div", { class: "screen" },
       appBar(L("Voice service"), { trailing: h("button", { class: "iconbtn", onClick: close, "aria-label": L("Close") }, icon("close")) }),
       h("div", { class: "scroll" }, h("div", { class: "stack gap-m" },
-        headline(L("Your own keys,\nkept in this browser."), 30),
-        subtext(L("Jaddati for the web ships with no key of its own, because anything inside a web page can be read out of it. Paste your own and they stay in this browser and go only to the service they belong to.")),
+        headline(L("Ready as it is."), 30),
+        subtext(L("Jaddati for the web reaches the voice service through a relay we run, so there is no key to find and nothing to paste. Each browser gets a share of the allowance rather than a key of its own.")),
 
-        Config.isDemo ? panel(h("div", { class: "stack gap-xs" },
-          h("div", { class: "label" }, L("Demo voice")),
+        panel(h("div", { class: "stack gap-xs" },
+          h("label", { class: "switch" }, demoSwitch,
+            h("span", { class: "label", style: { flex: "1" } }, L("Rehearse without using the allowance"))),
           h("p", { class: "caption", style: { margin: 0 } },
-            L("With no key, the app speaks with this browser's own voice so you can see how everything works. That is not a recreation of anyone, and every clip made this way says so.")))) : null,
+            L("Everything works as it does live, but the app speaks with this browser's own voice and reaches no service at all. That is not a recreation of anyone, and every clip made this way says so.")))),
 
-        field("ElevenLabs " + L("key"), eleven, L("Used to create the voice and to speak your words.")),
-        field("Groq " + L("key"), llm, L("Used for questions during a story, and for speaking instead of typing. Optional.")),
-        field(L("Voice service") + " URL", voiceURL, L("Leave as it is unless you run a relay of your own.")),
-        field(L("Questions and dictation") + " URL", llmURL),
+        // The flex container sits inside the <details> rather than on it:
+        // Safari lays a flexed <details> out wrongly, marker and all.
+        h("details", {},
+          h("summary", { class: "label", style: { minHeight: "var(--touch)", display: "flex", alignItems: "center", cursor: "pointer" } },
+            L("Use my own keys instead")),
+          h("div", { class: "stack gap-s", style: { paddingTop: "var(--xs)" } },
+            subtext(L("With your own key the app goes straight to the service and our relay is not involved. Keys stay in this browser and go only to the service they belong to.")),
+            field("ElevenLabs " + L("key"), eleven, L("Used to create the voice and to speak your words.")),
+            field("Groq " + L("key"), llm, L("Used for questions during a story, and for speaking instead of typing. Optional.")),
+            field(L("Voice service") + " URL", voiceURL, L("Leave as it is unless you run a relay of your own.")),
+            field(L("Questions and dictation") + " URL", llmURL))),
 
         h("button", { class: "btn-primary", onClick: () => {
-          Config.elevenKey = eleven.value; Config.llmKey = llm.value;
+          Config.demoOnly = demoSwitch.checked;
+          Config.personalVoiceKey = eleven.value; Config.personalTextKey = llm.value;
           Config.voiceBaseURL = voiceURL.value; Config.llmBaseURL = llmURL.value;
           close(); toast(L("Saved")); render();
         } }, L("Save")),
 
-        Config.elevenKey || Config.llmKey
+        Config.personalVoiceKey || Config.personalTextKey
           ? h("button", { class: "btn-quiet", onClick: () => {
-              Config.elevenKey = ""; Config.llmKey = "";
+              Config.personalVoiceKey = ""; Config.personalTextKey = "";
               close(); toast(L("Keys removed from this browser.")); render();
             } }, L("Remove the keys from this browser")) : null,
       )));
@@ -275,10 +294,19 @@ function demoBanner() {
   return panel(h("div", { class: "stack", style: { gap: "4px" } },
     h("div", { style: { fontSize: "12px", fontWeight: "800", color: "var(--danger)", letterSpacing: isAr() ? "0" : ".5px" } },
       L("DEMO MODE")),
+    // Two different roads lead here now, and telling someone to add a key when
+    // they simply left rehearsal on would send them hunting for a problem that
+    // is not there.
     h("p", { class: "caption", style: { margin: 0 } },
-      L("No voice service key is set, so nothing is sent anywhere and the app speaks with this browser's own voice. It is not a recreation of anyone.")),
-    h("button", { class: "wine-text", style: { fontWeight: "600", fontSize: "13px", textAlign: "start", minHeight: "var(--touch)" }, onClick: openSettings },
-      L("Add a key"))));
+      Config.demoOnly
+        ? L("Rehearsal is switched on, so nothing is sent anywhere and the app speaks with this browser's own voice. It is not a recreation of anyone.")
+        : L("No voice service key is set, so nothing is sent anywhere and the app speaks with this browser's own voice. It is not a recreation of anyone.")),
+    Config.demoOnly
+      ? h("button", { class: "wine-text", style: { fontWeight: "600", fontSize: "13px", textAlign: "start", minHeight: "var(--touch)" },
+                      onClick: () => { Config.demoOnly = false; toast(L("Rehearsal is off. The app is live again.")); render(); } },
+          L("Switch rehearsal off"))
+      : h("button", { class: "wine-text", style: { fontWeight: "600", fontSize: "13px", textAlign: "start", minHeight: "var(--touch)" }, onClick: openSettings },
+          L("Add a key"))));
 }
 
 const unavailableNote = () => panel(h("div", { class: "stack", style: { gap: "6px" } },

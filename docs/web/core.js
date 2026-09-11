@@ -475,36 +475,130 @@ export class ConsentMissing extends Error {
 }
 
 // ── configuration ───────────────────────────────────────────────────────
-// The keys are the user's own, held in this browser and sent to nobody but the
-// service they belong to. A key shipped inside a web page is a key anyone can
-// read out of it, so this app does not carry one.
+// A key shipped inside a web page is a key anyone can read out of it, so this
+// version does not carry the real ones. It talks to a relay of ours instead:
+// the relay holds the ElevenLabs and Groq keys, and the page carries only a
+// token that we can revoke in seconds and that cannot spend more than one
+// visitor's allowance.
+//
+// That token is still readable in the page — there is no way to hide a
+// credential the browser itself has to send — so it is not treated as a
+// secret. What bounds the damage is the metering at the other end: one voice
+// per browser, a ceiling across everyone, and a monthly budget for speech.
+//
+// Pasting your own key switches the app off the relay and straight to the
+// service, because your key and our relay token cannot both be the right thing
+// to send.
 
 const K_ELEVEN = "jaddati.key.elevenlabs", K_LLM = "jaddati.key.llm";
 const K_VOICE_URL = "jaddati.url.voice", K_LLM_URL = "jaddati.url.llm";
+const K_DEMO = "jaddati.demo", K_DEVICE = "jaddati.device";
 
 const read = (k, fallback = "") => prefs.get(k) || fallback;
 const write = (k, v) => (v ? prefs.set(k, v) : prefs.remove(k));
+const clean = u => (u || "").trim().replace(/[\s/]+$/, "");
 
+export const RELAY_URL = "https://jaddati-proxy.sulaimanabuqamar.workers.dev";
 export const STOCK_VOICE_URL = "https://api.elevenlabs.io";
 export const STOCK_LLM_URL = "https://api.groq.com/openai/v1";
 
+/** Public by necessity, and metered because of it. See the note above. */
+const RELAY_TOKEN = "jd_7cvjRdcDM88CWeY5tjUjuWwqf92u_wTWlCCvlD7ZdqI";
+
+/**
+ * Which browser is spending. The relay meters against this so that one visitor
+ * cannot use up the allowance everyone else needs. It is a meter reading and
+ * nothing more: no name, no account, nothing stored beside it, and it goes when
+ * the site's data goes.
+ */
+export function deviceId() {
+  let id = prefs.get(K_DEVICE) || "";
+  if (!/^[A-Za-z0-9-]{8,64}$/.test(id)) {
+    id = newDeviceId();
+    prefs.set(K_DEVICE, id);
+  }
+  return id;
+}
+
+function newDeviceId() {
+  // randomUUID needs a secure context and getRandomValues is merely old; both
+  // can be missing in an embedded preview. An id that threw would take the
+  // whole app down over a meter reading, so the last resort only has to be
+  // unique enough to count against.
+  try { if (crypto?.randomUUID) return crypto.randomUUID(); } catch {}
+  try {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return [...bytes].map(n => n.toString(16).padStart(2, "0")).join("");
+  } catch {}
+  return "w" + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+}
+
 export const Config = {
-  get elevenKey() { return read(K_ELEVEN); },
-  set elevenKey(v) { write(K_ELEVEN, (v || "").trim()); },
-  get llmKey() { return read(K_LLM); },
-  set llmKey(v) { write(K_LLM, (v || "").trim()); },
+  /** What the visitor pasted, if anything at all. Empty means "use the relay",
+   *  which is what almost everyone will be doing. */
+  get personalVoiceKey() { return read(K_ELEVEN); },
+  set personalVoiceKey(v) { write(K_ELEVEN, (v || "").trim()); },
+  get personalTextKey() { return read(K_LLM); },
+  set personalTextKey(v) { write(K_LLM, (v || "").trim()); },
 
-  get voiceBaseURL() { return (read(K_VOICE_URL) || STOCK_VOICE_URL).replace(/[\s/]+$/, ""); },
-  set voiceBaseURL(v) { write(K_VOICE_URL, (v || "").replace(/[\s/]+$/, "")); },
-  get llmBaseURL() { return (read(K_LLM_URL) || STOCK_LLM_URL).replace(/[\s/]+$/, ""); },
-  set llmBaseURL(v) { write(K_LLM_URL, (v || "").replace(/[\s/]+$/, "")); },
+  /** What actually goes on the wire: their key when they have one, our relay
+   *  token when they do not, and nothing at all if they have pointed the app
+   *  somewhere else without supplying a key for it. */
+  get elevenKey() { return this.personalVoiceKey || (this.usesRelayVoice ? RELAY_TOKEN : ""); },
+  set elevenKey(v) { this.personalVoiceKey = v; },
+  get llmKey() { return this.personalTextKey || (this.usesRelayText ? RELAY_TOKEN : ""); },
+  set llmKey(v) { this.personalTextKey = v; },
 
-  /** No key of any kind: the app runs on the browser's own speech, and says so
-   *  everywhere it possibly can. This is the mode a QR code lands you in. */
-  get isDemo() { return !this.elevenKey; },
+  // A pasted key means "go straight to the service"; no key means "go through
+  // the relay". Typing either well-known address by hand is not an override at
+  // all, it is a request for that same automatic pairing — which matters,
+  // because the settings screen shows the current address in the box, so
+  // saving an untouched form must not quietly pin it.
+  get voiceBaseURL() {
+    const override = clean(read(K_VOICE_URL));
+    if (override) return override;
+    return this.personalVoiceKey ? STOCK_VOICE_URL : RELAY_URL;
+  },
+  set voiceBaseURL(v) {
+    const url = clean(v);
+    write(K_VOICE_URL, url === RELAY_URL || url === STOCK_VOICE_URL ? "" : url);
+  },
+  get llmBaseURL() {
+    const override = clean(read(K_LLM_URL));
+    if (override) return override;
+    return this.personalTextKey ? STOCK_LLM_URL : RELAY_URL;
+  },
+  set llmBaseURL(v) {
+    const url = clean(v);
+    write(K_LLM_URL, url === RELAY_URL || url === STOCK_LLM_URL ? "" : url);
+  },
 
-  get providerName() { return this.isDemo ? L("Demo voice") : (this.voiceBaseURL === STOCK_VOICE_URL ? "ElevenLabs" : hostOf(this.voiceBaseURL)); },
-  get textProviderName() { return this.llmBaseURL === STOCK_LLM_URL ? "Groq" : hostOf(this.llmBaseURL); },
+  get usesRelayVoice() { return this.voiceBaseURL === RELAY_URL; },
+  get usesRelayText() { return this.llmBaseURL === RELAY_URL; },
+
+  /** Rehearsal. Everything behaves as it does live, but on the browser's own
+   *  speech, so running through the demo a dozen times costs nothing and
+   *  leaves the real allowance for the day itself. */
+  get demoOnly() { return prefs.get(K_DEMO) === "1"; },
+  set demoOnly(v) { v ? prefs.set(K_DEMO, "1") : prefs.remove(K_DEMO); },
+
+  /** No way to reach a voice service, by choice or by configuration: the app
+   *  runs on the browser's own speech and says so everywhere it possibly can. */
+  get isDemo() { return this.demoOnly || !this.elevenKey; },
+
+  // The relay is a post office, not the recipient. Naming it here would tell
+  // people their recording goes to a workers.dev address and stops there,
+  // which is the opposite of what the consent screen has to make plain.
+  get providerName() {
+    if (this.isDemo) return L("Demo voice");
+    if (this.usesRelayVoice || this.voiceBaseURL === STOCK_VOICE_URL) return "ElevenLabs";
+    return hostOf(this.voiceBaseURL);
+  },
+  get textProviderName() {
+    if (this.usesRelayText || this.llmBaseURL === STOCK_LLM_URL) return "Groq";
+    return hostOf(this.llmBaseURL);
+  },
 
   /** Demo first, consent second — the demo reaches no network at all, so
    *  gating it behind a network answer would switch off something that already
@@ -545,9 +639,37 @@ export class VoiceError extends Error {
   constructor(kind, message) { super(message); this.name = "VoiceError"; this.kind = kind; }
 }
 
+/**
+ * The relay is told which browser is calling so it can meter; ElevenLabs and
+ * Groq are not, because they have no need for it and it is not theirs to hold.
+ * Same rule as the phone build, where it hangs off the same "are we going
+ * through our own address" test.
+ */
+function withDevice(headers, viaRelay) {
+  return viaRelay ? { ...headers, "x-jaddati-device": deviceId() } : headers;
+}
+
+export const voiceHeaders = (extra = {}) =>
+  withDevice({ "xi-api-key": Config.elevenKey, ...extra }, Config.usesRelayVoice);
+
+export const textHeaders = (extra = {}) =>
+  withDevice({ authorization: `Bearer ${Config.llmKey}`, ...extra }, Config.usesRelayText);
+
 function voiceMessage(status, detail) {
   if (status === 401 || status === 403) return L("The key was refused by the voice service.");
-  if (status === 429) return L("The voice service is busy right now. Wait a few seconds and try again.");
+  if (status === 429) {
+    // Going through the relay, 429 covers two different walls, and "wait a few
+    // seconds" is wrong advice for both. The wording is matched rather than a
+    // code, because upstream sends the same status for genuine busyness.
+    const said = (detail || "").toLowerCase();
+    if (said.includes("voice limit")) {
+      return L("There is no room for another voice at the moment. Remove one you have already made, or try again in a few days.");
+    }
+    if (said.includes("credit")) {
+      return L("This month's allowance for making new speech has been used up.");
+    }
+    return L("The voice service is busy right now. Wait a few seconds and try again.");
+  }
   if (status === 422) return L("The voice service would not accept that recording.") + (detail ? " " + detail : "");
   return L("The voice service reported a problem.") + ` (${status})` + (detail ? " " + detail : "");
 }
@@ -564,7 +686,7 @@ export const Voice = {
     form.append("name", name);
     form.append("files", blob, "sample." + (blob.type.includes("wav") ? "wav" : blob.type.includes("mpeg") ? "mp3" : "m4a"));
     const r = await fetch(`${Config.voiceBaseURL}/v1/voices/add`, {
-      method: "POST", headers: { "xi-api-key": Config.elevenKey }, body: form,
+      method: "POST", headers: voiceHeaders(), body: form,
     }).catch(() => { throw new VoiceError("offline", L("No internet connection.")); });
 
     const body = await r.text();
@@ -585,7 +707,7 @@ export const Voice = {
     const url = `${Config.voiceBaseURL}/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`;
     const r = await fetch(url, {
       method: "POST",
-      headers: { "xi-api-key": Config.elevenKey, "content-type": "application/json", accept: "audio/mpeg" },
+      headers: voiceHeaders({ "content-type": "application/json", accept: "audio/mpeg" }),
       body: JSON.stringify({
         text: trimmed, model_id: modelId,
         voice_settings: {
@@ -609,7 +731,7 @@ export const Voice = {
     if (!Consent.allowsNetwork) throw new ConsentMissing();
     if (!Config.elevenKey) throw new VoiceError("notConfigured", L("The key was refused by the voice service."));
     const r = await fetch(`${Config.voiceBaseURL}/v1/voices/${encodeURIComponent(voiceId)}`, {
-      method: "DELETE", headers: { "xi-api-key": Config.elevenKey },
+      method: "DELETE", headers: voiceHeaders(),
     }).catch(() => { throw new VoiceError("offline", L("No internet connection.")); });
     if (r.status === 404) return;                 // already gone is the outcome we wanted
     if (!r.ok) throw new VoiceError("provider", voiceMessage(r.status, detailOf(await r.text())));
@@ -675,7 +797,7 @@ export const Companion = {
 
     const r = await fetch(`${Config.llmBaseURL}/chat/completions`, {
       method: "POST",
-      headers: { authorization: `Bearer ${Config.llmKey}`, "content-type": "application/json" },
+      headers: textHeaders({ "content-type": "application/json" }),
       body: JSON.stringify({
         model: Config.llmModel,
         messages: [
