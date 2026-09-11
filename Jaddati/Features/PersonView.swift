@@ -269,7 +269,7 @@ struct PersonView: View {
                 Text(L("Voice service not connected"))
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Theme.Palette.ink)
-                SubText(text: L("Connect a voice service to create a voice or new audio. Original recordings remain available."))
+                SubText(text: L("This build has no voice service key, so no new audio can be created. Original recordings still play."))
             }
         }
     }
@@ -349,7 +349,11 @@ struct PersonView: View {
         let memories = library.keptClips(for: person)
         if !memories.isEmpty {
             NavigationLink {
-                MemoriesView(personId: person.id, filter: .recreated)
+                // Not .recreated: the screen it opens is headed "Original
+                // recordings and the new words you chose to save", and a
+                // pre-set filter quietly hiding half of that is a lie in a
+                // place this app cannot afford one.
+                MemoriesView(personId: person.id)
             } label: {
                 HStack {
                     Text(L("Everything saved"))
@@ -457,7 +461,13 @@ struct AudioRow: View {
                             .foregroundStyle(Theme.Palette.ink)
                     }
 
-                    if asset.durationSeconds > 0 {
+                    // A row at half opacity with a dead play button is
+                    // indistinguishable from a broken app unless it says why.
+                    if !present {
+                        Text(L("Audio file missing"))
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.Palette.danger)
+                    } else if asset.durationSeconds > 0 {
                         Text(Counts.duration(asset.durationSeconds))
                             .font(.system(size: 11))
                             .foregroundStyle(Theme.Palette.inkSoft)

@@ -127,21 +127,22 @@ struct BooksView: View {
                                 .font(.system(size: 12))
                                 .foregroundStyle(Theme.Palette.inkSoft)
 
-                            // An example figure, marked as one. Only the page
-                            // you ask for is ever generated.
-                            // The remaining cost, not the whole book: pages
-                            // already read are paid for, and showing the full
-                            // figure under "3 of 12 read" says the wrong thing.
-                            Text(L("Estimated remaining cost") + ": "
-                                 + String(format: "$%.2f USD",
-                                          max(Double(book.totalCharacters)
-                                              * Double(max(book.pageCount - library.pagesRead(of: book), 0))
-                                              / Double(max(book.pageCount, 1)) * 0.00011, 0.0)))
+                            // Credits, not dollars: the reader one tap away
+                            // quotes credits, and on a free tier credits are
+                            // what runs out. The remaining pages, not the whole
+                            // book — pages already read are paid for.
+                            // An estimate, and said to be one: it assumes every
+                            // remaining page is average length.
+                            Text(L("Roughly") + " "
+                                 + Counts.number(max(book.totalCharacters
+                                                     * max(book.pageCount - library.pagesRead(of: book), 0)
+                                                     / max(book.pageCount, 1), 0))
+                                 + " " + L("credits left to read"))
                                 .font(.system(size: 12))
                                 .foregroundStyle(Theme.Palette.inkSoft)
 
                             HStack {
-                                Button(L("Read this page")) { openedBookId = book.id }
+                                Button(L("Open book")) { openedBookId = book.id }
                                     .font(.system(size: 13, weight: .semibold))
                                     .foregroundStyle(Theme.Palette.wine)
                                 Spacer()
@@ -256,8 +257,8 @@ struct BookReaderView: View {
     /// fraction. Playing the answer replaces the audio player, so the position
     /// is gone by the time the story is asked to carry on.
     @State private var resumeAt: Double?
-    /// Answers made in this sitting, so they can be cleared on the way out
-    /// rather than piling up as files nothing lists.
+    /// Answers made in this sitting. Kept so a new question can clear the one
+    /// before it without waiting for the launch sweep.
     @State private var answerIds: [UUID] = []
 
     private var book: Book? { library.book(withId: bookId) }
@@ -293,6 +294,7 @@ struct BookReaderView: View {
                     .padding(Theme.Space.m)
                     .padding(.bottom, Theme.Space.xl)
                 }
+                .scrollDismissesKeyboard(.interactively)
             } else {
                 EmptyHint(icon: "book.closed",
                           title: L("Book removed"),
@@ -311,7 +313,10 @@ struct BookReaderView: View {
         }
         .onDisappear {
             player.stop()
-            discardAnswers()
+            // Deliberately does NOT delete the answers made in this sitting.
+            // Tapping a tab or flipping the language fires this, and doing so
+            // destroyed audio the user had just paid for. They are stored
+            // unkept, so Library.init sweeps them at the next launch.
         }
         .onChange(of: question) { old, new in
             // First keystroke stops the story. Waiting until "Ask" is tapped
@@ -331,7 +336,7 @@ struct BookReaderView: View {
                     .font(Theme.Font.caption)
                     .foregroundStyle(Theme.Palette.bronze)
             } else {
-                Text("≈ \(pageText.count) credits")
+                Text("≈ " + Counts.number(pageText.count) + " " + L("credits"))
                     .font(Theme.Font.caption)
                     .foregroundStyle(Theme.Palette.inkSoft)
             }
@@ -393,7 +398,8 @@ struct BookReaderView: View {
     }
 
     private var canRead: Bool {
-        person?.hasVoice == true && AppConfig.isConfigured && !isGenerating && !pageText.isEmpty
+        person?.hasVoice == true && AppConfig.isConfigured && !isGenerating
+            && !pageText.isEmpty && !library.loadFailed
     }
 
     private func move(by delta: Int, in book: Book) {
@@ -401,6 +407,9 @@ struct BookReaderView: View {
         pageIndex = max(0, min(max(pageIndex + delta, 0), book.pageCount - 1))
         errorText = nil
         clearQuestion()
+        // Turning the page is the deliberate way to leave a question behind, so
+        // its audio goes here rather than waiting for the launch sweep.
+        discardAnswers()
         var updated = book
         updated.currentPage = pageIndex
         library.update(updated)
@@ -411,12 +420,30 @@ struct BookReaderView: View {
     /// The interruption. A child stops the story, asks something, hears the
     /// answer in the same voice, and the story picks up where it stopped.
     @ViewBuilder private var questionSection: some View {
-        if AppConfig.isCompanionConfigured, person?.hasVoice == true {
+        if !AppConfig.isCompanionConfigured, person?.hasVoice == true {
+            // Silently absent is indistinguishable from never built. Say which.
             Panel {
                 VStack(alignment: .leading, spacing: Theme.Space.xs) {
                     Text(L("Stop and ask"))
                         .font(Theme.Font.label)
                         .foregroundStyle(Theme.Palette.ink)
+                    Text(L("Questions are not set up on this build."))
+                        .font(Theme.Font.caption)
+                        .foregroundStyle(Theme.Palette.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        } else if AppConfig.isCompanionConfigured, person?.hasVoice == true {
+            Panel {
+                VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                    Text(L("Stop and ask"))
+                        .font(Theme.Font.label)
+                        .foregroundStyle(Theme.Palette.ink)
+
+                    Text(L("Answers are written by AI. They are not their words and not their memories."))
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.Palette.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
 
                     askControls
 
@@ -432,11 +459,6 @@ struct BookReaderView: View {
                             ErrorNote(message: questionError)
                         }
                     }
-
-                    Text(L("Answers are written by AI. They are not their words and not their memories."))
-                        .font(.system(size: 11))
-                        .foregroundStyle(Theme.Palette.inkSoft)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
@@ -465,6 +487,19 @@ struct BookReaderView: View {
 
     private func answerPanel(_ text: String) -> some View {
         VStack(alignment: .leading, spacing: Theme.Space.xs) {
+            // The only audio in the app that had no badge on it, and the only
+            // audio that starts playing before anyone has read anything.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 6) {
+                    SourceBadge(isGenerated: true)
+                    ContentBadge(provenance: .answerWhileReading)
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    SourceBadge(isGenerated: true)
+                    ContentBadge(provenance: .answerWhileReading)
+                }
+            }
+
             Text(text)
                 .font(Theme.Font.spoken)
                 .foregroundStyle(Theme.Palette.ink)

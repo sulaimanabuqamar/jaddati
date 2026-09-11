@@ -141,7 +141,7 @@ struct LLMClient: StoryCompanion {
 
         switch status {
         case 401, 403:
-            return .provider(status: status, message: "The key was refused. Check LLM_API_KEY in Secrets.plist.")
+            return .provider(status: status, message: L("The key for the question service was refused."))
         case 404:
             return .unknownModel(model)
         case 429:

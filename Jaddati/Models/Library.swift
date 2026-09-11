@@ -280,7 +280,14 @@ final class Library: ObservableObject {
         asset.bookId = bookId
         asset.pageIndex = pageIndex
         assets.append(asset)
-        save()
+        guard save() else {
+            // The row did not reach disk, so at the next launch this audio
+            // would be an orphan nothing lists. Undo the whole thing and let
+            // the caller say so rather than hand back a clip that will vanish.
+            assets.removeAll { $0.id == asset.id }
+            try? FileManager.default.removeItem(at: destination)
+            return nil
+        }
         return asset
     }
 
@@ -365,11 +372,14 @@ final class Library: ObservableObject {
         }
     }
 
-    private func save() {
+    /// Returns false when nothing reached disk, so a caller holding something
+    /// the user paid for can refuse to pretend it was kept.
+    @discardableResult
+    private func save() -> Bool {
         // Set only when an unreadable index could NOT be moved aside, meaning
         // the real file is still sitting at indexURL. Writing then would put an
         // empty index over it and orphan every recording for good.
-        guard !loadFailed else { return }
+        guard !loadFailed else { return false }
 
         do {
             let encoder = JSONEncoder()
@@ -379,8 +389,10 @@ final class Library: ObservableObject {
                 Index(people: people, assets: assets, notes: notes, books: books))
             try data.write(to: indexURL, options: .atomic)
             storageError = nil
+            return true
         } catch {
             storageError = L("Changes could not be saved.") + " " + error.localizedDescription
+            return false
         }
     }
 }

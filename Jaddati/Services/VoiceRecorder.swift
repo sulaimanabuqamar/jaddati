@@ -106,14 +106,14 @@ final class VoiceRecorder: ObservableObject {
             let newRecorder = try AVAudioRecorder(url: url, settings: purpose.settings)
             newRecorder.isMeteringEnabled = true
             guard newRecorder.prepareToRecord(), newRecorder.record() else {
-                error = "The microphone could not be started."
+                error = L("The microphone could not be started.")
                 return
             }
             recorder = newRecorder
             isRecording = true
             startTicking()
         } catch {
-            self.error = "The microphone could not be started. \(error.localizedDescription)"
+            self.error = L("The microphone could not be started.") + " " + error.localizedDescription
         }
     }
 

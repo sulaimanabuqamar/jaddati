@@ -134,7 +134,7 @@ struct TabRail: View {
     }
 }
 
-enum RootTab: CaseIterable, Hashable {
+enum RootTab: String, CaseIterable, Hashable {
     case people, saved, books
 
     var title: String {

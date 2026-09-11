@@ -13,6 +13,7 @@ struct MemoriesView: View {
     @EnvironmentObject private var library: Library
     @EnvironmentObject private var player: AudioPlayer
     @State private var opened: AudioAsset?
+    @State private var pendingDeletion: AudioAsset?
     @State private var origin: OriginFilter = .all
     @State private var experience: ExperienceFilter = .all
 
@@ -144,10 +145,12 @@ struct MemoriesView: View {
                             AudioRow(asset: asset) { opened = asset }
                                 .contextMenu {
                                     Button(role: .destructive) {
-                                        if player.playingAssetId == asset.id { player.stop() }
-                                        library.delete(asset)
+                                        pendingDeletion = asset
                                     } label: {
-                                        Label(L("Delete clip"), systemImage: "trash")
+                                        Label(asset.source == .original
+                                              ? L("Delete this recording")
+                                              : L("Delete clip"),
+                                              systemImage: "trash")
                                     }
                                 }
                         }
@@ -161,6 +164,27 @@ struct MemoriesView: View {
         .navigationBarHidden(true)
         .navigationDestination(item: $opened) { asset in
             PlayerView(asset: asset)
+        }
+        // An original recording is the one thing here that cannot be made
+        // again, so the wording changes with what is about to go.
+        .confirmationDialog(pendingDeletion?.source == .original
+                            ? L("Delete this recording?")
+                            : L("Discard this clip?"),
+                            isPresented: Binding(get: { pendingDeletion != nil },
+                                                 set: { if !$0 { pendingDeletion = nil } }),
+                            titleVisibility: .visible) {
+            Button(L("Delete permanently"), role: .destructive) {
+                if let asset = pendingDeletion {
+                    if player.playingAssetId == asset.id { player.stop() }
+                    library.delete(asset)
+                }
+                pendingDeletion = nil
+            }
+            Button(L("Cancel"), role: .cancel) { pendingDeletion = nil }
+        } message: {
+            Text(pendingDeletion?.source == .original
+                 ? L("This is a real recording of them and the only copy on this phone. It cannot be recovered.")
+                 : L("The audio is deleted from this phone. Creating it again costs credits."))
         }
         .onChange(of: everything.count) { _, _ in
             // Deleting the last clip of a kind removes its chip. Without this

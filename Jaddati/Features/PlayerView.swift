@@ -70,18 +70,23 @@ struct PlayerView: View {
 
                 Spacer(minLength: 0)
 
-                if fileIsPresent {
-                    transport
-                } else {
-                    ErrorNote(message: L("This audio file is not available. Playback is unavailable."))
-                }
+                // Grouped so the transport counts as one child: this stack
+                // was sitting on SwiftUI's ten-child ViewBuilder limit, where
+                // one more line fails with an unreadable inference error.
+                Group {
+                    if fileIsPresent {
+                        transport
+                    } else {
+                        ErrorNote(message: L("This audio file is not available. Playback is unavailable."))
+                    }
 
-                if let problem = player.playbackError {
-                    ErrorNote(message: problem)
-                }
+                    if let problem = player.playbackError {
+                        ErrorNote(message: problem)
+                    }
 
-                if asset.isGenerated {
-                    keepControls
+                    if asset.isGenerated {
+                        keepControls
+                    }
                 }
 
                 Spacer(minLength: Theme.Space.m)
@@ -218,7 +223,17 @@ struct PlayerView: View {
 
     // MARK: Keep or discard
 
-    private var keepControls: some View {
+    @ViewBuilder private var keepControls: some View {
+        // Leaving without keeping does exactly what Discard does — and Discard
+        // asks first. Say so, rather than letting Back be the quiet one.
+        if !kept {
+            Text(L("Not kept yet. This clip is removed when you leave."))
+                .font(Theme.Font.caption)
+                .foregroundStyle(Theme.Palette.amber)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+
         HStack(spacing: Theme.Space.s) {
             Button(kept ? L("Clip saved") : L("Keep this clip")) {
                 guard !kept else { return }

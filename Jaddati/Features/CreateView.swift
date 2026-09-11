@@ -26,6 +26,7 @@ struct CreateView: View {
     /// Edited locally and committed when the drag ends. Binding a slider
     /// straight at the library would rewrite the whole index on every tick.
     @State private var draftTuning: VoiceTuning = .natural
+    @State private var pendingLineDeletion: FamilyNote?
 
     private var person: Person? { library.person(withId: personId) }
 
@@ -71,6 +72,7 @@ struct CreateView: View {
             && !isGenerating
             && person?.hasVoice == true
             && AppConfig.isConfigured
+            && !library.loadFailed
     }
 
     var body: some View {
@@ -136,6 +138,16 @@ struct CreateView: View {
         }
         .sheet(isPresented: $addingVoice) {
             AddVoiceView(personId: personId)
+        }
+        .confirmationDialog(L("Remove this line?"),
+                            isPresented: Binding(get: { pendingLineDeletion != nil },
+                                                 set: { if !$0 { pendingLineDeletion = nil } }),
+                            titleVisibility: .visible) {
+            Button(L("Remove line"), role: .destructive) {
+                if let line = pendingLineDeletion { library.removeNote(line) }
+                pendingLineDeletion = nil
+            }
+            Button(L("Cancel"), role: .cancel) { pendingLineDeletion = nil }
         }
         .onChange(of: person?.voiceId) { _, _ in
             // A new voice invalidates the old complaint.
@@ -393,11 +405,15 @@ struct CreateView: View {
                                         .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
-                                Button { library.removeNote(line) } label: {
+                                Button { pendingLineDeletion = line } label: {
                                     Image(systemName: "trash")
                                         .font(.system(size: 12))
                                         .foregroundStyle(Theme.Palette.inkSoft)
-                                        .frame(width: 32, height: 32)
+                                        // Was 32: below the 44 the rest of the
+                                        // app uses, and sitting right beside
+                                        // the line's own tap target.
+                                        .frame(width: Theme.Metric.touchTarget,
+                                               height: Theme.Metric.touchTarget)
                                         .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
@@ -530,7 +546,7 @@ struct CreateView: View {
         switch intent {
         case .comfort:           return L("Comfort you have kept")
         case .storyFiction:      return L("Stories you have kept")
-        case .storyFromMemories: return L("Everything you have kept")
+        case .storyFromMemories: return L("Words you have kept")
         default:                 return L("Previously kept")
         }
     }

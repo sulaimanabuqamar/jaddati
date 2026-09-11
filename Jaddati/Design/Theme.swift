@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// The single source of truth for how Jaddati looks.
 /// Warm ivory ground, deep forest green for weight, bronze for warmth.

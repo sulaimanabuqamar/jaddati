@@ -198,7 +198,7 @@ struct HomeView: View {
                 Text(L("Voice service not connected"))
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Theme.Palette.ink)
-                SubText(text: L("Connect a voice service to create a voice or new audio. Original recordings remain available."))
+                SubText(text: L("This build has no voice service key, so no new audio can be created. Original recordings still play."))
             }
         }
     }
@@ -297,7 +297,7 @@ struct AddPersonView: View {
 
                     Spacer()
 
-                    Button(L("Add someone")) {
+                    Button(L("Add person")) {
                         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !trimmed.isEmpty else { return }
                         library.add(Person(name: trimmed, relationship: relationship))

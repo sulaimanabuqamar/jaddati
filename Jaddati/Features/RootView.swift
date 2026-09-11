@@ -8,11 +8,27 @@ import SwiftUI
 /// other two tabs carry a breadcrumb saying whose they are.
 struct RootView: View {
     @EnvironmentObject private var library: Library
-    @State private var tab: RootTab = .people
-    @State private var selectedPersonId: UUID?
+
+    // Switching language rebuilds the whole tree by design (JaddatiApp puts an
+    // .id on it), which used to throw away the chosen tab and the chosen person
+    // as well — tap the globe while reading a book and you landed back on
+    // People. These outlive the rebuild; only the push stack is lost.
+    @AppStorage("jaddati.tab") private var storedTab: String = RootTab.people.rawValue
+    @AppStorage("jaddati.person") private var storedPerson: String = ""
+
+    private var tab: Binding<RootTab> {
+        Binding(get: { RootTab(rawValue: storedTab) ?? .people },
+                set: { storedTab = $0.rawValue })
+    }
+
+    private var selectedPersonId: Binding<UUID?> {
+        Binding(get: { storedPerson.isEmpty ? nil : UUID(uuidString: storedPerson) },
+                set: { storedPerson = $0?.uuidString ?? "" })
+    }
 
     private var selectedPerson: Person? {
-        if let selectedPersonId, let found = library.person(withId: selectedPersonId) { return found }
+        if let id = selectedPersonId.wrappedValue,
+           let found = library.person(withId: id) { return found }
         return library.people.count == 1 ? library.people.first : nil
     }
 
@@ -22,9 +38,9 @@ struct RootView: View {
 
             VStack(spacing: 0) {
                 Group {
-                    switch tab {
+                    switch tab.wrappedValue {
                     case .people:
-                        HomeView(selectedPersonId: $selectedPersonId)
+                        HomeView(selectedPersonId: selectedPersonId)
                     case .saved:
                         personScoped { person in
                             MemoriesView(personId: person.id, isTabRoot: true)
@@ -41,12 +57,23 @@ struct RootView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                TabRail(selection: $tab)
+                TabRail(selection: tab)
             }
             // The rail is furniture, not content. Without this it rides up with
             // the keyboard and covers the line being typed.
             .ignoresSafeArea(.keyboard, edges: .bottom)
         }
+        .onChange(of: library.people.count) { _, _ in forgetSelectionIfGone() }
+        .onAppear(perform: forgetSelectionIfGone)
+    }
+
+    /// A deleted person left their id selected. With one person remaining the
+    /// fallback silently re-pointed Saved and Books at whoever was left — and
+    /// the id now survives a relaunch, so it has to be checked on the way in.
+    private func forgetSelectionIfGone() {
+        guard let id = selectedPersonId.wrappedValue,
+              library.person(withId: id) == nil else { return }
+        selectedPersonId.wrappedValue = nil
     }
 
     /// Saved and Books both need a person. When there is not one the screen says
@@ -61,12 +88,12 @@ struct RootView: View {
             NavigationStack { content(person) }
         } else {
             VStack(spacing: 0) {
-                AppBar(title: L("Jaddati"), showsBack: false)
+                AppBar(title: tab.wrappedValue.title, showsBack: false)
                 Spacer(minLength: 0)
                 EmptyHint(icon: "person.crop.circle",
                           title: L("Choose someone first"),
                           message: emptyMessage())
-                Button(L("Go to People")) { tab = .people }
+                Button(L("Go to People")) { tab.wrappedValue = .people }
                     .buttonStyle(QuietButtonStyle())
                     .padding(.horizontal, Theme.Metric.screenPadding)
                     .padding(.top, Theme.Space.s)

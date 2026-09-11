@@ -52,7 +52,22 @@ struct AddVoiceView: View {
     /// the far end. A single bundled checkbox obscures which was given.
     private var canSubmit: Bool {
         pickedURL != nil && consented && understandsSynthetic && !isWorking
-            && !durationIsUnusable && AppConfig.isConfigured
+            && !durationIsUnusable && AppConfig.isConfigured && !library.loadFailed
+    }
+
+    /// Why the button is greyed out. Every other screen in this app explains
+    /// itself; this one left the judge guessing which of five things was wrong.
+    private var disabledReason: String? {
+        if isWorking || canSubmit { return nil }
+        if !AppConfig.isConfigured { return nil }   // has its own note above
+        if library.loadFailed { return nil }        // storageError says it
+        if pickedURL == nil {
+            return (consented && understandsSynthetic)
+                ? L("Choose a recording")
+                : L("Choose a recording, then review both permissions.")
+        }
+        if durationIsUnusable { return L("This recording may be too short.") }
+        return L("Both permissions are needed before upload.")
     }
 
     var body: some View {
@@ -69,7 +84,7 @@ struct AddVoiceView: View {
                                  size: 33)
 
                         if !AppConfig.isConfigured {
-                            ErrorNote(message: L("Connect a voice service to create a voice or new audio. Original recordings remain available."))
+                            ErrorNote(message: L("This build has no voice service key, so no new audio can be created. Original recordings still play."))
                         }
 
                         if replacingExistingVoice {
@@ -91,18 +106,30 @@ struct AddVoiceView: View {
                             }
                         }
 
-                        Button(isWorking ? L("Creating voice…") : L("Create voice")) {
-                            creationTask = Task { await createVoice() }
-                        }
-                        .buttonStyle(PrimaryButtonStyle(enabled: canSubmit))
-                        .disabled(!canSubmit)
+                        // Grouped so the action counts as one child: this
+                        // stack sits right on the ten-child ViewBuilder limit.
+                        Group {
+                            Button(isWorking ? L("Creating voice…") : L("Create voice")) {
+                                creationTask = Task { await createVoice() }
+                            }
+                            .buttonStyle(PrimaryButtonStyle(enabled: canSubmit))
+                            .disabled(!canSubmit)
 
-                        if isWorking {
-                            HStack(spacing: 8) {
-                                ProgressView()
-                                Text(L("Uploading recording…"))
+                            if let reason = disabledReason {
+                                Text(reason)
                                     .font(Theme.Font.caption)
                                     .foregroundStyle(Theme.Palette.inkSoft)
+                                    .frame(maxWidth: .infinity, alignment: .center)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+
+                            if isWorking {
+                                HStack(spacing: 8) {
+                                    ProgressView()
+                                    Text(L("Uploading recording…"))
+                                        .font(Theme.Font.caption)
+                                        .foregroundStyle(Theme.Palette.inkSoft)
+                                }
                             }
                         }
                     }
@@ -142,7 +169,10 @@ struct AddVoiceView: View {
                 Text(L("The recording may already have reached the voice service. If it has, the voice is created and a slot is used."))
             }
         }
-        .interactiveDismissDisabled(isWorking)
+        // Also while a recording is waiting to be used: a minute of the
+        // presenter's grandmother, thrown away by a scroll that carried into
+        // the sheet's dismiss gesture, with no confirmation and no way back.
+        .interactiveDismissDisabled(isWorking || (pickedURL != nil && pickedIsTemporary))
         .onDisappear {
             if recorder.isRecording { recorder.cancel() }
             discardTempFile()
@@ -164,7 +194,7 @@ struct AddVoiceView: View {
                     .foregroundStyle(Theme.Palette.ink)
                 Text(L("This creates another voice. The previous voice is not deleted.") + " "
                      + L("Existing saved clips keep their original audio.")
-                     + " It keeps occupying a voice slot at \(AppConfig.providerName) until you delete it there.")
+                     + " " + L("It keeps occupying a voice slot at the voice service until you delete it there."))
                     .font(Theme.Font.caption)
                     .foregroundStyle(Theme.Palette.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
@@ -243,7 +273,7 @@ struct AddVoiceView: View {
                                 Text(L("Choose a file"))
                                     .font(Theme.Font.label)
                                     .foregroundStyle(Theme.Palette.ink)
-                                Text(L("Use a saved recording"))
+                                Text(L("Import from Files"))
                                     .font(Theme.Font.caption)
                                     .foregroundStyle(Theme.Palette.inkSoft)
                             }
@@ -286,11 +316,13 @@ struct AddVoiceView: View {
                 }
 
                 Text(recorder.elapsed < 60
-                     ? "Keep going \u{2014} about a minute is what the clone needs."
-                     : "That is enough. Stop whenever you like.")
+                     ? L("Keep going — about a minute is what the voice needs.")
+                     : L("That is enough. Stop whenever you like."))
                     .font(.system(size: 11))
-                    .foregroundStyle(recorder.elapsed < 60 ? Theme.Palette.danger
-                                                           : Theme.Palette.inkSoft)
+                    // Was danger red for the normal case, so a recording going
+                    // exactly to plan looked like it was failing.
+                    .foregroundStyle(recorder.elapsed < 60 ? Theme.Palette.amber
+                                                           : Theme.Palette.sage)
 
                 HStack(spacing: Theme.Space.s) {
                     Button(L("Stop")) { stopRecording() }
@@ -359,9 +391,8 @@ struct AddVoiceView: View {
         // refuse it here and say what was actually measured.
         guard result.capturedSound else {
             try? FileManager.default.removeItem(at: result.url)
-            recordProblem = "That recording came out silent \u{2014} \(result.bytes) bytes, "
-                + "peak \(Int(result.peakDecibels)) dB. Nothing reached the microphone. "
-                + "Check nothing is covering it and try again."
+            recordProblem = L("That recording came out silent. Nothing reached the microphone — check nothing is covering it and try again.")
+                + " (\(result.bytes) B, \(Int(result.peakDecibels)) dB)"
             return
         }
 
@@ -461,8 +492,8 @@ struct AddVoiceView: View {
         guard pickedDuration > 0 else { return L("Length unknown") }
         let seconds = Int(pickedDuration.rounded())
         let text = seconds >= 60 ? "\(seconds / 60)m \(seconds % 60)s" : "\(seconds)s"
-        if durationIsUnusable { return "\(text) — too short to build a voice from" }
-        if durationIsShort    { return "\(text) — shorter than recommended" }
+        if durationIsUnusable { return text + " — " + L("too short to build a voice from") }
+        if durationIsShort    { return text + " — " + L("shorter than recommended") }
         return text
     }
 
@@ -498,7 +529,7 @@ struct AddVoiceView: View {
     }
 
     private func lengthLabel(_ seconds: Double) -> String {
-        guard seconds > 0 else { return "Length unknown" }
+        guard seconds > 0 else { return L("Length unknown") }
         let total = Int(seconds.rounded())
         return total >= 60 ? "\(total / 60)m \(total % 60)s" : "\(total)s"
     }

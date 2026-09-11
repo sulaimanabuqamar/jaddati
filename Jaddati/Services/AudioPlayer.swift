@@ -67,7 +67,7 @@ final class AudioPlayer: NSObject, ObservableObject {
         stop()
 
         guard FileManager.default.fileExists(atPath: url.path) else {
-            playbackError = "That audio file is missing from this phone."
+            playbackError = L("That audio file is missing from this phone.")
             return
         }
 
@@ -90,7 +90,7 @@ final class AudioPlayer: NSObject, ObservableObject {
             isPlaying = true
             startTicking()
         } catch {
-            playbackError = "This audio could not be played. It may be an unsupported format."
+            playbackError = L("This audio could not be played. It may be an unsupported format.")
             playingAssetId = nil
         }
     }
@@ -184,7 +184,7 @@ extension AudioPlayer: AVAudioPlayerDelegate {
 
     func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
         DispatchQueue.main.async { [weak self] in
-            self?.playbackError = "Playback stopped unexpectedly."
+            self?.playbackError = L("Playback stopped unexpectedly.")
             self?.isPlaying = false
         }
     }
