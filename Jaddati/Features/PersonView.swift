@@ -114,15 +114,27 @@ struct PersonView: View {
     }
 
     /// The one-line truth about whether this voice can speak.
-    @ViewBuilder private func voiceTag(_ person: Person) -> some View {
-        let words: String
-        let tint: Color
-        if person.voiceIsUnavailableHere { words = L("Test voice only"); tint = Theme.Palette.danger }
-        else if person.hasVoice { words = L("Recreated voice ready"); tint = Theme.Palette.wine }
-        else if person.voicePendingVerification { words = L("Voice is being prepared"); tint = Theme.Palette.amber }
-        else { words = L("No recreated voice yet"); tint = Theme.Palette.inkSoft }
+    ///
+    /// The words and the colour are picked in a plain function, NOT inside the
+    /// ViewBuilder. A builder treats `if` as view construction, so assigning to
+    /// a `let` in its branches hands the assignment to `buildExpression` and
+    /// fails with "this expression does not conform to View".
+    private func voiceTagContent(_ person: Person) -> (String, Color) {
+        if person.voiceIsUnavailableHere {
+            return (L("Test voice only"), Theme.Palette.danger)
+        }
+        if person.hasVoice {
+            return (L("Recreated voice ready"), Theme.Palette.wine)
+        }
+        if person.voicePendingVerification {
+            return (L("Voice is being prepared"), Theme.Palette.amber)
+        }
+        return (L("No recreated voice yet"), Theme.Palette.inkSoft)
+    }
 
-        Text(words.uppercased())
+    private func voiceTag(_ person: Person) -> some View {
+        let (words, tint) = voiceTagContent(person)
+        return Text(words.uppercased())
             .font(.system(size: 9, weight: .bold))
             .tracking(0.6)
             .foregroundStyle(tint)
