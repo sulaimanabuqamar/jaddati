@@ -1,73 +1,56 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" dir="ltr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Jaddati — Web</title>
-
-<!-- ────────────────────────────────────────────────────────────────
-     CHANGE THIS ONE LINE TO RE-POINT THE QR CODE ON THE POSTER.
-     Leave it as "" and this page shows the holding card instead.
-     ──────────────────────────────────────────────────────────────── -->
-<script>const DESTINATION = "";</script>
-
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F9F5EF">
+<title>Jaddati — Voices, carefully kept</title>
+<meta name="description" content="Keep the recordings you have of someone who has died, and hear new words in a recreation of their voice. The web version of Jaddati.">
+<link rel="stylesheet" href="app.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='none' stroke='%23592C43' stroke-width='7' stroke-linejoin='round'%3E%3Cg transform='translate(50,50)'%3E%3Cpath d='M0 -8 A22 22 0 0 1 0 -46 A22 22 0 0 1 0 -8 Z'/%3E%3Cpath d='M0 -8 A22 22 0 0 1 0 -46 A22 22 0 0 1 0 -8 Z' transform='rotate(60)'/%3E%3Cpath d='M0 -8 A22 22 0 0 1 0 -46 A22 22 0 0 1 0 -8 Z' transform='rotate(120)'/%3E%3Cpath d='M0 -8 A22 22 0 0 1 0 -46 A22 22 0 0 1 0 -8 Z' transform='rotate(180)'/%3E%3Cpath d='M0 -8 A22 22 0 0 1 0 -46 A22 22 0 0 1 0 -8 Z' transform='rotate(240)'/%3E%3Cpath d='M0 -8 A22 22 0 0 1 0 -46 A22 22 0 0 1 0 -8 Z' transform='rotate(300)'/%3E%3C/g%3E%3C/svg%3E">
 <style>
-  :root { color-scheme: light; }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; min-height: 100dvh; background: #F9F5EF; color: #302725;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-    display: grid; place-items: center; padding: 24px;
-  }
-  .card {
-    max-width: 420px; width: 100%; background: #FEFAF5; border: 1px solid #E4DCD3;
-    border-radius: 20px; padding: 36px 30px; text-align: center;
-    display: flex; flex-direction: column; align-items: center; gap: 16px;
-  }
-  .mark { width: 64px; height: 64px; }
-  .name { font-family: Georgia, serif; font-size: 15px; letter-spacing: 0.24em; color: #592C43; }
-  h1 { font-family: Georgia, serif; font-weight: 400; font-size: 27px; line-height: 1.25; margin: 4px 0 0; }
-  p { margin: 0; font-size: 15px; line-height: 1.6; color: #766861; }
-  a.btn {
-    margin-top: 6px; display: inline-block; text-decoration: none;
-    background: #592C43; color: #F8EFE4; font-size: 15px; font-weight: 600;
-    padding: 14px 26px; border-radius: 15px;
-  }
-  a.btn:hover { background: #3E2031; }
-  a.quiet { color: #592C43; font-size: 14px; }
-  .hidden { display: none; }
+  /* A back arrow is directional, so it mirrors in Arabic. */
+  .flip { transform: scaleX(-1); }
+  :root[dir="rtl"] .book-cover { padding: 11px 15px 11px 10px; }
+  /* Before the module has run, show the mark rather than a white flash. */
+  #boot { flex: 1; display: grid; place-items: center; }
+  #boot svg { width: 54px; height: 54px; opacity: .35; }
+  .noscript { padding: var(--xl) var(--pad); text-align: center; }
 </style>
 </head>
 <body>
-  <div class="card" id="holding">
-    <svg class="mark" viewBox="0 0 100 100" aria-hidden="true" fill="none"
-         stroke="#592C43" stroke-width="5" stroke-linejoin="round">
+<div id="app">
+  <div id="boot">
+    <svg viewBox="0 0 100 100" fill="none" stroke="#592C43" stroke-width="5" stroke-linejoin="round" aria-hidden="true">
       <g transform="translate(50,50)">
-        <g><path d="M0 -8 A22 22 0 0 1 0 -46 A22 22 0 0 1 0 -8 Z"/></g>
-        <g transform="rotate(60)"><path d="M0 -8 A22 22 0 0 1 0 -46 A22 22 0 0 1 0 -8 Z"/></g>
-        <g transform="rotate(120)"><path d="M0 -8 A22 22 0 0 1 0 -46 A22 22 0 0 1 0 -8 Z"/></g>
-        <g transform="rotate(180)"><path d="M0 -8 A22 22 0 0 1 0 -46 A22 22 0 0 1 0 -8 Z"/></g>
-        <g transform="rotate(240)"><path d="M0 -8 A22 22 0 0 1 0 -46 A22 22 0 0 1 0 -8 Z"/></g>
-        <g transform="rotate(300)"><path d="M0 -8 A22 22 0 0 1 0 -46 A22 22 0 0 1 0 -8 Z"/></g>
+        <path d="M0 -8 A22 22 0 0 1 0 -46 A22 22 0 0 1 0 -8 Z"/>
+        <path d="M0 -8 A22 22 0 0 1 0 -46 A22 22 0 0 1 0 -8 Z" transform="rotate(60)"/>
+        <path d="M0 -8 A22 22 0 0 1 0 -46 A22 22 0 0 1 0 -8 Z" transform="rotate(120)"/>
+        <path d="M0 -8 A22 22 0 0 1 0 -46 A22 22 0 0 1 0 -8 Z" transform="rotate(180)"/>
+        <path d="M0 -8 A22 22 0 0 1 0 -46 A22 22 0 0 1 0 -8 Z" transform="rotate(240)"/>
+        <path d="M0 -8 A22 22 0 0 1 0 -46 A22 22 0 0 1 0 -8 Z" transform="rotate(300)"/>
       </g>
     </svg>
-    <div class="name">JADDATI</div>
-    <h1>The web version is on its way</h1>
-    <p>Scan this same code again once it is live and it will take you straight to it.</p>
-    <a class="btn" href="https://github.com/sulaimanabuqamar/jaddati">See the source code</a>
-    <p style="font-size:13px">Smart Mobile Application Contest 2026 · Khalifa University</p>
   </div>
+</div>
 
-  <script>
-    if (DESTINATION) {
-      document.getElementById("holding").classList.add("hidden");
-      location.replace(DESTINATION);
-    }
-  </script>
-  <noscript>
-    <p style="text-align:center">
-      <a href="https://github.com/sulaimanabuqamar/jaddati">Continue to Jaddati</a>
-    </p>
-  </noscript>
+<noscript>
+  <div class="noscript">
+    <h1 class="headline">Jaddati</h1>
+    <p class="subtext">Jaddati needs JavaScript to run. Turn it on for this page, or use the iPhone app.</p>
+    <p class="subtext"><a href="../">About Jaddati</a> · <a href="../privacy/">Privacy</a></p>
+  </div>
+</noscript>
+
+<script type="module">
+  import { setLang, state } from "./strings.js";
+  setLang(state.lang);                       // paint the right direction before anything renders
+  import("./app.js").catch(err => {
+    document.getElementById("app").innerHTML =
+      '<div class="noscript"><h1 class="headline">Jaddati</h1>' +
+      '<p class="subtext">This browser could not start the app. It needs a current version of Safari, Chrome, Firefox or Edge.</p>' +
+      '<p class="small">' + String(err && err.message ? err.message : err) + '</p></div>';
+  });
+</script>
 </body>
 </html>
