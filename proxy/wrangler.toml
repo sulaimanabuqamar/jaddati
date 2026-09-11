@@ -1,0 +1,32 @@
+name = "jaddati-proxy"
+main = "src/worker.js"
+compatibility_date = "2026-09-01"
+
+# Slots come back on their own. Without this the account fills once and
+# stays full, and the demo cannot create a voice.
+[triggers]
+crons = ["0 3 * * *"]
+
+[vars]
+# How many characters of speech one device may spend in a calendar month.
+# One page of a book is roughly 900, so 500 is about half a page — enough to
+# hear the voice properly, not enough to drain the account.
+CREDITS_PER_DEVICE = "500"
+
+# Ceiling on shared voices alive at once, ACROSS everyone. Set this BELOW the
+# number of slots the plan actually has, so the demo always has room.
+MAX_VOICES = "6"
+
+# How long a shared voice lives before the nightly sweep removes it.
+VOICE_TTL_DAYS = "7"
+
+LLM_BASE_URL = "https://api.groq.com/openai/v1"
+
+# Secrets are NOT set here — they would end up in git. Set them with:
+#   npx wrangler secret put ELEVENLABS_API_KEY
+#   npx wrangler secret put LLM_API_KEY
+#   npx wrangler secret put APP_TOKEN
+
+[[kv_namespaces]]
+binding = "JADDATI"
+id = "PASTE_THE_ID_FROM_kv_namespace_create"

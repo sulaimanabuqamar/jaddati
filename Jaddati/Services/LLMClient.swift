@@ -28,6 +28,7 @@ struct LLMClient: StoryCompanion {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(AppConfig.deviceId, forHTTPHeaderField: "X-Jaddati-Device")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let payload: [String: Any] = [

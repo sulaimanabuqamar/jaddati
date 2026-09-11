@@ -6,7 +6,7 @@ import Foundation
 ///   POST /v1/text-to-speech/{voice_id}  json: { text, model_id } -> mp3 bytes
 struct ElevenLabsClient: VoiceService {
 
-    private let base = URL(string: "https://api.elevenlabs.io")!
+    private let base: URL
     private let key: String
 
     /// One session for the whole app. A fresh URLSession per request throws away
@@ -20,8 +20,10 @@ struct ElevenLabsClient: VoiceService {
         return URLSession(configuration: config)
     }()
 
-    init(key: String = AppConfig.elevenLabsKey) {
+    init(key: String = AppConfig.elevenLabsKey,
+         base: URL = URL(string: AppConfig.voiceBaseURL) ?? URL(string: "https://api.elevenlabs.io")!) {
         self.key = key
+        self.base = base
     }
 
     // MARK: Voice creation
@@ -76,6 +78,7 @@ struct ElevenLabsClient: VoiceService {
         var request = URLRequest(url: base.appendingPathComponent("v1/voices/add"))
         request.httpMethod = "POST"
         request.setValue(key, forHTTPHeaderField: "xi-api-key")
+        request.setValue(AppConfig.deviceId, forHTTPHeaderField: "X-Jaddati-Device")
         request.setValue("multipart/form-data; boundary=\(boundary)",
                          forHTTPHeaderField: "Content-Type")
 
@@ -123,6 +126,7 @@ struct ElevenLabsClient: VoiceService {
         var request = URLRequest(url: components.url!)
         request.httpMethod = "POST"
         request.setValue(key, forHTTPHeaderField: "xi-api-key")
+        request.setValue(AppConfig.deviceId, forHTTPHeaderField: "X-Jaddati-Device")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("audio/mpeg", forHTTPHeaderField: "Accept")
         // Both dictionaries are annotated. `data(withJSONObject:)` takes `Any`,

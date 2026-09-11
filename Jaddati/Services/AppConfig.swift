@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 /// Where the app gets its provider credentials and defaults.
 ///
@@ -25,6 +26,25 @@ enum AppConfig {
         let value = (secrets["ELEVENLABS_API_KEY"] as? String) ?? ""
         return value == "PASTE_YOUR_KEY_HERE" ? "" : value
     }
+
+    /// Where voice calls go.
+    ///
+    /// Unset, the app talks to ElevenLabs directly with a real key — which is
+    /// what a local build should keep doing. Set to the proxy, the "key" above
+    /// becomes the app token and the real key never leaves the server. See
+    /// proxy/README.md for why a shared build must not carry the real one.
+    static var voiceBaseURL: String {
+        let value = (secrets["ELEVENLABS_BASE_URL"] as? String) ?? ""
+        let trimmed = value.trimmingCharacters(in: CharacterSet(charactersIn: " /"))
+        return trimmed.isEmpty ? "https://api.elevenlabs.io" : trimmed
+    }
+
+    /// Which phone is spending, so the proxy can meter one device without the
+    /// app having accounts. `identifierForVendor` is stable for this app on
+    /// this device and disappears when the app is removed — a meter reading,
+    /// not an identity. Nothing is stored next to it.
+    static let deviceId: String =
+        UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
 
     /// Key for the debug-only offline mode. Never consulted in a Release build.
     static let mockDefaultsKey = "jaddati.useMockVoices"

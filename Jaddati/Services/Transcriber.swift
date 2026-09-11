@@ -65,6 +65,7 @@ struct WhisperClient: Transcriber {
         request.httpMethod = "POST"
         request.timeoutInterval = AppConfig.companionTimeout
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(AppConfig.deviceId, forHTTPHeaderField: "X-Jaddati-Device")
         request.setValue("multipart/form-data; boundary=\(boundary)",
                          forHTTPHeaderField: "Content-Type")
 
