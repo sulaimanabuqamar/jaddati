@@ -6,6 +6,7 @@
 // losing your place because you tapped the globe is its own small betrayal.
 
 import { player } from "./ui.js";
+import { prefs } from "./prefs.js";
 
 export const nav = {
   tab: "people",
@@ -17,17 +18,13 @@ export const nav = {
 
 Object.defineProperty(nav, "stack", { get() { return nav.stacks[nav.tab]; } });
 
-try {
-  nav.tab = localStorage.getItem("jaddati.tab") || "people";
-  nav.personId = localStorage.getItem("jaddati.person") || null;
-} catch { /* storage blocked; defaults are fine */ }
+nav.tab = prefs.get("jaddati.tab") || "people";
+nav.personId = prefs.get("jaddati.person") || null;
 
 export function remember() {
-  try {
-    localStorage.setItem("jaddati.tab", nav.tab);
-    if (nav.personId) localStorage.setItem("jaddati.person", nav.personId);
-    else localStorage.removeItem("jaddati.person");
-  } catch {}
+  prefs.set("jaddati.tab", nav.tab);
+  if (nav.personId) prefs.set("jaddati.person", nav.personId);
+  else prefs.remove("jaddati.person");
 }
 
 let renderer = () => {};

@@ -5,6 +5,8 @@
 // This table is generated from Jaddati/Design/Strings.swift — do not hand-edit.
 // Regenerate with docs/web/build-strings.py after changing the app's strings.
 
+import { prefs } from "./prefs.js";
+
 export const AR = {
  "A bedtime story": "قصة قبل النوم",
  "A clear sample helps preserve the qualities of their voice.": "تسجيل واضح يساعد على الاحتفاظ بملامح الصوت.",
@@ -501,14 +503,7 @@ export const AR = {
  "too short to build a voice from": "أقصر من أن يُبنى منه صوت"
 };
 
-/** Reading storage throws in a private window with site data blocked, and the
- *  whole module is imported at startup — an exception here takes the app down
- *  before anything renders. */
-function remembered() {
-  try { return localStorage.getItem("jaddati.language") || "en"; } catch { return "en"; }
-}
-
-export const state = { lang: remembered() };
+export const state = { lang: prefs.get("jaddati.language") || "en" };
 
 export const isAr = () => state.lang === "ar";
 
@@ -520,7 +515,7 @@ export function L(english) {
 
 export function setLang(lang) {
   state.lang = lang;
-  try { localStorage.setItem("jaddati.language", lang); } catch {}
+  prefs.set("jaddati.language", lang);
   document.documentElement.lang = lang;
   document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
 }

@@ -16,7 +16,7 @@ import {
   sourceBadge, contentBadge, badgesFor, audioRow, player, confirmDialog, sheet,
   toast, Recorder, durationOf, demoDuration,
 } from "./ui.js";
-import { nav, remember, setRenderer, push, pop, popTo, goTab } from "./nav.js";
+import { nav, remember, setRenderer, render, push, pop, popTo, goTab } from "./nav.js";
 import {
   createScreen, booksScreen, readerScreen, memoriesScreen, playerScreen, openAddVoice,
   personHasVoice,
@@ -38,7 +38,7 @@ function unmountAll() {
 }
 export const track = el => { mounted.push(el); return el; };
 
-function render() {
+function paintRoot() {
   unmountAll();
   clear(root);
   remember();
@@ -516,7 +516,7 @@ async function downscale(file, maxSide = 600) {
   return new Promise(r => canvas.toBlob(b => r(b || file), "image/jpeg", 0.85));
 }
 
-setRenderer(render);
+setRenderer(paintRoot);
 
 export { openAddPerson, openSettings, openPrivacy, unavailableNote, demoBanner, downscale };
 

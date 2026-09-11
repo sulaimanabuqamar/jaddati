@@ -6,6 +6,7 @@
 // application-support directory, and localStorage for the index.
 
 import { L, Counts, state as lang } from "./strings.js";
+import { prefs } from "./prefs.js";
 
 export const uuid = () =>
   (crypto.randomUUID ? crypto.randomUUID()
@@ -183,8 +184,7 @@ class Store extends EventTarget {
   }
 
   load() {
-    let raw = null;
-    try { raw = localStorage.getItem(INDEX_KEY); } catch { /* blocked */ }
+    const raw = prefs.get(INDEX_KEY);
     if (!raw) return;
     try {
       const index = JSON.parse(raw);
@@ -196,21 +196,16 @@ class Store extends EventTarget {
       // Same rule as the app: a corrupt index must not be overwritten by the
       // next save. Move it aside under its own name first, so nothing is lost
       // and the app stays usable.
-      try {
-        localStorage.setItem(INDEX_KEY + ".corrupt-" + Date.now(), raw);
-        localStorage.removeItem(INDEX_KEY);
-        this.storageError = L("Saved memories could not be read, so they have been set aside rather than overwritten. The audio files are still on this phone.");
-      } catch {
-        this.loadFailed = true;
-        this.storageError = L("Saved memories could not be read and could not be set aside, so nothing new will be saved until this is resolved. No audio has been deleted.");
-      }
+      prefs.set(INDEX_KEY + ".corrupt-" + Date.now(), raw);
+      prefs.remove(INDEX_KEY);
+      this.storageError = L("Saved memories could not be read, so they have been set aside rather than overwritten. The audio files are still on this phone.");
     }
   }
 
   save() {
     if (this.loadFailed) return false;
     try {
-      localStorage.setItem(INDEX_KEY, JSON.stringify({
+      prefs.set(INDEX_KEY, JSON.stringify({
         people: this.people, assets: this.assets, notes: this.notes, books: this.books,
       }));
       this.storageError = null;
@@ -458,21 +453,14 @@ export const Consent = {
     return `2026-09-11/${voice}+${text}/voice+text+dictation`;
   },
   get hasDecided() {
-    try { return localStorage.getItem(C_TERMS) === this.currentTerms
-      && localStorage.getItem(C_ANSWER) != null; } catch { return false; }
+    return prefs.get(C_TERMS) === this.currentTerms && prefs.get(C_ANSWER) != null;
   },
-  get allowsNetwork() {
-    try { return this.hasDecided && localStorage.getItem(C_ANSWER) === "true"; } catch { return false; }
-  },
-  get decidedOn() {
-    try { const d = localStorage.getItem(C_DATE); return d ? new Date(d) : null; } catch { return null; }
-  },
+  get allowsNetwork() { return this.hasDecided && prefs.get(C_ANSWER) === "true"; },
+  get decidedOn() { const d = prefs.get(C_DATE); return d ? new Date(d) : null; },
   record(allowed) {
-    try {
-      localStorage.setItem(C_ANSWER, String(!!allowed));
-      localStorage.setItem(C_TERMS, this.currentTerms);
-      localStorage.setItem(C_DATE, new Date().toISOString());
-    } catch {}
+    prefs.set(C_ANSWER, String(!!allowed));
+    prefs.set(C_TERMS, this.currentTerms);
+    prefs.set(C_DATE, new Date().toISOString());
   },
   withdraw() { this.record(false); },
 };
@@ -494,8 +482,8 @@ export class ConsentMissing extends Error {
 const K_ELEVEN = "jaddati.key.elevenlabs", K_LLM = "jaddati.key.llm";
 const K_VOICE_URL = "jaddati.url.voice", K_LLM_URL = "jaddati.url.llm";
 
-const read = (k, fallback = "") => { try { return localStorage.getItem(k) || fallback; } catch { return fallback; } };
-const write = (k, v) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch {} };
+const read = (k, fallback = "") => prefs.get(k) || fallback;
+const write = (k, v) => (v ? prefs.set(k, v) : prefs.remove(k));
 
 export const STOCK_VOICE_URL = "https://api.elevenlabs.io";
 export const STOCK_LLM_URL = "https://api.groq.com/openai/v1";
