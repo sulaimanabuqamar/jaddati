@@ -11,7 +11,7 @@ import SwiftUI
 /// size the file does not, so the way out is at the bottom of this screen
 /// rather than somewhere to go looking for.
 struct BringByCodeView: View {
-    var onArrived: (Person) -> Void
+    var onArrived: (Archive.ImportResult) -> Void
     var onWantsFile: () -> Void
 
     @EnvironmentObject private var library: Library
@@ -80,9 +80,14 @@ struct BringByCodeView: View {
 
                     Theme.Palette.hairline.frame(height: 1).padding(.top, 8)
 
+                            // The flag goes up BEFORE the dismiss, and the parent
+                    // opens the picker once this sheet has actually gone.
+                    // Asking for it straight after dismiss() asked SwiftUI to
+                    // present while it was still tearing down, and the picker
+                    // simply never appeared.
                     Button(L("Bring them in from a file instead")) {
-                        dismiss()
                         onWantsFile()
+                        dismiss()
                     }
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.Palette.inkSoft)
@@ -104,7 +109,7 @@ struct BringByCodeView: View {
         defer { looking = false }
         do {
             let brought = try await Archive.fetch(code: code, into: library)
-            onArrived(brought.person)
+            onArrived(brought)
             dismiss()
         } catch {
             problem = (error as? LocalizedError)?.errorDescription

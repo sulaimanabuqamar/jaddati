@@ -28,3 +28,8 @@ __pycache__/
 
 # wrangler build state
 .wrangler/
+
+# Junk drawer: this repo is edited over a bridge that forbids deleting files,
+# so stale git locks and tmp objects get renamed in here instead. Safe to
+# delete by hand, and `git gc` will tidy the rest.
+_to_delete/

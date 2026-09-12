@@ -9,6 +9,8 @@ struct HomeView: View {
     @EnvironmentObject private var library: Library
     @State private var addingPerson = false
     @State private var importingArchive = false
+    /// Raised inside the code sheet, acted on once it has gone.
+    @State private var wantsArchiveFile = false
     @State private var enteringCode = false
     @State private var importProblem: String?
     @EnvironmentObject private var consent: Consent
@@ -173,9 +175,21 @@ struct HomeView: View {
         }
         .buttonStyle(.plain)
         // A code first; the file is still reachable from inside that sheet.
-        .sheet(isPresented: $enteringCode) {
-            BringByCodeView(onArrived: { person in selectedPersonId = person.id },
-                            onWantsFile: { importingArchive = true })
+        //
+        // The picker opens in onDismiss rather than from inside the sheet.
+        // SwiftUI will not present something new while it is dismissing what
+        // is already there, so asking from in there did nothing at all.
+        .sheet(isPresented: $enteringCode, onDismiss: {
+            if wantsArchiveFile {
+                wantsArchiveFile = false
+                importingArchive = true
+            }
+        }) {
+            BringByCodeView(onArrived: { brought in
+                                selectedPersonId = brought.person.id
+                                importProblem = brought.shortfall
+                            },
+                            onWantsFile: { wantsArchiveFile = true })
         }
         .fileImporter(isPresented: $importingArchive,
                       allowedContentTypes: [.json],
@@ -187,6 +201,9 @@ struct HomeView: View {
                 do {
                     let brought = try Archive.importArchive(from: url, into: library)
                     selectedPersonId = brought.person.id
+                    // She is here either way. Whether all of her is, is a
+                    // different question, and one the family has to be told.
+                    importProblem = brought.shortfall
                 } catch {
                     importProblem = error.localizedDescription
                 }

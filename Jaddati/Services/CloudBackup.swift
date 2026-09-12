@@ -101,7 +101,13 @@ final class CloudBackup: NSObject, ObservableObject {
             "redirect_uri": AppConfig.googleRedirectURI,
         ]
         let token = try await postForm(form)
-        refreshToken = token.refresh_token
+        // Google sends a refresh token on the first consent and may send none
+        // afterwards. Assigning it unconditionally overwrote a good one with
+        // nil, and the next launch found itself signed out with no way back
+        // except consenting again.
+        if let issued = token.refresh_token, !issued.isEmpty {
+            refreshToken = issued
+        }
         accessToken = token.access_token ?? ""
         accessExpires = Date().addingTimeInterval(TimeInterval(token.expires_in ?? 3600))
         email = Self.emailFrom(idToken: token.id_token)
@@ -138,7 +144,12 @@ final class CloudBackup: NSObject, ObservableObject {
             session.presentationContextProvider = self
             session.prefersEphemeralWebBrowserSession = false
             self.session = session
-            session.start()
+            // Returns false when there is nothing to present from. Ignored,
+            // the continuation was never resumed and the caller waited for a
+            // sheet that had not opened — forever, with the spinner turning.
+            if !session.start() {
+                continuation.resume(throwing: Failure.failed)
+            }
         }
     }
 
@@ -161,8 +172,14 @@ final class CloudBackup: NSObject, ObservableObject {
             .data(using: .utf8)
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard (response as? HTTPURLResponse)?.statusCode == 200,
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200,
               let reply = try? JSONDecoder().decode(TokenReply.self, from: data) else {
+            // Only one answer means the grant itself is dead. Everything else —
+            // a 500, a 429, a captive portal — is the call failing, and must
+            // not be read as Google having taken access away.
+            let said = String(data: data, encoding: .utf8) ?? ""
+            if said.contains("invalid_grant") { throw Failure.revoked }
             throw Failure.failed
         }
         return reply
@@ -182,12 +199,16 @@ final class CloudBackup: NSObject, ObservableObject {
             accessToken = token.access_token ?? ""
             accessExpires = Date().addingTimeInterval(TimeInterval(token.expires_in ?? 3600))
             return accessToken
-        } catch {
-            // A refused refresh means access was taken away in the Google
-            // account. Sign out rather than retry forever against a dead
-            // token — and say so, so it can be given back deliberately.
+        } catch Failure.revoked {
+            // Google said invalid_grant: access really was taken away in the
+            // account. Sign out rather than retry forever against a dead token.
             signOut()
             throw Failure.revoked
+        } catch {
+            // Anything else is the network, not the grant. Signing out here
+            // threw away a working connection because a request timed out once
+            // — and the only way back was the whole consent screen again.
+            throw Failure.failed
         }
     }
 
@@ -262,7 +283,12 @@ final class CloudBackup: NSObject, ObservableObject {
               let list = try? JSONDecoder().decode(FileList.self, from: data) else {
             throw Failure.driveRefused
         }
-        return Dictionary(uniqueKeysWithValues: (list.files ?? []).map { ($0.name, $0.id) })
+        // appDataFolder tolerates two files with one name, and a backup that
+        // ran twice creates exactly that. `uniqueKeysWithValues` traps on the
+        // duplicate — a crash, in the middle of the thing meant to keep the
+        // recordings safe. Keep the last, which is the newer of the two.
+        return Dictionary((list.files ?? []).map { ($0.name, $0.id) },
+                          uniquingKeysWith: { _, newer in newer })
     }
 
     private func download(id: String) async throws -> Data {

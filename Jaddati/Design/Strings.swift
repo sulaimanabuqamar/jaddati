@@ -670,6 +670,28 @@ enum Counts {
         }
     }
 
+    /// Recordings an arriving archive was carrying that could not be read.
+    ///
+    /// Built here rather than with an interpolated `L()`: a key with a number
+    /// inside it never matches the table, so the Arabic would never have been
+    /// found. Worded without naming the person, because the Arabic verb would
+    /// then have to agree with a gender the app does not know.
+    static func recordingsNotRead(_ count: Int) -> String {
+        let tail = uiIsArabic ? " الأصل ما يزال على الهاتف الآخر."
+                              : " The originals are still only on the other phone."
+        guard uiIsArabic else {
+            return (count == 1
+                ? "1 recording could not be read."
+                : "\(number(count)) recordings could not be read.") + tail
+        }
+        switch count {
+        case 1:      return "تعذّرت قراءة تسجيل واحد." + tail
+        case 2:      return "تعذّرت قراءة تسجيلين." + tail
+        case 3...10: return "تعذّرت قراءة \(number(count)) تسجيلات." + tail
+        default:     return "تعذّرت قراءة \(number(count)) تسجيلًا." + tail
+        }
+    }
+
     static func savedClips(_ count: Int) -> String {
         guard uiIsArabic else {
             return count == 1 ? "1 saved clip" : "\(number(count)) saved clips"

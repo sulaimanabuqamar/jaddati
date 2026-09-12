@@ -24,6 +24,14 @@ enum Archive {
     /// larger than the number it was checked against — and held both the string
     /// and the encoded Data in memory at once while doing it.
     static let maxBytes = 60 * 1024 * 1024
+
+    /// The relay's own ceiling, which is lower — a KV value has a hard limit
+    /// and the worker refuses anything above this. Building to 60 MB and then
+    /// posting it meant the long wait happened first and the refusal came
+    /// after, with nothing said about why. Kept in step with
+    /// ARCHIVE_MAX_BYTES in proxy/src/worker.js.
+    static let relayMaxBytes = 20 * 1024 * 1024
+
     private static let base64Overhead = 4.0 / 3.0
 
     // MARK: The file
@@ -115,34 +123,36 @@ enum Archive {
 
     // MARK: Out
 
-    /// Writes the archive to a temporary file and hands back its URL, ready for
-    /// the share sheet. The result says how many recordings actually fitted: a
-    /// silent partial export would leave a family believing the recordings are
-    /// safe on the other phone when they are not.
-    static func export(person: Person, library: Library) throws -> ExportResult {
-        var recordings: [RecordingCard] = []
-        // Two different reasons, kept apart: a file that would not fit is the
-        // user's cue to send fewer, a file that would not READ is their cue to
-        // go and look. Reporting both as "too large" sent people the wrong way.
-        var carried = 0, tooLarge = 0, unreadable = 0
+    /// Everything the archive needs out of the library, as plain values.
+    ///
+    /// Split from the building on purpose. `Library` is an ObservableObject the
+    /// UI owns, so it may only be read on the main actor — but the building is
+    /// megabytes of file reading, base64 and JSON, and doing THAT on the main
+    /// actor is a frozen screen behind a spinner that never gets drawn, because
+    /// the thread that would draw it is busy. Gather on main, build off it.
+    struct ExportPlan {
+        var displayName: String
+        var person: PersonCard
+        var notes: [NoteCard]
+        var letters: [LetterCard]
+        var originals: [PlannedRecording]
+    }
 
-        for asset in library.assets(for: person, source: .original) {
-            let url = library.url(for: asset)
-            guard let data = try? Data(contentsOf: url) else { unreadable += 1; continue }
-            let encoded = Int(Double(data.count) * base64Overhead)
-            guard carried + encoded <= maxBytes else { tooLarge += 1; continue }
-            carried += encoded
-            recordings.append(RecordingCard(
-                text: asset.text,
-                durationSeconds: asset.durationSeconds,
-                promptId: asset.promptId,
-                fileExtension: (asset.filename as NSString).pathExtension,
-                data: data.base64EncodedString()))
-        }
+    /// One original recording, named by where it lives rather than by its
+    /// bytes. The bytes are read during the build, off the main actor.
+    struct PlannedRecording {
+        var url: URL
+        var text: String
+        var durationSeconds: Double
+        var promptId: String?
+        var fileExtension: String
+    }
 
-        let payload = Payload(
-            jaddati: version,
-            exportedAt: Date(),
+    /// Reads the library. Main actor only — see `ExportPlan`.
+    @MainActor
+    static func plan(person: Person, library: Library) -> ExportPlan {
+        ExportPlan(
+            displayName: person.name,
             person: PersonCard(name: person.name,
                                fullName: person.fullName,
                                relationship: person.relationship,
@@ -160,6 +170,56 @@ enum Archive {
                 LetterCard(text: $0.text, occasion: $0.occasion,
                            deliverAt: $0.deliverAt, createdAt: $0.createdAt)
             },
+            originals: library.assets(for: person, source: .original).map {
+                PlannedRecording(url: library.url(for: $0),
+                                 text: $0.text,
+                                 durationSeconds: $0.durationSeconds,
+                                 promptId: $0.promptId,
+                                 fileExtension: ($0.filename as NSString).pathExtension)
+            })
+    }
+
+    /// Writes the archive to a temporary file and hands back its URL, ready for
+    /// the share sheet. The result says how many recordings actually fitted: a
+    /// silent partial export would leave a family believing the recordings are
+    /// safe on the other phone when they are not.
+    ///
+    /// Main actor, because gathering reads the library. The share sheet is the
+    /// only caller and it is already there; `send` does the two halves apart so
+    /// it can put the heavy one on another thread.
+    @MainActor
+    static func export(person: Person, library: Library) throws -> ExportResult {
+        try build(plan(person: person, library: library))
+    }
+
+    /// The heavy half. Touches no app state, so it is safe anywhere — and
+    /// belongs off the main actor.
+    static func build(_ plan: ExportPlan, ceiling: Int = maxBytes) throws -> ExportResult {
+        var recordings: [RecordingCard] = []
+        // Two different reasons, kept apart: a file that would not fit is the
+        // user's cue to send fewer, a file that would not READ is their cue to
+        // go and look. Reporting both as "too large" sent people the wrong way.
+        var carried = 0, tooLarge = 0, unreadable = 0
+
+        for asset in plan.originals {
+            guard let data = try? Data(contentsOf: asset.url) else { unreadable += 1; continue }
+            let encoded = Int(Double(data.count) * base64Overhead)
+            guard carried + encoded <= ceiling else { tooLarge += 1; continue }
+            carried += encoded
+            recordings.append(RecordingCard(
+                text: asset.text,
+                durationSeconds: asset.durationSeconds,
+                promptId: asset.promptId,
+                fileExtension: asset.fileExtension,
+                data: data.base64EncodedString()))
+        }
+
+        let payload = Payload(
+            jaddati: version,
+            exportedAt: Date(),
+            person: plan.person,
+            notes: plan.notes,
+            letters: plan.letters,
             recordings: recordings)
 
         let encoder = JSONEncoder()
@@ -167,7 +227,7 @@ enum Archive {
         let data = try encoder.encode(payload)
 
         // A name is not a filename: a slash in it makes the write throw.
-        let stripped = person.name.components(separatedBy: CharacterSet(charactersIn: "/\\:?%*|\"<>"))
+        let stripped = plan.displayName.components(separatedBy: CharacterSet(charactersIn: "/\\:?%*|\"<>"))
             .joined(separator: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let safeName = stripped.isEmpty ? "jaddati" : stripped
@@ -202,9 +262,20 @@ enum Archive {
     @MainActor
     static func send(person: Person, library: Library) async throws -> CodeResult {
         guard Consent.networkAllowed else { throw ConsentMissing() }
-        let exported = try export(person: person, library: library)
-        defer { try? FileManager.default.removeItem(at: exported.url) }
-        let body = try Data(contentsOf: exported.url)
+
+        // Read the library here, on the main actor, then hand the plain values
+        // to another thread to do the megabytes of work. Done inline this froze
+        // the screen for the whole export — long enough that "Preparing…" never
+        // got drawn, so the app looked dead rather than busy.
+        let outline = Self.plan(person: person, library: library)
+        let (exported, body) = try await Task.detached(priority: .userInitiated) { () -> (ExportResult, Data) in
+            let built = try Archive.build(outline, ceiling: Archive.relayMaxBytes)
+            // The temporary file has done its job the moment it is read. Left
+            // behind, every handoff leaks another copy of the whole archive
+            // into the container.
+            defer { try? FileManager.default.removeItem(at: built.url) }
+            return (built, try Data(contentsOf: built.url))
+        }.value
 
         var request = URLRequest(url: URL(string: AppConfig.relayURL + "/archive")!)
         request.httpMethod = "POST"
@@ -278,7 +349,19 @@ enum Archive {
         let person: Person
         let notes: Int
         let letters: Int
+        /// How many recordings the archive was carrying, and how many of those
+        /// are now on this phone. Kept apart so the difference can be said out
+        /// loud: "she arrived" over a silent loss is how a family finds out a
+        /// year later that the recordings never came.
+        let carried: Int
         let restored: Int
+
+        var lost: Int { max(carried - restored, 0) }
+
+        /// nil when everything arrived. Otherwise the sentence to show.
+        var shortfall: String? {
+            lost > 0 ? Counts.recordingsNotRead(lost) : nil
+        }
     }
 
     /// The other side. She arrives with fresh local ids but keeps the voice
@@ -350,6 +433,7 @@ enum Archive {
         return ImportResult(person: person,
                             notes: (payload.notes ?? []).count,
                             letters: (payload.letters ?? []).count,
+                            carried: (payload.recordings ?? []).count,
                             restored: restored)
     }
 
