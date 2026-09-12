@@ -93,6 +93,23 @@ let arabicStrings: [String: String] = [
     "Delete permanently": "الحذف نهائيًا",
     "Say something": "كلمات تختارها",
 
+    // One voice, the whole family.
+    "One voice, the whole family": "صوت واحد، والعائلة كلها",
+    "Give this to the family": "أعطِ هذا للعائلة",
+    "Bring someone from another phone": "أحضر شخصًا من جهاز آخر",
+    "Make a file another family member can open on their own phone. It carries this person, your notes, anything still sealed, and the recreated voice itself — so they can hear them straight away without making the voice a second time.": "أنشئ ملفًا يفتحه فرد آخر من العائلة على جهازه. يحمل الملف هذا الشخص، ومذكراتك، وكل ما لا يزال مختومًا، والصوت المُعاد إنشاؤه نفسه — ليسمعه فورًا دون إنشاء الصوت مرة ثانية.",
+    "Clips already created are not included. They can be made again on the other phone.": "لا تُضمَّن المقاطع التي أُنشئت من قبل. ويمكن إنشاؤها مجددًا على الجهاز الآخر.",
+    "Preparing…": "جارٍ التحضير…",
+    "Ready to send.": "جاهز للإرسال.",
+    "Ready to send. No original recordings were included.": "جاهز للإرسال. لم تُضمَّن أي تسجيلات أصلية.",
+    "Sent without some recordings — the file would have been too large.": "أُرسل دون بعض التسجيلات — كان حجم الملف سيصبح كبيرًا جدًا.",
+    "Brought in": "أُحضر",
+    "That file is not a Jaddati archive.": "هذا الملف ليس أرشيف جدّتي.",
+    "That archive was made by a newer version of Jaddati. Update this one first.": "أُنشئ هذا الأرشيف بإصدار أحدث من جدّتي. حدّث هذا الإصدار أولًا.",
+    "That archive has no one in it.": "لا يوجد أحد في هذا الأرشيف.",
+    "That person could not be found.": "تعذّر العثور على هذا الشخص.",
+    "That file could not be read.": "تعذّرت قراءة هذا الملف.",
+
     // Words that arrive later.
     "Words that arrive later": "كلمات تصل لاحقًا",
     "Sealed now.\nHeard later.": "تُختم الآن.\nوتُسمع لاحقًا.",
