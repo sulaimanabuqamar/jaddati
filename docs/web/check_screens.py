@@ -47,7 +47,8 @@ TAB_ROOTS = {"AllLettersView.swift", "YouView.swift"}
 
 problems = []
 for f in sorted(root.glob("*.swift")):
-    src = code_only(f.read_text(encoding="utf-8"))
+    raw = f.read_text(encoding="utf-8")
+    src = code_only(raw)
     if "AppBar(" not in src:
         continue
 
@@ -55,11 +56,21 @@ for f in sorted(root.glob("*.swift")):
         problems.append(f"{f.name}: draws an AppBar with no ScrollView — "
                         f"tall content will push the bar off the top")
 
+    # Hiding the chevron is fine in exactly two cases: a tab root, which has
+    # nothing to go back TO, and a sheet that offers an explicit close instead.
+    # A sheet is not wrong to use an X rather than a back arrow — it is what
+    # iOS does — so the rule is "there is a way out", not "there is a chevron".
+    # On the RAW text, not the stripped: the close affordance is named in a
+    # string literal ("xmark"), and code_only removes those. Stripping is right
+    # for the ScrollView rule and wrong for this one — the same mistake that
+    # made the first version of this checker pass a broken file.
+    closes = "dismiss()" in src and ("xmark" in raw or 'icon("close")' in raw)
     for i, line in enumerate(src.split("\n"), 1):
         if "showsBack: false" not in line:
             continue
-        if f.name not in TAB_ROOTS:
-            problems.append(f"{f.name}:{i}: hides its back control but is not a tab root")
+        if f.name not in TAB_ROOTS and not closes:
+            problems.append(f"{f.name}:{i}: hides its back control, is not a tab "
+                            f"root, and offers no explicit close either")
 
     # A conditional back is fine only where the screen really can be a root.
     for i, line in enumerate(src.split("\n"), 1):

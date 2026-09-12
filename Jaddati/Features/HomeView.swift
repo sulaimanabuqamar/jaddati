@@ -9,6 +9,7 @@ struct HomeView: View {
     @EnvironmentObject private var library: Library
     @State private var addingPerson = false
     @State private var importingArchive = false
+    @State private var enteringCode = false
     @State private var importProblem: String?
     @EnvironmentObject private var consent: Consent
     #if DEBUG
@@ -157,7 +158,7 @@ struct HomeView: View {
 
     /// The other half of the handoff: a family member's archive, opened here.
     private var bringInButton: some View {
-        Button { importingArchive = true } label: {
+        Button { enteringCode = true } label: {
             HStack(spacing: 8) {
                 Image(systemName: "square.and.arrow.down")
                 Text(L("Bring someone from another phone"))
@@ -171,6 +172,11 @@ struct HomeView: View {
             )
         }
         .buttonStyle(.plain)
+        // A code first; the file is still reachable from inside that sheet.
+        .sheet(isPresented: $enteringCode) {
+            BringByCodeView(onArrived: { person in selectedPersonId = person.id },
+                            onWantsFile: { importingArchive = true })
+        }
         .fileImporter(isPresented: $importingArchive,
                       allowedContentTypes: [.json],
                       allowsMultipleSelection: false) { result in

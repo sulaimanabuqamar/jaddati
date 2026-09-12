@@ -42,10 +42,14 @@ SCREENS = {
     "BooksView": "booksScreen", "LettersView": "lettersScreen", "CaptureView": "captureScreen",
     "AllLettersView": "allLettersScreen", "YouView": "youScreen", "LanguageView": "languageScreen",
     "AddVoiceView": "openAddVoice", "ConsentGate": "consentGate", "PrivacyScreen": "openPrivacy",
+    "BringByCodeView": "openCode",
 }
 for view, fn in SCREENS.items():
     on_swift = re.search(rf"struct {view}\b", swift_src) is not None
-    on_web = re.search(rf"function {fn}\b", web_src) is not None
+    # A web screen is a function declaration or a const arrow — openCode is
+    # the second kind, and a check that only knew the first would have called
+    # the code sheet "phone only" the moment it was added.
+    on_web = re.search(rf"(?:function {fn}\b|const {fn}\s*=)", web_src) is not None
     if on_swift != on_web:
         problems.append(f"screen {view} / {fn}(): "
                         f"{'phone only' if on_swift else 'web only'}")

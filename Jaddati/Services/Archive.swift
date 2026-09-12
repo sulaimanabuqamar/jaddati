@@ -91,12 +91,24 @@ enum Archive {
         case notAnArchive
         case tooNew
         case empty
+        case tooLargeForCode
+        case codeNotFound
+        case codeFailed
+        case noConnection
 
         var errorDescription: String? {
             switch self {
             case .notAnArchive: return L("That file is not a Jaddati archive.")
             case .tooNew:       return L("That archive was made by a newer version of Jaddati. Update this one first.")
             case .empty:        return L("That archive has no one in it.")
+            case .tooLargeForCode:
+                return L("This archive is too large to send by code. Use the file instead.")
+            case .codeNotFound:
+                return L("No archive for that code. Codes last a day.")
+            case .codeFailed:
+                return L("That code could not be checked. Try again.")
+            case .noConnection:
+                return L("A code needs the internet. Use the file instead.")
             }
         }
     }
@@ -165,6 +177,95 @@ enum Archive {
 
         return ExportResult(url: file, carried: recordings.count,
                             tooLarge: tooLarge, unreadable: unreadable)
+    }
+
+    // MARK: By code
+
+    /// Hand her over by code rather than by file.
+    ///
+    /// A file has to be found, attached, sent, found again and opened — five
+    /// places a family can lose her, and the first four happen on a phone
+    /// while someone stands next to you waiting. This puts the same bytes on
+    /// the relay for a day and gives back six characters you can read aloud.
+    ///
+    /// Built on `export` and `importArchive` rather than beside them: the
+    /// bytes, the size ceiling and every piece of validation are the ones
+    /// already trusted, and a second copy of that logic would be a second
+    /// thing to keep correct.
+    struct CodeResult {
+        let code: String
+        let hours: Int
+        let carried: Int
+        let tooLarge: Int
+    }
+
+    @MainActor
+    static func send(person: Person, library: Library) async throws -> CodeResult {
+        let exported = try export(person: person, library: library)
+        defer { try? FileManager.default.removeItem(at: exported.url) }
+        let body = try Data(contentsOf: exported.url)
+
+        var request = URLRequest(url: URL(string: AppConfig.relayURL + "/archive")!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+        request.setValue(AppConfig.elevenLabsKey, forHTTPHeaderField: "xi-api-key")
+        request.setValue(AppConfig.deviceId, forHTTPHeaderField: "x-jaddati-device")
+        request.httpBody = body
+
+        let (data, response) = try await send(request)
+        guard let http = response as? HTTPURLResponse else { throw Failure.codeFailed }
+        if http.statusCode == 413 { throw Failure.tooLargeForCode }
+        guard http.statusCode == 200,
+              let held = try? JSONDecoder().decode(HeldArchive.self, from: data) else {
+            throw Failure.codeFailed
+        }
+        return CodeResult(code: held.code, hours: held.hours,
+                          carried: exported.carried, tooLarge: exported.tooLarge)
+    }
+
+    @MainActor
+    @discardableResult
+    static func fetch(code: String, into library: Library) async throws -> ImportResult {
+        var request = URLRequest(url: URL(string: AppConfig.relayURL + "/archive/fetch")!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+        request.setValue(AppConfig.elevenLabsKey, forHTTPHeaderField: "xi-api-key")
+        request.setValue(AppConfig.deviceId, forHTTPHeaderField: "x-jaddati-device")
+        request.httpBody = try JSONEncoder().encode(["code": tidy(code)])
+
+        let (data, response) = try await send(request)
+        guard let http = response as? HTTPURLResponse else { throw Failure.codeFailed }
+        // The same answer whether it never existed or has expired. The
+        // difference is no use to whoever is typing, and saying which would
+        // make codes worth guessing at.
+        if http.statusCode == 404 { throw Failure.codeNotFound }
+        guard http.statusCode == 200 else { throw Failure.codeFailed }
+
+        // Through a file, so the arriving archive goes down exactly the path a
+        // file from Files does — same decoding, same validation, same refusals.
+        let scratch = FileManager.default.temporaryDirectory
+            .appendingPathComponent("incoming-\(UUID().uuidString).jaddati.json")
+        try data.write(to: scratch, options: .atomic)
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        return try importArchive(from: scratch, into: library)
+    }
+
+    private struct HeldArchive: Decodable {
+        let code: String
+        let hours: Int
+    }
+
+    /// Read aloud, so accept it typed back however it arrives.
+    static func tidy(_ raw: String) -> String {
+        raw.uppercased().filter { $0.isLetter || $0.isNumber }
+    }
+
+    private static func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        do { return try await URLSession.shared.data(for: request) }
+        catch let error as URLError
+            where error.code == .notConnectedToInternet || error.code == .networkConnectionLost {
+            throw Failure.noConnection
+        }
     }
 
     // MARK: In

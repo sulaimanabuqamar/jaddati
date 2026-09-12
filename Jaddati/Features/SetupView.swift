@@ -21,6 +21,9 @@ struct SetupView: View {
     @State private var confirmingDelete = false
     @State private var isDeleting = false
     @State private var deleteProblem: String?
+    @State private var handoffCode: String?
+    @State private var sendingCode = false
+    @State private var codeProblem: String?
 
     private var person: Person? { library.person(withId: personId) }
 
@@ -94,7 +97,7 @@ struct SetupView: View {
             Text(L("One voice, the whole family"))
                 .font(Theme.Font.label)
                 .foregroundStyle(Theme.Palette.ink)
-            Text(L("Make a file another family member can open on their own phone. It carries this person, your notes, anything still sealed, and the recreated voice itself — so they can hear them straight away without making the voice a second time."))
+            Text(L("Give another family member a short code. It carries this person, your notes, anything still sealed, and the recreated voice itself — so they can hear them straight away without making the voice a second time."))
                 .font(Theme.Font.caption)
                 .foregroundStyle(Theme.Palette.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
@@ -103,13 +106,31 @@ struct SetupView: View {
                 .foregroundStyle(Theme.Palette.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
 
-            // Bound to a different name on purpose. `if let exported` shadows the
-            // @State with an unwrapped `let URL`, so clearing it inside this
-            // branch assigns to the constant rather than to the state — which is
-            // exactly the pair of errors the compiler gave.
+            Button(sendingCode ? L("Preparing…") : L("Give this to the family")) {
+                Task { await makeCode(for: person) }
+            }
+            .buttonStyle(QuietButtonStyle())
+            .disabled(sendingCode)
+
+            if let handoffCode {
+                codeCard(handoffCode)
+            }
+
+            if let codeProblem {
+                ErrorNote(message: codeProblem)
+            }
+
+            // The file stays, and deliberately not buried. A code needs the
+            // internet and stops at a size the file does not, so when either
+            // bites the way out is on this screen rather than somewhere to go
+            // looking for.
+            //
+            // Bound to a different name on purpose. `if let exported` shadows
+            // the @State with an unwrapped `let URL`, so clearing it inside
+            // this branch assigns to the constant rather than to the state.
             if let archiveFile = exported {
                 ShareLink(item: archiveFile) {
-                    Text(L("Give this to the family"))
+                    Text(L("Send the file"))
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(QuietButtonStyle())
@@ -124,10 +145,13 @@ struct SetupView: View {
                 .foregroundStyle(Theme.Palette.wineInk)
                 .frame(minHeight: Theme.Metric.touchTarget, alignment: .leading)
             } else {
-                Button(preparingArchive ? L("Preparing…") : L("Give this to the family")) {
+                Button(preparingArchive ? L("Preparing…") : L("Save it as a file instead")) {
                     Task { await prepareArchive(for: person) }
                 }
-                .buttonStyle(QuietButtonStyle())
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.Palette.inkSoft)
+                .underline()
+                .frame(minHeight: Theme.Metric.touchTarget, alignment: .leading)
                 .disabled(preparingArchive)
             }
 
@@ -138,6 +162,58 @@ struct SetupView: View {
             }
         }
         .padding(.top, 18)
+    }
+
+    /// Big, spaced and unambiguous: this gets read down a phone and written
+    /// down at the other end, so the glyphs have to survive being said aloud.
+    private func codeCard(_ code: String) -> some View {
+        VStack(spacing: 6) {
+            Text(L("Read them this:"))
+                .font(Theme.Font.caption)
+                .foregroundStyle(Theme.Palette.inkSoft)
+            Text(code)
+                .font(Theme.Font.displayMedium(38))
+                .kerning(8)
+                .foregroundStyle(Theme.Palette.wineInk)
+                // The code is Latin characters whichever language the app is
+                // in, so it must not mirror with the rest of the screen.
+                .environment(\.layoutDirection, .leftToRight)
+            Text(L("They open Jaddati, choose Bring someone from another phone, and type it."))
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.Palette.inkSoft)
+                .multilineTextAlignment(.center)
+            Text(L("The code works for a day."))
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.Palette.inkSoft)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 18)
+        .padding(.horizontal, 14)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Metric.cardRadius)
+                .fill(Theme.Palette.sunk)
+                .overlay(RoundedRectangle(cornerRadius: Theme.Metric.cardRadius)
+                    .stroke(Theme.Palette.hairline, lineWidth: 1))
+        )
+    }
+
+    @MainActor
+    private func makeCode(for person: Person) async {
+        sendingCode = true
+        codeProblem = nil
+        handoffCode = nil
+        defer { sendingCode = false }
+        do {
+            let result = try await Archive.send(person: person, library: library)
+            handoffCode = result.code
+            archiveNote = result.tooLarge > 0
+                ? L("Sent without some recordings — the file would have been too large.")
+                : result.carried > 0 ? nil
+                  : L("Ready to send. No original recordings were included.")
+        } catch {
+            codeProblem = (error as? LocalizedError)?.errorDescription
+                ?? L("The code could not be created. Try again.")
+        }
     }
 
     /// Off the main thread: this reads every original recording, base64s it and
