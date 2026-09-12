@@ -201,6 +201,7 @@ enum Archive {
 
     @MainActor
     static func send(person: Person, library: Library) async throws -> CodeResult {
+        guard Consent.networkAllowed else { throw ConsentMissing() }
         let exported = try export(person: person, library: library)
         defer { try? FileManager.default.removeItem(at: exported.url) }
         let body = try Data(contentsOf: exported.url)
@@ -208,8 +209,9 @@ enum Archive {
         var request = URLRequest(url: URL(string: AppConfig.relayURL + "/archive")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "content-type")
-        request.setValue(AppConfig.elevenLabsKey, forHTTPHeaderField: "xi-api-key")
-        request.setValue(AppConfig.deviceId, forHTTPHeaderField: "x-jaddati-device")
+        for (field, value) in AppConfig.relayHeaders {
+            request.setValue(value, forHTTPHeaderField: field)
+        }
         request.httpBody = body
 
         let (data, response) = try await send(request)
@@ -226,11 +228,13 @@ enum Archive {
     @MainActor
     @discardableResult
     static func fetch(code: String, into library: Library) async throws -> ImportResult {
+        guard Consent.networkAllowed else { throw ConsentMissing() }
         var request = URLRequest(url: URL(string: AppConfig.relayURL + "/archive/fetch")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "content-type")
-        request.setValue(AppConfig.elevenLabsKey, forHTTPHeaderField: "xi-api-key")
-        request.setValue(AppConfig.deviceId, forHTTPHeaderField: "x-jaddati-device")
+        for (field, value) in AppConfig.relayHeaders {
+            request.setValue(value, forHTTPHeaderField: field)
+        }
         request.httpBody = try JSONEncoder().encode(["code": tidy(code)])
 
         let (data, response) = try await send(request)

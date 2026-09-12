@@ -1,6 +1,7 @@
 import Foundation
 import AuthenticationServices
 import CryptoKit
+import Security
 
 /// Signing in with Google, and keeping a copy of your own people in your own
 /// Drive so a lost phone is not a lost voice.
@@ -309,9 +310,20 @@ final class CloudBackup: NSObject, ObservableObject {
             .replacingOccurrences(of: "=", with: "")
     }
 
+    /// A PKCE verifier made of zeros would be a verifier an attacker can
+    /// guess, so the failure path matters more than the happy one: if the
+    /// Security framework declines, fall back to the system generator rather
+    /// than returning whatever was already in the buffer.
     private static func randomURLSafe(_ bytes: Int) -> String {
         var raw = Data(count: bytes)
-        _ = raw.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, bytes, $0.baseAddress!) }
+        let status = raw.withUnsafeMutableBytes { buf -> Int32 in
+            guard let base = buf.baseAddress else { return errSecParam }
+            return SecRandomCopyBytes(kSecRandomDefault, bytes, base)
+        }
+        if status != errSecSuccess {
+            var rng = SystemRandomNumberGenerator()
+            raw = Data((0..<bytes).map { _ in UInt8.random(in: 0...255, using: &rng) })
+        }
         return base64URL(raw)
     }
 

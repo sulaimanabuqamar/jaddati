@@ -345,6 +345,7 @@ struct AddVoiceView: View {
         }
     }
 
+    @MainActor
     private func startRecording() async {
         recordProblem = nil
         guard await recorder.requestPermission() else {
@@ -549,6 +550,7 @@ struct AddVoiceView: View {
         }
     }
 
+    @MainActor
     private func createVoice() async {
         guard let person, let sampleURL = pickedURL, canSubmit else { return }
         isWorking = true

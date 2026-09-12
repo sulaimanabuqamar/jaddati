@@ -689,6 +689,7 @@ struct CreateView: View {
         data.starts(with: Array("RIFF".utf8)) ? "wav" : "mp3"
     }
 
+    @MainActor
     private func speak() async {
         guard let person, let voiceId = person.voiceId, canSpeak else { return }
         isGenerating = true

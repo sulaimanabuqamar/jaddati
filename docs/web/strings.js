@@ -5,7 +5,7 @@
 // This table is generated from Jaddati/Design/Strings.swift — do not hand-edit.
 // Regenerate with docs/web/build-strings.py after changing the app's strings.
 
-import { prefs } from "./prefs.js?v=b66be76375";
+import { prefs } from "./prefs.js?v=183c50fb31";
 
 export const AR = {
  "A bedtime story": "قصة قبل النوم",
@@ -423,6 +423,7 @@ export const AR = {
  "Slower": "أبطأ",
  "Some of this\nleaves the phone.": "بعض هذا\nيغادر الهاتف.",
  "Some recordings could not be read from this phone and were left out.": "تعذّرت قراءة بعض التسجيلات من هذا الجهاز فلم تُضمَّن.",
+ "Some recordings could not be read, so those people were left as they were rather than overwritten.": "تعذّرت قراءة بعض التسجيلات، فتُركت تلك النسخ كما هي بدل الكتابة فوقها.",
  "Some were too large and were left out.": "بعضها كان كبيرًا جدًا فتُرك خارجًا.",
  "Something went wrong. Try again.": "حدث خطأ ما. حاول مجددًا.",
  "Source quality and language both affect the result. A high likeness value is not a guarantee.": "تؤثّر جودة التسجيل واللغة في النتيجة. وارتفاع قيمة التشابه ليس ضمانًا.",
@@ -551,6 +552,7 @@ export const AR = {
  "This is not how you give someone to the family — that is the code on their Setup screen. A backup goes to your Drive and nobody else's.": "هذه ليست طريقة إعطاء شخص للعائلة — تلك هي الرمز في شاشة الإعداد الخاصة به. النسخة الاحتياطية تذهب إلى درايفك وحدك.",
  "This is the demo answer. With a question service connected, a reply drawn only from your family's notes would be written here.": "هذه إجابة العرض التجريبي. عند توصيل خدمة الأسئلة، ستُكتب هنا إجابة مأخوذة من مذكرات عائلتك وحدها.",
  "This is the demo answer. With a question service connected, a short reply about this page would be written here and read aloud.": "هذه إجابة العرض التجريبي. عند توصيل خدمة الأسئلة، ستُكتب هنا إجابة قصيرة عن هذه الصفحة وتُقرأ بصوت عالٍ.",
+ "This browser already holds a recreated voice. Remove that person, or the voice on their Setup screen, before making another.": "هذا المتصفّح يحتفظ بصوت مُعاد إنشاؤه بالفعل. احذف ذلك الشخص، أو الصوت من شاشة الإعداد، قبل إنشاء صوت آخر.",
  "This month's allowance for making new speech has been used up.": "استُنفد رصيد هذا الشهر لإنشاء كلام جديد.",
  "This month's voice credits are used up. Saved memories still play.": "نفد رصيد هذا الشهر. المقاطع المحفوظة ما زالت تُشغَّل.",
  "This needs to send data to a service outside the phone, and that is currently turned off.": "يحتاج هذا إلى إرسال بيانات إلى خدمة خارج الهاتف، وهو معطَّل حاليًا.",

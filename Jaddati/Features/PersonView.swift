@@ -356,6 +356,7 @@ struct PersonView: View {
     /// There is no "is it ready" endpoint. The only honest test is to use the
     /// voice: if the service speaks, the voice is available, and the flag that
     /// was holding the whole screen closed can come off.
+    @MainActor
     private func checkAvailability() async {
         guard let person, let voiceId = person.voiceId, canCheckAvailability else { return }
         checkingAvailability = true

@@ -99,6 +99,32 @@ enum AppConfig {
     /// sweep, and only the shared relay sweeps. A phone using its own key
     /// keeps its voices and must not be told otherwise.
     static var usesRelayVoice: Bool { voiceBaseURL == relayURL }
+
+    /// The token for endpoints the relay owns outright — the handoff code and
+    /// the Google exchange. Deliberately NOT `elevenLabsKey`.
+    ///
+    /// `elevenLabsKey` is whatever this build talks to ElevenLabs with. On a
+    /// build pointed at the relay that happens to be the app token, and using
+    /// it here worked by coincidence. On a build carrying a real `sk_...` key
+    /// — which is exactly the build we demo from — it sent the real key to the
+    /// relay, where it is not the password and never should have travelled.
+    /// The relay answered 401 and the handoff quietly did not work.
+    ///
+    /// The same value the web half publishes in core.js, so it is public
+    /// already and carries no secret. A build may override it in Secrets.
+    static var relayToken: String {
+        let value = (secrets["RELAY_APP_TOKEN"] as? String) ?? ""
+        return value.isEmpty || value.hasPrefix("PASTE") ? defaultRelayToken : value
+    }
+
+    private static let defaultRelayToken = "jd_7cvjRdcDM88CWeY5tjUjuWwqf92u_wTWlCCvlD7ZdqI"
+
+    /// Headers for a relay-owned call. The device id goes here because the
+    /// recipient is us: the meter reading is the whole point, and no third
+    /// party ever sees it.
+    static var relayHeaders: [String: String] {
+        ["xi-api-key": relayToken, "x-jaddati-device": deviceId]
+    }
     private static var usesRelayText: Bool { llmBaseURL == relayURL }
 
     /// Named in the disclosure. Derived, because a build pointed at a relay is

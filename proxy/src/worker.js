@@ -87,9 +87,38 @@ async function createVoice(request, env) {
   const device = deviceId(request);
   const perDevice = await env.JADDATI.get(`voice:${device}`);
   if (perDevice) {
-    // Phrased to land on the app's existing "no free voice slots" message
-    // rather than a raw status code.
-    return json(429, "voice limit reached for this device");
+    // A lock is only worth honouring while the voice it names still exists.
+    // The sweep lifts locks when it runs, but it runs on a timer, and a put
+    // that failed halfway through creation can leave a lock with nothing
+    // behind it. Either way the person is standing in front of the app being
+    // told they have a voice they cannot hear. So: ask upstream, and if the
+    // voice is gone, let the lock go and carry on.
+    let stillThere = true;
+    try {
+      const look = await fetch(`${ELEVEN}/v1/voices/${perDevice}`, {
+        headers: { "xi-api-key": env.ELEVENLABS_API_KEY },
+      });
+      stillThere = look.status !== 404;
+    } catch {
+      // Upstream unreachable is not evidence the voice is gone. Keep the lock
+      // rather than handing out a second slot on a guess.
+      stillThere = true;
+    }
+
+    if (stillThere) {
+      // Deliberately worded so the clients can tell this apart from the
+      // account being full. Telling someone the account has no room, when in
+      // fact their own phone is holding the only slot they are allowed, sends
+      // them looking in the wrong place.
+      return json(429, "this device already has a voice");
+    }
+
+    await env.JADDATI.delete(`voice:${device}`);
+    if (await env.JADDATI.get(`v:${perDevice}`)) {
+      await env.JADDATI.delete(`v:${perDevice}`);
+      const before = num(await env.JADDATI.get("voices:live"), 0);
+      await env.JADDATI.put("voices:live", String(Math.max(before - 1, 0)));
+    }
   }
 
   const cap = num(env.MAX_VOICES, 6);

@@ -568,6 +568,7 @@ struct BookReaderView: View {
         answerIds = []
     }
 
+    @MainActor
     private func ask() async {
         let asked = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let book, let person, let voiceId = person.voiceId, canAsk else { return }
@@ -630,6 +631,7 @@ struct BookReaderView: View {
         }
     }
 
+    @MainActor
     private func readPage() async {
         guard let book, let person, let voiceId = person.voiceId, canRead else { return }
 

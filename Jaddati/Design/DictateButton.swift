@@ -51,6 +51,7 @@ struct DictateButton: View {
         }
     }
 
+    @MainActor
     private func beginRecording() async {
         problem = nil
         // Order matters. Asking iOS for the microphone and then refusing to use
@@ -72,6 +73,7 @@ struct DictateButton: View {
         if let failure = recorder.error { problem = failure }
     }
 
+    @MainActor
     private func finishRecording() async {
         guard let result = recorder.stop() else { return }
         defer { try? FileManager.default.removeItem(at: result.url) }

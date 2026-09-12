@@ -38,6 +38,9 @@ enum VoiceServiceError: LocalizedError, Equatable {
     case unauthorised
     case outOfCredits
     case voiceLimitReached
+    /// This phone already holds a recreated voice. Different from the account
+    /// being full, and the remedy is different too, so it is its own case.
+    case deviceAlreadyHasVoice
     case rateLimited
     case offline
     case timedOut
@@ -67,6 +70,8 @@ enum VoiceServiceError: LocalizedError, Equatable {
             return L("This month's voice credits are used up. Saved memories still play.")
         case .voiceLimitReached:
             return L("This account has no free voice slots left. Remove an unused voice at the voice service, then try again.")
+        case .deviceAlreadyHasVoice:
+            return L("This phone already holds a recreated voice. Remove that person, or the voice on their Setup screen, before making another.")
         case .rateLimited:
             return L("The voice service is busy. Wait a moment and try again.")
         case .offline:

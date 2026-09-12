@@ -230,6 +230,12 @@ struct ElevenLabsClient: VoiceService {
         if lowered.contains("quota") || lowered.contains("credit") || lowered.contains("exceeded") {
             return .outOfCredits
         }
+        // Checked before the account-full test on purpose: the relay says this
+        // when the phone itself is holding the slot, and sending someone to go
+        // free up an account they do not own is the wrong instruction.
+        if lowered.contains("this device already has a voice") {
+            return .deviceAlreadyHasVoice
+        }
         if lowered.contains("voice_limit") || lowered.contains("voice limit")
             || lowered.contains("maximum amount of custom voices") {
             return .voiceLimitReached

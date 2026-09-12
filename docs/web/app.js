@@ -3,25 +3,25 @@
 // and Saved and Books are scoped to one person because a pile of clips with no
 // name on it is not an archive.
 
-import { L, isAr, isArabicText, dirOf, Counts, state as lang, setLang, toggleLang } from "./strings.js?v=b66be76375";
+import { L, isAr, isArabicText, dirOf, Counts, state as lang, setLang, toggleLang } from "./strings.js?v=183c50fb31";
 import {
   store, Consent, ConsentMissing, Config, Voice, Companion, VoiceError, CompanionError,
   Intent, INTENTS, ContentProvenance, TUNING, sameTuning, presetName,
   AFFIRMATIONS, STORIES, makeBook, ImportError, isDemoVoice, uuid, blobURL,
   STOCK_VOICE_URL, STOCK_LLM_URL, Archive, ArchiveError, Cloud, CloudError,
-} from "./core.js?v=b66be76375";
+} from "./core.js?v=183c50fb31";
 import {
   h, clear, bidi, icon, appBar, globeButton, headline, eyebrow, sectionLabel,
   subtext, caption, panel, panelS, errorNote, emptyHint, avatar, breadcrumb,
   sourceBadge, contentBadge, badgesFor, audioRow, player, confirmDialog, sheet,
   toast, Recorder, durationOf, demoDuration, track, unmountAll,
-} from "./ui.js?v=b66be76375";
-import { nav, remember, setRenderer, render, push, pop, popTo, goTab } from "./nav.js?v=b66be76375";
-import { appearance } from "./prefs.js?v=b66be76375";
+} from "./ui.js?v=183c50fb31";
+import { nav, remember, setRenderer, render, push, pop, popTo, goTab } from "./nav.js?v=183c50fb31";
+import { appearance } from "./prefs.js?v=183c50fb31";
 import {
   createScreen, booksScreen, readerScreen, memoriesScreen, playerScreen, openAddVoice,
   personHasVoice, lettersScreen, captureScreen,
-} from "./screens.js?v=b66be76375";
+} from "./screens.js?v=183c50fb31";
 
 const root = document.getElementById("app");
 
@@ -567,11 +567,16 @@ function cloudSection() {
       ? h("div", { class: "stack", style: { gap: "8px" } },
           h("div", { class: "row gap-s" }, icon("check"),
             h("span", { class: "caption" }, Cloud.email || L("Signed in"))),
+          // Every person who did not make it has to be accounted for here.
+          // "Backed up." over a silent failure is worse than no backup at
+          // all, because it is the sentence someone remembers when they go
+          // looking a year later and find nothing.
           run(L("Back up now"), async () => {
-            const { sent, skipped } = await Cloud.backUp();
-            return skipped
-              ? L("Backed up.") + " " + L("Some were too large and were left out.")
-              : L("Backed up.") + " " + Counts.number(sent);
+            const { sent, skipped, atRisk } = await Cloud.backUp();
+            const lines = [L("Backed up.") + " " + Counts.number(sent)];
+            if (skipped) lines.push(L("Some were too large and were left out."));
+            if (atRisk) lines.push(L("Some recordings could not be read, so those people were left as they were rather than overwritten."));
+            return lines.join(" ");
           }),
           run(L("Bring everything back"), async () => {
             const { brought } = await Cloud.restore();
@@ -896,12 +901,20 @@ function handoffRow(person) {
       busy.classList.remove("hidden");
       give.disabled = true;
       try {
-        const { code, hours } = await Archive.send(person.id);
+        const { code, carried, leftBehind } = await Archive.send(person.id);
+        // The file path has always said what actually travelled. This one
+        // threw the counts away, so a family could be handed a code for an
+        // archive with none of the recordings in it and told nothing — and
+        // the recordings are the part that cannot be made again.
+        const missing = leftBehind > 0
+          ? L("Sent without some recordings — they would have made it too large.")
+          : carried === 0 ? L("No original recordings were included.") : "";
         out.append(h("div", { class: "codecard" },
           h("div", { class: "caption" }, L("Read them this:")),
           h("div", { class: "code" }, code),
           h("div", { class: "small" }, L("They open Jaddati, choose Bring someone from another phone, and type it.")),
-          h("div", { class: "small" }, L("The code works for a day."))));
+          h("div", { class: "small" }, L("The code works for a day.")),
+          missing ? h("div", { class: "small amber-text" }, missing) : null));
       } catch (e) {
         out.append(errorNote(e?.message || L("Something went wrong. Try again.")));
       } finally {

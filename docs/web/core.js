@@ -5,8 +5,8 @@
 // is where those live — IndexedDB for the audio blobs, because a browser has no
 // application-support directory, and localStorage for the index.
 
-import { L, Counts, isArabicText, state as lang } from "./strings.js?v=b66be76375";
-import { prefs } from "./prefs.js?v=b66be76375";
+import { L, Counts, isArabicText, state as lang } from "./strings.js?v=183c50fb31";
+import { prefs } from "./prefs.js?v=183c50fb31";
 
 export const uuid = () =>
   (crypto.randomUUID ? crypto.randomUUID()
@@ -794,6 +794,21 @@ function withDevice(headers, viaRelay) {
   return viaRelay ? { ...headers, "x-jaddati-device": deviceId() } : headers;
 }
 
+/// For endpoints that are OURS — the archive relay, the Google exchange.
+///
+/// voiceHeaders sends Config.elevenKey, which is the PERSON'S OWN ElevenLabs
+/// key the moment they paste one. Sending that to our relay hands the relay's
+/// operator a credential that can spend their account and delete their voices,
+/// and it is not even the credential the relay wants: it checks against
+/// APP_TOKEN and would refuse it, so the handoff broke outright for anyone
+/// using their own key. These endpoints always speak for the app, never for
+/// the person.
+export const relayHeaders = (extra = {}) => ({
+  "xi-api-key": RELAY_TOKEN,
+  "x-jaddati-device": deviceId(),
+  ...extra,
+});
+
 export const voiceHeaders = (extra = {}) =>
   withDevice({ "xi-api-key": Config.elevenKey, ...extra }, Config.usesRelayVoice);
 
@@ -807,6 +822,12 @@ function voiceMessage(status, detail) {
     // seconds" is wrong advice for both. The wording is matched rather than a
     // code, because upstream sends the same status for genuine busyness.
     const said = (detail || "").toLowerCase();
+    // Checked first: the relay says this when THIS browser is holding the
+    // slot. "There is no room at the moment" would send them to go free up an
+    // account they have no access to, when the thing to remove is on screen.
+    if (said.includes("this device already has a voice")) {
+      return L("This browser already holds a recreated voice. Remove that person, or the voice on their Setup screen, before making another.");
+    }
     if (said.includes("voice limit")) {
       return L("There is no room for another voice at the moment. Remove one you have already made, or try again in a few days.");
     }
@@ -1307,10 +1328,14 @@ export const Cloud = {
   get isConfigured() { return this._configured === true; },
   get isUnknown() { return this._configured === null; },
   async configured() {
+    // Not even asked when the answer was no. A "Sign in with Google" row on a
+    // screen that says "Everything is being kept on this phone" is the app
+    // contradicting itself in the space of two rows.
+    if (!Consent.allowsNetwork) { this._configured = false; return false; }
     if (this._configured !== null) return this._configured;
     try {
       const r = await fetch(RELAY_URL + "/google/status", {
-        method: "POST", headers: voiceHeaders({ "content-type": "application/json" }),
+        method: "POST", headers: relayHeaders({ "content-type": "application/json" }),
         body: "{}",
       });
       const j = r.ok ? await r.json() : null;
@@ -1338,6 +1363,7 @@ export const Cloud = {
   /// A full-page redirect, not a popup. Popups are blocked by default in
   /// mobile Safari, which is the browser this has to work in.
   async beginSignIn() {
+    if (!Consent.allowsNetwork) throw new ConsentMissing();
     if (!(await this.configured())) throw new CloudError(L("Signing in is not set up on this build."));
     const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
@@ -1380,7 +1406,7 @@ export const Cloud = {
     }
 
     const r = await fetch(RELAY_URL + "/google/exchange", {
-      method: "POST", headers: voiceHeaders({ "content-type": "application/json" }),
+      method: "POST", headers: relayHeaders({ "content-type": "application/json" }),
       body: JSON.stringify({ code, redirect_uri: this.redirectURI, code_verifier: pkce.verifier }),
     });
     if (!r.ok) throw new CloudError(L("That sign-in could not be completed. Try again."));
@@ -1405,7 +1431,7 @@ export const Cloud = {
     if (t.access_token && Date.now() < t.expires_at - 60000) return t.access_token;
 
     const r = await fetch(RELAY_URL + "/google/refresh", {
-      method: "POST", headers: voiceHeaders({ "content-type": "application/json" }),
+      method: "POST", headers: relayHeaders({ "content-type": "application/json" }),
       body: JSON.stringify({ refresh_token: t.refresh_token }),
     });
     if (!r.ok) {
@@ -1426,6 +1452,7 @@ export const Cloud = {
   // thing that restores archives is a backup nobody has ever tested.
 
   async _drive(path, init = {}) {
+    if (!Consent.allowsNetwork) throw new ConsentMissing();
     const token = await this.accessToken();
     const r = await fetch(path, {
       ...init,
@@ -1451,10 +1478,22 @@ export const Cloud = {
   /// that is discovered to be partial at the worst possible moment.
   async backUp(onProgress) {
     const existing = await this._existing();
-    let sent = 0, skipped = 0;
+    let sent = 0, skipped = 0, atRisk = 0;
 
     for (const person of store.people) {
-      const { file } = await Archive.export(person.id);
+      const { file, carried } = await Archive.export(person.id);
+
+      // Refuse to overwrite a good backup with an empty one.
+      //
+      // export() drops any recording whose blob is missing. If IndexedDB has
+      // been evicted — Safari does this after seven days — the index still
+      // lists her recordings while the audio is gone, so the export carries
+      // nothing. Pressing "Back up now" then, which is the natural reaction
+      // to seeing "Audio file missing", would PATCH the last good copy in
+      // Drive with one containing no audio at all.
+      const expected = store.assetsFor(person.id, "original").length;
+      if (expected > 0 && carried === 0) { atRisk++; continue; }
+
       const body = JSON.stringify(file);
       if (new TextEncoder().encode(body).length > 24 * 1024 * 1024) { skipped++; continue; }
 
@@ -1476,7 +1515,7 @@ export const Cloud = {
       sent++;
       if (onProgress) onProgress(sent, store.people.length);
     }
-    return { sent, skipped };
+    return { sent, skipped, atRisk };
   },
 
   /// Bring back whatever is up there. Each file goes through Archive.import,
@@ -1567,12 +1606,18 @@ export const Archive = {
   /// The archive is NOT smaller than the file version: it is the same bytes.
   /// When it will not fit, that is said plainly and the file is still there.
   async send(personId) {
+    // The guard every other network client here carries. Without it someone
+    // who answered "keep everything on this phone" could tap Give this to the
+    // family and post a dead relative's recordings, their private notes and
+    // their sealed letters to a server — while the privacy screen two taps
+    // away still said nothing leaves the phone.
+    if (!Consent.allowsNetwork) throw new ConsentMissing();
     const { file, carried, leftBehind } = await this.export(personId);
     const body = JSON.stringify(file);
 
     const r = await fetch(RELAY_URL + "/archive", {
       method: "POST",
-      headers: voiceHeaders({ "content-type": "application/json" }),
+      headers: relayHeaders({ "content-type": "application/json" }),
       body,
     });
     if (!r.ok) {
@@ -1591,9 +1636,15 @@ export const Archive = {
   /// difference is no use to the person typing, and telling them which would
   /// make the codes worth guessing at.
   async fetchByCode(code) {
+    // The guard every other network client here carries. Without it someone
+    // who answered "keep everything on this phone" could tap Give this to the
+    // family and post a dead relative's recordings, their private notes and
+    // their sealed letters to a server — while the privacy screen two taps
+    // away still said nothing leaves the phone.
+    if (!Consent.allowsNetwork) throw new ConsentMissing();
     const r = await fetch(RELAY_URL + "/archive/fetch", {
       method: "POST",
-      headers: voiceHeaders({ "content-type": "application/json" }),
+      headers: relayHeaders({ "content-type": "application/json" }),
       body: JSON.stringify({ code }),
     });
     if (!r.ok) {
