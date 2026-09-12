@@ -1,11 +1,12 @@
 import SwiftUI
 
-/// The shell. People, Saved and Books are the three places you can be, and the
+/// The shell. People, Letters and You are the three places you can be, and the
 /// rail is visible from all of them.
 ///
-/// Saved and Books are scoped to one person — a pile of clips with no name on
-/// it is not an archive. Opening someone from People selects them, and the
-/// other two tabs carry a breadcrumb saying whose they are.
+/// All three work with nothing in the app yet. The two they replaced did not:
+/// Saved and Books were scoped to a person, so opening the app and tapping
+/// either one answered "Choose someone first". Saved and Books are now doors
+/// on the person screen, where the person they belong to is already known.
 struct RootView: View {
     @EnvironmentObject private var library: Library
 
@@ -26,12 +27,6 @@ struct RootView: View {
                 set: { storedPerson = $0?.uuidString ?? "" })
     }
 
-    private var selectedPerson: Person? {
-        if let id = selectedPersonId.wrappedValue,
-           let found = library.person(withId: id) { return found }
-        return library.people.count == 1 ? library.people.first : nil
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             // A pager, not a switch. Three reasons: you can swipe between
@@ -44,19 +39,11 @@ struct RootView: View {
                 HomeView(selectedPersonId: selectedPersonId)
                     .tag(RootTab.people)
 
-                personScoped { person in
-                    MemoriesView(personId: person.id, isTabRoot: true)
-                } emptyMessage: {
-                    L("Open a person to see what is kept for them.")
-                }
-                .tag(RootTab.saved)
+                NavigationStack { AllLettersView().swipeBackEnabled() }
+                    .tag(RootTab.letters)
 
-                personScoped { person in
-                    BooksView(personId: person.id, isTabRoot: true)
-                } emptyMessage: {
-                    L("Open a person to bring them a text.")
-                }
-                .tag(RootTab.books)
+                NavigationStack { YouView().swipeBackEnabled() }
+                    .tag(RootTab.you)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -81,31 +68,5 @@ struct RootView: View {
         guard let id = selectedPersonId.wrappedValue,
               library.person(withId: id) == nil else { return }
         selectedPersonId.wrappedValue = nil
-    }
-
-    /// Saved and Books both need a person. When there is not one the screen says
-    /// so AND offers the way out — this used to be a sentence with no control
-    /// under it, on a tab the user had just deliberately chosen.
-    @ViewBuilder
-    private func personScoped<Content: View>(
-        @ViewBuilder _ content: (Person) -> Content,
-        emptyMessage: () -> String
-    ) -> some View {
-        if let person = selectedPerson {
-            NavigationStack { content(person).swipeBackEnabled() }
-        } else {
-            VStack(spacing: 0) {
-                AppBar(title: tab.wrappedValue.title, showsBack: false)
-                Spacer(minLength: 0)
-                EmptyHint(icon: "person.crop.circle",
-                          title: L("Choose someone first"),
-                          message: emptyMessage())
-                Button(L("Go to People")) { tab.wrappedValue = .people }
-                    .buttonStyle(QuietButtonStyle())
-                    .padding(.horizontal, Theme.Metric.screenPadding)
-                    .padding(.top, Theme.Space.s)
-                Spacer(minLength: 0)
-            }
-        }
     }
 }

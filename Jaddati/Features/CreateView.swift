@@ -4,7 +4,18 @@ import AVFoundation
 /// Decide the words, then hear them. One screen per intent, one primary action.
 struct CreateView: View {
     let personId: UUID
-    let intent: Intent
+
+    /// State rather than a constant, so the strip of other ways to ask can
+    /// switch this screen in place. On the web the equivalent replaces the
+    /// screen in the stack; here changing the state rebuilds the same one,
+    /// which means Back still means "out of here" rather than "the last thing
+    /// I tried" — the same outcome by the means this platform gives.
+    @State private var intent: Intent
+
+    init(personId: UUID, intent: Intent) {
+        self.personId = personId
+        _intent = State(initialValue: intent)
+    }
 
     @EnvironmentObject private var library: Library
     /// Same reason as PersonView: the availability flags depend on consent,
@@ -82,20 +93,60 @@ struct CreateView: View {
             && !library.loadFailed
     }
 
+    /// The other ways of asking.
+    ///
+    /// These were six full-width rows on the person screen, each with a title
+    /// and a sentence under it, and you had to read all of them to find the
+    /// one you wanted. They belong here: the box is the thing, and these are
+    /// the other ways to fill it. Reading a book is not one of them — a shelf
+    /// is not a compose box — so it stays a door on the person screen.
+    private var ways: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 7) {
+                ForEach(Intent.allCases.filter { $0 != .readBook }, id: \.self) { key in
+                    let on = key == intent
+                    Button {
+                        guard !on else { return }
+                        intent = key
+                        // A fresh way of asking starts from a fresh box, the
+                        // way it does when this screen is entered anew.
+                        text = ""
+                        errorText = nil
+                        generated = nil
+                    } label: {
+                        Text(key.title)
+                            .font(.system(size: 13, weight: on ? .semibold : .medium))
+                            .foregroundStyle(on ? Theme.Palette.paper : Theme.Palette.inkSoft)
+                            .lineLimit(1)
+                            .padding(.horizontal, 14)
+                            .frame(minHeight: Theme.Metric.touchTarget)
+                            .background(Capsule().fill(on ? Theme.Palette.wine : Theme.Palette.sunk))
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(on ? [.isSelected] : [])
+                }
+            }
+            .padding(.horizontal, Theme.Metric.screenPadding)
+        }
+        .padding(.horizontal, -Theme.Metric.screenPadding)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            AppBar(title: intent.title)
+            // The bar used to name the intent, which the selected chip below
+            // it and the headline below that both already said. Three ways of
+            // saying one thing pushed the box the user came for most of the
+            // way down the screen, so the bar names WHO and the breadcrumb
+            // that repeated it is gone.
+            AppBar(title: person?.name ?? intent.title)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Space.m) {
                     // Grouped so the header counts as one child: this stack sits
                     // right on SwiftUI's ten-child ViewBuilder limit.
                     Group {
-                        if let person {
-                            Breadcrumb(name: person.name,
-                                       relationship: person.relationship,
-                                       photo: library.photoURL(for: person))
-                        }
+                        ways
                         Headline(text: intent.headline)
                         SubText(text: intent.standfirst)
                     }

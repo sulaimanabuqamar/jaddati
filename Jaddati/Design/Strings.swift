@@ -640,6 +640,32 @@ enum Counts {
         }
     }
 
+    /// The two counts the person screen's cards need. Same shapes as the web's,
+    /// because the two versions have to say the same thing.
+    static func books(_ count: Int) -> String {
+        guard uiIsArabic else {
+            return count == 1 ? "1 book" : "\(number(count)) books"
+        }
+        switch count {
+        case 1:      return "كتاب واحد"
+        case 2:      return "كتابان"
+        case 3...10: return "\(number(count)) كتب"
+        default:     return "\(number(count)) كتابًا"
+        }
+    }
+
+    static func sealed(_ count: Int) -> String {
+        guard uiIsArabic else {
+            return count == 1 ? "1 sealed letter" : "\(number(count)) sealed letters"
+        }
+        switch count {
+        case 1:      return "رسالة مختومة واحدة"
+        case 2:      return "رسالتان مختومتان"
+        case 3...10: return "\(number(count)) رسائل مختومة"
+        default:     return "\(number(count)) رسالة مختومة"
+        }
+    }
+
     static func pagesRead(_ read: Int, of total: Int) -> String {
         guard uiIsArabic else { return "\(number(read)) of \(number(total)) pages read" }
         // The counted noun changes ending with the number, and "read" was

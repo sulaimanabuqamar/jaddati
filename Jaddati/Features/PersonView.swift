@@ -7,9 +7,6 @@ struct PersonView: View {
     let personId: UUID
 
     @EnvironmentObject private var library: Library
-    @State private var exported: URL?
-    @State private var preparingArchive = false
-    @State private var archiveNote: String?
     @State private var addingVoice = false
     #if DEBUG
     /// Not read anywhere. It exists so this screen re-renders when offline test
@@ -27,10 +24,6 @@ struct PersonView: View {
     /// Outside the DEBUG block on purpose: inside it, the shipping build —
     /// the only one a reviewer or a family ever runs — would not observe it.
     @EnvironmentObject private var consent: Consent
-    @Environment(\.dismiss) private var dismiss
-    @State private var confirmingDelete = false
-    @State private var isDeleting = false
-    @State private var deleteProblem: String?
     @State private var photoPick: PhotosPickerItem?
     @State private var checkingAvailability = false
     @State private var availabilityNote: String?
@@ -39,7 +32,7 @@ struct PersonView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            AppBar(title: person?.name ?? L("Jaddati"))
+            AppBar(title: person?.name ?? L("Jaddati"), trailing: gear)
 
             if let person {
                 ScrollView {
@@ -50,21 +43,12 @@ struct PersonView: View {
                             notConnectedNote.padding(.top, 21)
                         }
 
-                        if person.hasVoice {
-                            intents(person)
-                        } else if person.voiceIsUnavailableHere {
-                            placeholderVoice.padding(.top, 21)
-                        } else if person.voicePendingVerification {
-                            pendingVerification.padding(.top, 21)
-                        } else {
-                            noVoiceYet.padding(.top, 21)
-                        }
+                        primaryAction(person)
 
-                        capture(person)
-                        handoff(person)
-                        originals(person)
-                        savedLink(person)
-                        deleteRow(person)
+                        // No voice means nothing to put in them, and an empty
+                        // room you have to open to discover is empty is the
+                        // kind of thing that made this screen tiring.
+                        if person.hasVoice { cards(person) }
                     }
                     .padding(.horizontal, Theme.Metric.screenPadding)
                     .padding(.bottom, Theme.Space.xl)
@@ -98,44 +82,198 @@ struct PersonView: View {
 
     private func profile(_ person: Person) -> some View {
         let photo = library.photoURL(for: person)
-        return VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .center, spacing: 16) {
-                PhotosPicker(selection: $photoPick, matching: .images, photoLibrary: .shared()) {
-                    ZStack(alignment: .bottomTrailing) {
-                        PersonAvatar(name: person.name, imageURL: photo, size: 88)
-                        Image(systemName: photo == nil ? "plus" : "pencil")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(Theme.Palette.paper)
-                            .frame(width: 22, height: 22)
-                            .background(Circle().fill(Theme.Palette.wine))
-                            .overlay(Circle().stroke(Theme.Palette.paper, lineWidth: 2))
+        // Centred, because this screen now has one thing to say and one thing
+        // to offer. Left-aligned was right when it was a header sitting above
+        // a list of seven rows; it is not a header any more. Remove photo
+        // moved to Setup with everything else done once.
+        return VStack(spacing: 7) {
+            PhotosPicker(selection: $photoPick, matching: .images, photoLibrary: .shared()) {
+                ZStack(alignment: .bottomTrailing) {
+                    PersonAvatar(name: person.name, imageURL: photo, size: 104)
+                    Image(systemName: photo == nil ? "plus" : "pencil")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Theme.Palette.paper)
+                        .frame(width: 26, height: 26)
+                        .background(Circle().fill(Theme.Palette.wine))
+                        .overlay(Circle().stroke(Theme.Palette.paper, lineWidth: 2))
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(photo == nil ? L("Add photo") : L("Change photo"))
+
+            BidiText(value: person.name,
+                     font: Theme.Font.display(31),
+                     colour: Theme.Palette.ink)
+            if !person.relationship.isEmpty {
+                BidiText(value: person.relationship,
+                         font: .system(size: 14),
+                         colour: Theme.Palette.inkSoft)
+            }
+            voiceTag(person)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 22)
+    }
+
+    /// Setup is a gear, not a row on this screen. Everything behind it is done
+    /// once; everything on this screen is done again and again.
+    private var gear: AnyView? {
+        guard let person else { return nil }
+        return AnyView(
+            NavigationLink {
+                SetupView(personId: person.id)
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 17))
+                    .foregroundStyle(Theme.Palette.ink)
+                    .frame(width: Theme.Metric.touchTarget, height: Theme.Metric.touchTarget)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel(L("Setup"))
+        )
+    }
+
+    /// One button, and which button it is depends entirely on where this
+    /// person is.
+    ///
+    /// This screen used to show all four voice states' worth of copy AND seven
+    /// things to do, and a first-time user had to read the lot to work out
+    /// which of it applied to them. There is only ever one sensible next move
+    /// here, so it is the only one offered.
+    @ViewBuilder
+    private func primaryAction(_ person: Person) -> some View {
+        VStack(spacing: 0) {
+            if person.voiceIsUnavailableHere {
+                Button(L("Create a real voice")) { addingVoice = true }
+                    .buttonStyle(PrimaryButtonStyle())
+                actionNote(L("Created in offline test mode. This is not a usable voice."))
+            } else if person.voicePendingVerification {
+                Button(checkingAvailability ? L("Checking…") : L("Check if it is ready")) {
+                    Task { await checkAvailability() }
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(!canCheckAvailability)
+                actionNote(L("The voice has been created, but the service has not made it available yet."))
+                if let availabilityNote {
+                    Text(availabilityNote)
+                        .font(Theme.Font.caption)
+                        .foregroundStyle(Theme.Palette.danger)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 8)
+                }
+            } else if !person.hasVoice {
+                Button(L("Add their voice")) { addingVoice = true }
+                    .buttonStyle(PrimaryButtonStyle())
+                actionNote(L("About a minute. One voice. A quiet room."))
+                // Recording someone still alive is the one other thing worth
+                // offering here, and it matters MOST before a voice exists —
+                // which is exactly when it used to sit furthest down the page.
+                NavigationLink {
+                    CaptureView(personId: person.id)
+                } label: {
+                    HStack(spacing: 7) {
+                        Image(systemName: "mic").font(.system(size: 13))
+                        Text(L("They are still here? Record them now"))
+                            .font(.system(size: 13, weight: .medium))
                     }
+                    .foregroundStyle(Theme.Palette.wine)
+                    .frame(maxWidth: .infinity, minHeight: Theme.Metric.touchTarget)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(photo == nil ? L("Add photo") : L("Change photo"))
-
-                VStack(alignment: .leading, spacing: 5) {
-                    BidiText(value: person.name,
-                             font: Theme.Font.display(33),
-                             colour: Theme.Palette.ink)
-                    if !person.relationship.isEmpty {
-                        BidiText(value: person.relationship,
-                                 font: .system(size: 14),
-                                 colour: Theme.Palette.inkSoft)
-                    }
-                    voiceTag(person)
+                .padding(.top, 6)
+            } else {
+                NavigationLink {
+                    CreateView(personId: person.id, intent: .saySomething)
+                } label: {
+                    Text(L("Say something"))
                 }
-                Spacer(minLength: 0)
-            }
-            .padding(.top, 16)
-
-            if photo != nil {
-                Button(L("Remove photo")) { library.removePhoto(for: person) }
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.Palette.inkSoft)
-                    .padding(.top, 10)
+                .buttonStyle(PrimaryButtonStyle())
+                actionNote(L("Type the words. Hear them in their voice."))
             }
         }
+        .padding(.top, 20)
+    }
+
+    private func actionNote(_ words: String) -> some View {
+        Text(words)
+            .font(Theme.Font.caption)
+            .foregroundStyle(Theme.Palette.inkSoft)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 10)
+    }
+
+    /// Three doors, not seven rows. Each says how much is behind it, so nobody
+    /// opens an empty room to find out it is empty.
+    private func cards(_ person: Person) -> some View {
+        let kept = library.keptClips(for: person).count
+        let bookCount = library.books(for: person).count
+        let letters = library.letters(for: person)
+        let due = letters.filter(\.isDue).count
+        let sealedCount = letters.filter(\.isSealed).count
+
+        return HStack(alignment: .top, spacing: 9) {
+            card(icon: "tray",
+                 title: L("Saved"),
+                 note: kept > 0 ? Counts.savedClips(kept) : L("Nothing saved yet"),
+                 badge: 0) { AnyView(MemoriesView(personId: person.id)) }
+
+            card(icon: "book",
+                 title: L("Books"),
+                 note: bookCount > 0 ? Counts.books(bookCount) : L("Bring them a text"),
+                 badge: 0) { AnyView(BooksView(personId: person.id)) }
+
+            card(icon: due > 0 ? "lock.open" : "lock",
+                 title: L("Letters"),
+                 note: due > 0 ? L("Waiting for you")
+                     : sealedCount > 0 ? Counts.sealed(sealedCount) : L("For a day you choose"),
+                 badge: due) { AnyView(LettersView(personId: person.id)) }
+        }
+        .padding(.top, 26)
+    }
+
+    private func card(icon: String, title: String, note: String, badge: Int,
+                      destination: @escaping () -> AnyView) -> some View {
+        NavigationLink { destination() } label: {
+            VStack(alignment: .leading, spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 18))
+                    .foregroundStyle(Theme.Palette.wine)
+                    .overlay(alignment: .topTrailing) {
+                        if badge > 0 {
+                            Text(Counts.number(badge))
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(Theme.Palette.paper)
+                                .frame(minWidth: 17, minHeight: 17)
+                                .background(Circle().fill(Theme.Palette.danger))
+                                .offset(x: 12, y: -6)
+                        }
+                    }
+                    .padding(.bottom, 2)
+                Text(title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.Palette.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(note)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.Palette.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Metric.cardRadius)
+                    .fill(Theme.Palette.card)
+                    .overlay(RoundedRectangle(cornerRadius: Theme.Metric.cardRadius)
+                        .stroke(Theme.Palette.hairline, lineWidth: 1))
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     /// The one-line truth about whether this voice can speak.
@@ -196,62 +334,6 @@ struct PersonView: View {
         return UIImage(cgImage: thumb).jpegData(compressionQuality: 0.85)
     }
 
-    /// This voice was minted by the offline test mode and does not exist at the
-    /// provider. Before this state existed the profile read "Voice ready", all
-    /// four experiences unlocked, and every generation failed on an invalid id
-    /// with no way to recover from the screen you were on.
-    private var placeholderVoice: some View {
-        Panel {
-            VStack(alignment: .leading, spacing: Theme.Space.s) {
-                Text(L("Test voice only"))
-                    .font(Theme.Font.heading)
-                    .foregroundStyle(Theme.Palette.ink)
-                Text(L("Created in offline test mode. This is not a usable voice."))
-                    .font(Theme.Font.body)
-                    .foregroundStyle(Theme.Palette.inkSoft)
-                    .fixedSize(horizontal: false, vertical: true)
-                Button(L("Create a real voice")) { addingVoice = true }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .padding(.top, 2)
-            }
-        }
-    }
-
-    /// The provider accepted the sample but will not let the voice speak yet.
-    /// Showing "Voice ready" here is exactly how you get a silent demo.
-    private var pendingVerification: some View {
-        Panel {
-            VStack(alignment: .leading, spacing: Theme.Space.s) {
-                Text(L("Voice is being prepared"))
-                    .font(Theme.Font.heading)
-                    .foregroundStyle(Theme.Palette.ink)
-                Text(L("The voice has been created, but the service has not made it available yet."))
-                    .font(Theme.Font.body)
-                    .foregroundStyle(Theme.Palette.inkSoft)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Button(checkingAvailability ? L("Checking…") : L("Check availability")) {
-                    Task { await checkAvailability() }
-                }
-                .buttonStyle(PrimaryButtonStyle(enabled: canCheckAvailability))
-                .disabled(!canCheckAvailability)
-                .padding(.top, 2)
-
-                if let availabilityNote {
-                    Text(availabilityNote)
-                        .font(Theme.Font.caption)
-                        .foregroundStyle(Theme.Palette.danger)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Text(L("Checking asks the service to say one short word."))
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.Palette.inkSoft)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
     private var canCheckAvailability: Bool {
         !checkingAvailability && AppConfig.isConfigured && person?.voiceId != nil
     }
@@ -294,231 +376,12 @@ struct PersonView: View {
         }
     }
 
-    private var noVoiceYet: some View {
-        Panel {
-            VStack(alignment: .leading, spacing: Theme.Space.s) {
-                Text(L("No recreated voice yet"))
-                    .font(Theme.Font.heading)
-                    .foregroundStyle(Theme.Palette.ink)
-                Text(L("Add an original recording to create a voice.") + " " + L("About a minute. One voice. A quiet room."))
-                    .font(Theme.Font.body)
-                    .foregroundStyle(Theme.Palette.inkSoft)
-                    .fixedSize(horizontal: false, vertical: true)
-                Button(L("Add their voice")) { addingVoice = true }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .padding(.top, 2)
-            }
-        }
-    }
-
-    private func intents(_ person: Person) -> some View {
-        VStack(spacing: 0) {
-            ForEach(Array(Intent.allCases.enumerated()), id: \.element) { index, intent in
-                NavigationLink {
-                    // Books are a shelf, not a compose box.
-                    if intent == .readBook {
-                        BooksView(personId: person.id)
-                    } else {
-                        CreateView(personId: person.id, intent: intent)
-                    }
-                } label: {
-                    FeatureRow(icon: intent.icon,
-                               title: intent.title,
-                               subtitle: intent.subtitle,
-                               emphasised: index == 0)
-                }
-                .buttonStyle(.plain)
-                // The wine card is a card, not a list row. It was sitting hard
-                // against the badge above it and the first plain row below,
-                // which is what made it look wedged in rather than featured.
-                .padding(.bottom, index == 0 ? 16 : 0)
-
-                if index > 0 && index < Intent.allCases.count - 1 {
-                    Theme.Palette.hairline.frame(height: 1)
-                }
-            }
-
-            // Letters sit with the experiences but are not one of them: they
-            // carry a date, so they do not fit the compose screen's shape. A
-            // letter whose day has come announces itself here, because a sealed
-            // letter nobody is told about is a letter that never arrives.
-            Theme.Palette.hairline.frame(height: 1)
-            NavigationLink {
-                LettersView(personId: person.id)
-            } label: {
-                FeatureRow(icon: library.dueLetters(for: person).isEmpty ? "lock" : "lock.open",
-                           title: L("Words that arrive later"),
-                           subtitle: library.dueLetters(for: person).isEmpty
-                               ? L("Sealed now, heard on a day you choose")
-                               : L("Waiting for you"))
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.top, 22)
-    }
-
-    /// Recording someone who is still alive is a different act from everything
-    /// else on this screen, all of which is about someone who is not — and it
-    /// is most useful BEFORE a voice exists, which is exactly when the
-    /// experience list is hidden. So it renders on its own, either way.
-    /// The voice lives at the voice service, not on this phone, so handing
-    /// another family member the identifier lets them speak in it immediately —
-    /// without paying to clone her twice or taking a second voice slot for the
-    /// same person.
-    private func handoff(_ person: Person) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Theme.Palette.hairline.frame(height: 1).padding(.bottom, 16)
-            Text(L("One voice, the whole family"))
-                .font(Theme.Font.label)
-                .foregroundStyle(Theme.Palette.ink)
-            Text(L("Make a file another family member can open on their own phone. It carries this person, your notes, anything still sealed, and the recreated voice itself — so they can hear them straight away without making the voice a second time."))
-                .font(Theme.Font.caption)
-                .foregroundStyle(Theme.Palette.inkSoft)
-                .fixedSize(horizontal: false, vertical: true)
-            Text(L("Clips already created are not included. They can be made again on the other phone."))
-                .font(Theme.Font.caption)
-                .foregroundStyle(Theme.Palette.inkSoft)
-                .fixedSize(horizontal: false, vertical: true)
-
-            // Bound to a different name on purpose. `if let exported` shadows the
-            // @State with an unwrapped `let URL`, so clearing it inside this
-            // branch assigns to the constant rather than to the state — which is
-            // exactly the pair of errors the compiler gave.
-            if let archiveFile = exported {
-                ShareLink(item: archiveFile) {
-                    Text(L("Give this to the family"))
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(QuietButtonStyle())
-                // Seal a letter or add a memory after making the file and the
-                // family would receive the version from before it. Making a new
-                // one has to stay reachable.
-                Button(L("Make it again, with the latest")) {
-                    exported = nil
-                    archiveNote = nil
-                }
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Theme.Palette.wine)
-                .frame(minHeight: Theme.Metric.touchTarget, alignment: .leading)
-            } else {
-                Button(preparingArchive ? L("Preparing…") : L("Give this to the family")) {
-                    Task { await prepareArchive(for: person) }
-                }
-                .buttonStyle(QuietButtonStyle())
-                .disabled(preparingArchive)
-            }
-
-            if let archiveNote {
-                Text(archiveNote)
-                    .font(Theme.Font.caption)
-                    .foregroundStyle(Theme.Palette.inkSoft)
-            }
-        }
-        .padding(.top, 18)
-    }
-
     /// Off the main thread: this reads every original recording, base64s it and
     /// writes the result, which on a real archive is seconds of work. Run inline
     /// it froze the UI and SwiftUI coalesced the state away, so "Preparing…"
     /// never appeared at all.
     @MainActor
-    private func prepareArchive(for person: Person) async {
-        preparingArchive = true
-        archiveNote = nil
-        let snapshot = person
-        do {
-            let result = try await Task.detached(priority: .userInitiated) { [library] in
-                try Archive.export(person: snapshot, library: library)
-            }.value
-            exported = result.url
-            archiveNote = result.unreadable > 0
-                ? L("Some recordings could not be read from this phone and were left out.")
-                : result.tooLarge > 0
-                  ? L("Sent without some recordings — the file would have been too large.")
-                  : result.carried > 0 ? L("Ready to send.")
-                    : L("Ready to send. No original recordings were included.")
-        } catch {
-            archiveNote = error.localizedDescription
-        }
-        preparingArchive = false
-    }
 
-    private func capture(_ person: Person) -> some View {
-        VStack(spacing: 0) {
-            Theme.Palette.hairline.frame(height: 1)
-            NavigationLink {
-                CaptureView(personId: person.id)
-            } label: {
-                FeatureRow(icon: "mic",
-                           title: L("Recorded before it is needed"),
-                           subtitle: L("Ask for the recording while they are still here to give it"))
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.top, 18)
-    }
-
-
-    private func originals(_ person: Person) -> some View {
-        let items = library.assets(for: person, source: .original)
-        return VStack(alignment: .leading, spacing: 0) {
-            QuietDivider()
-
-            HStack {
-                SectionLabel(text: L("Original recordings"))
-                Spacer()
-                Button(L("Add their voice")) { addingVoice = true }
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Theme.Palette.wine)
-            }
-
-            if items.isEmpty {
-                SubText(text: L("No recordings yet")).padding(.top, 10)
-            } else {
-                ForEach(items) { asset in
-                    AudioRow(asset: asset)
-                }
-            }
-        }
-    }
-
-
-    /// Everything kept for this person, in one place. Book pages are excluded:
-    /// they are kept automatically so they are never paid for twice, and
-    /// counting them would drown the things the user actually chose to keep.
-    private func savedLink(_ person: Person) -> some View {
-        let memories = library.keptClips(for: person)
-        return NavigationLink {
-            // Not .recreated: the screen it opens is headed "Original
-            // recordings and the new words you chose to save", and a
-            // pre-set filter quietly hiding half of that is a lie in a
-            // place this app cannot afford one.
-            MemoriesView(personId: person.id)
-        } label: {
-            HStack {
-                Text(L("Everything saved"))
-                    .font(.system(size: 14, weight: .semibold))
-                Spacer()
-                Text(memories.isEmpty ? L("Nothing saved yet")
-                                      : Counts.savedClips(memories.count))
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.Palette.inkSoft)
-            }
-            .foregroundStyle(Theme.Palette.wine)
-            .padding(.horizontal, 16)
-            .frame(maxWidth: .infinity, minHeight: Theme.Metric.buttonHeight)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.Metric.buttonRadius, style: .continuous)
-                    .fill(Color(hex: 0xFFFAF4))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.Metric.buttonRadius, style: .continuous)
-                    .stroke(Theme.Palette.hairline, lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-        .padding(.top, 22)
-    }
 
     /// Delete at the provider first, then here.
     ///
@@ -528,97 +391,6 @@ struct PersonView: View {
     /// knows its name. If the provider call fails we stop and say so, and the
     /// person is still here to try again with.
     @MainActor
-    private func remove(_ person: Person) async {
-        deleteProblem = nil
-
-        // A voice that arrived in a family archive belongs to everyone holding
-        // that archive. Removing this copy must not reach the service.
-        guard let voiceId = person.voiceId, person.voiceIsShared != true else {
-            library.delete(person)
-            // Without this the screen stays up with `person` gone, showing an
-            // empty state under an app bar, and the only way out is an edge
-            // swipe.
-            dismiss()
-            return
-        }
-
-        isDeleting = true
-        do {
-            try await AppConfig.voiceService().deleteVoice(voiceId: voiceId)
-        } catch is ConsentMissing {
-            isDeleting = false
-            deleteProblem = AppConfig.unavailableMessage
-            return
-        } catch {
-            isDeleting = false
-            deleteProblem = (error as? VoiceServiceError)?.errorDescription
-                ?? L("The voice could not be removed from the voice service.")
-            return
-        }
-        isDeleting = false
-        library.delete(person)
-        dismiss()
-    }
-
-    private func deleteRow(_ person: Person) -> some View {
-        VStack(spacing: 0) {
-            Button(role: .destructive) {
-                confirmingDelete = true
-            } label: {
-                Text(L("Remove this person"))
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Theme.Palette.inkSoft)
-                    .underline()
-                    .frame(maxWidth: .infinity, minHeight: Theme.Metric.touchTarget)
-            }
-            .confirmationDialog(L("Delete this person?"),
-                                isPresented: $confirmingDelete,
-                                titleVisibility: .visible) {
-                Button(L("Delete permanently"), role: .destructive) {
-                    Task { await remove(person) }
-                }
-                Button(L("Cancel"), role: .cancel) { }
-            } message: {
-                Text(L("This removes their profile, original recordings, saved clips and imported books from Jaddati.")
-                     + "\n\n"
-                     + (person.voiceIsShared == true
-                        ? L("This person came from another family member's phone, so the voice is shared. It is left alone at the voice service — removing it here would take it from everyone who has them.")
-                        : person.voiceId == nil
-                          ? L("Nothing was ever sent to the voice service for this person.")
-                          : L("The voice built for them is deleted from the voice service first. If that fails, nothing here is removed, so you can try again.")))
-            }
-            .disabled(isDeleting)
-
-            if isDeleting {
-                Text(L("Removing the voice from the voice service…"))
-                    .font(Theme.Font.caption)
-                    .foregroundStyle(Theme.Palette.inkSoft)
-                    .padding(.top, Theme.Space.xs)
-            }
-
-            // Inline, not a second dialog. A confirmationDialog raised while
-            // the first one is still dismissing is dropped by UIKit, and the
-            // paths that get here most often — consent declined, no key —
-            // fail without ever suspending, so they land in exactly that
-            // window and the person would see nothing happen at all.
-            if let deleteProblem {
-                VStack(alignment: .leading, spacing: Theme.Space.xs) {
-                    ErrorNote(message: deleteProblem + "\n\n"
-                              + L("The voice will stay at the voice service and this app will no longer know its name, so it cannot be removed from here later."))
-                    Button(L("Remove from this phone")) {
-                        library.delete(person)
-                        dismiss()
-                    }
-                    .buttonStyle(QuietButtonStyle())
-                    Button(L("Keep for now")) { self.deleteProblem = nil }
-                        .buttonStyle(QuietButtonStyle())
-                }
-                .padding(.top, Theme.Space.xs)
-            }
-        }
-        .padding(.top, 18)
-    }
-
 
 }
 

@@ -115,6 +115,11 @@ struct GlobeButton: View {
 /// hiding which person they belong to.
 struct TabRail: View {
     @Binding var selection: RootTab
+    @EnvironmentObject private var library: Library
+
+    /// A letter whose day has come has to be findable without remembering
+    /// whose it was, so the rail carries it from wherever you are.
+    private var due: Int { library.letters.filter(\.isDue).count }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -126,6 +131,15 @@ struct TabRail: View {
                     VStack(spacing: 4) {
                         Image(systemName: tab.icon)
                             .font(.system(size: 18, weight: on ? .semibold : .regular))
+                            .overlay(alignment: .topTrailing) {
+                                if tab == .letters && due > 0 {
+                                    Circle()
+                                        .fill(Theme.Palette.danger)
+                                        .frame(width: 7, height: 7)
+                                        .overlay(Circle().stroke(Theme.Palette.paper, lineWidth: 1.5))
+                                        .offset(x: 5, y: -2)
+                                }
+                            }
                         Text(tab.title)
                             .font(.system(size: 10, weight: on ? .semibold : .regular))
                     }
@@ -148,22 +162,26 @@ struct TabRail: View {
     }
 }
 
+/// Saved and Books used to be tabs. Both were scoped to one person, so from a
+/// cold start two thirds of the rail answered "Choose someone first" — a tab
+/// bar that does nothing is the fastest way to make an app feel confusing.
+/// These three all work with nothing in the app yet.
 enum RootTab: String, CaseIterable, Hashable {
-    case people, saved, books
+    case people, letters, you
 
     var title: String {
         switch self {
-        case .people: return L("People")
-        case .saved:  return L("Saved")
-        case .books:  return L("Books")
+        case .people:  return L("People")
+        case .letters: return L("Letters")
+        case .you:     return L("You")
         }
     }
 
     var icon: String {
         switch self {
-        case .people: return "house"
-        case .saved:  return "tray.full"
-        case .books:  return "book"
+        case .people:  return "house"
+        case .letters: return "lock"
+        case .you:     return "person"
         }
     }
 }
