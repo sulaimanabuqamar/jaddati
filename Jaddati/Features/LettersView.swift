@@ -201,7 +201,7 @@ struct LettersView: View {
                         }
                     }
 
-                Text("\(trimmed.count) / \(limit)")
+                Text(Counts.characters(trimmed.count, limit: limit))
                     .font(Theme.Font.caption)
                     .foregroundStyle(trimmed.count > limit ? Theme.Palette.danger : Theme.Palette.inkSoft)
 
@@ -245,7 +245,7 @@ struct LettersView: View {
                                 .font(Theme.Font.caption)
                                 .foregroundStyle(Theme.Palette.inkSoft)
                         }
-                        Text("\(letter.text.count) / \(limit) · " + L("Sealed until the day"))
+                        Text(Counts.characters(letter.text.count, limit: limit) + " · " + L("Sealed until the day"))
                             .font(Theme.Font.caption)
                             .foregroundStyle(Theme.Palette.inkSoft)
                         Button(L("Remove")) { pendingRemoval = letter }

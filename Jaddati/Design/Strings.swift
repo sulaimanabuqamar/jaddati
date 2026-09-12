@@ -638,8 +638,15 @@ enum Counts {
             : "Page \(number(page)) of \(number(total))"
     }
 
+    /// "0 / 800", and it has to stay in that order.
+    ///
+    /// Right to left, the bidi algorithm reorders a bare "0 / 800" into
+    /// "800 / 0" — the limit sits where the count belongs, and an empty box
+    /// appears to have a limit of zero. Isolating the pair as left-to-right
+    /// pins it. Affects every compose screen, not only the newest.
     static func characters(_ used: Int, limit: Int) -> String {
-        "\(number(used)) / \(number(limit))"
+        let pair = "\(number(used)) / \(number(limit))"
+        return uiIsArabic ? "\u{2066}" + pair + "\u{2069}" : pair
     }
 
     static func duration(_ seconds: Double) -> String {

@@ -669,7 +669,18 @@ export const Counts = {
       ? `صفحة ${this.number(page)} من ${this.number(total)}`
       : `Page ${this.number(page)} of ${this.number(total)}`;
   },
-  characters(used, limit) { return `${this.number(used)} / ${this.number(limit)}`; },
+  /**
+   * "0 / 800", and it has to stay in that order.
+   *
+   * Right-to-left, the bidi algorithm reorders a bare "0 / 800" into "800 / 0",
+   * so the limit sits where the count belongs and an empty box appears to have
+   * a limit of zero. Isolating the pair as left-to-right pins it. This affects
+   * every compose screen in the app, not only the newest ones.
+   */
+  characters(used, limit) {
+    const pair = `${this.number(used)} / ${this.number(limit)}`;
+    return isAr() ? `\u2066${pair}\u2069` : pair;
+  },
   duration(seconds) {
     if (!(seconds > 0)) return L("Duration");
     const total = Math.round(seconds);
