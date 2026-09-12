@@ -100,6 +100,7 @@ let arabicStrings: [String: String] = [
     "Most families find they have nothing usable — a few seconds of someone laughing behind a video, and that is all. These are worth having whatever happens, and together they are what a voice needs.": "تكتشف معظم العائلات أنه لا يوجد لديها ما يصلح — ثوانٍ من ضحكة خلف مقطع مصوّر، وهذا كل شيء. هذه التسجيلات تستحق الاقتناء مهما حدث، وهي مجتمعةً ما يحتاجه الصوت.",
     "Nothing here is sent anywhere. These are recordings, kept on this phone like any other.": "لا يُرسَل شيء من هنا إلى أي جهة. هذه تسجيلات تُحفظ على هذا الجهاز كغيرها.",
     "Record this": "سجّل هذا",
+    "Stop recording": "إيقاف التسجيل",
     "Recorded": "مُسجَّل",
     "Say the name of everyone in the family, one by one, the way you always say them.": "اذكر اسم كل فرد في العائلة، واحدًا واحدًا، بالطريقة التي تناديهم بها دائمًا.",
     "Tell the story of how you met — take your time with it.": "احكِ قصة كيف تقابلتما — وخذ وقتك فيها.",

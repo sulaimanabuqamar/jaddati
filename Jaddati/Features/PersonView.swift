@@ -57,6 +57,7 @@ struct PersonView: View {
                             noVoiceYet.padding(.top, 21)
                         }
 
+                        capture(person)
                         originals(person)
                         savedLink(person)
                         deleteRow(person)
@@ -350,6 +351,25 @@ struct PersonView: View {
             .buttonStyle(.plain)
         }
         .padding(.top, 22)
+    }
+
+    /// Recording someone who is still alive is a different act from everything
+    /// else on this screen, all of which is about someone who is not — and it
+    /// is most useful BEFORE a voice exists, which is exactly when the
+    /// experience list is hidden. So it renders on its own, either way.
+    private func capture(_ person: Person) -> some View {
+        VStack(spacing: 0) {
+            Theme.Palette.hairline.frame(height: 1)
+            NavigationLink {
+                CaptureView(personId: person.id)
+            } label: {
+                FeatureRow(icon: "mic",
+                           title: L("Recorded before it is needed"),
+                           subtitle: L("Ask for the recording while they are still here to give it"))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.top, 18)
     }
 
 

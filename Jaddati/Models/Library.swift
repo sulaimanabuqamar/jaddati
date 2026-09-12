@@ -297,6 +297,7 @@ final class Library: ObservableObject {
                     bookId: UUID? = nil,
                     pageIndex: Int? = nil,
                     isSaved: Bool = true,
+                    promptId: String? = nil,
                     fileExtension: String = "mp3") -> AudioAsset? {
         let name = "\(UUID().uuidString).\(fileExtension)"
         let destination = audioDir.appendingPathComponent(name)
@@ -320,6 +321,7 @@ final class Library: ObservableObject {
         asset.contentKind = (content ?? intent?.defaultContentProvenance)?.rawValue
         asset.bookId = bookId
         asset.pageIndex = pageIndex
+        asset.promptId = promptId
         assets.append(asset)
         guard save() else {
             // The row did not reach disk, so at the next launch this audio

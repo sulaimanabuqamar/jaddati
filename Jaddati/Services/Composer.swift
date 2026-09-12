@@ -28,6 +28,37 @@ enum Composer {
     /// person felt. These lines steady the listener without claiming anyone's
     /// feelings, wishes, presence, or approval. They are attributed to whoever
     /// chose them, never to the person whose voice reads them.
+    /// What to ask for, while they are still here to give it.
+    ///
+    /// Most families discover too late that they have nothing usable — a few
+    /// seconds of somebody laughing behind a video, and that is all. The hard
+    /// part is not the recording, it is knowing what to ask for, so these ask
+    /// for specific things rather than "a voice sample".
+    ///
+    /// Each is worth having for its own sake, and together they cover the range
+    /// a clone needs: ordinary speech, names said the way they are always said,
+    /// warmth, and length.
+    static let capturePrompts: [CapturePrompt] = [
+        .init(id: "names",
+              english: "Say the name of everyone in the family, one by one, the way you always say them.",
+              arabic: "اذكر اسم كل فرد في العائلة، واحدًا واحدًا، بالطريقة التي تناديهم بها دائمًا."),
+        .init(id: "meeting",
+              english: "Tell the story of how you met — take your time with it.",
+              arabic: "احكِ قصة كيف تقابلتما — وخذ وقتك فيها."),
+        .init(id: "home",
+              english: "Describe the house you grew up in, room by room.",
+              arabic: "صف البيت الذي نشأت فيه، غرفة غرفة."),
+        .init(id: "recipe",
+              english: "Talk me through making the dish you are known for.",
+              arabic: "اشرح لي طريقة تحضير الأكلة التي تشتهر بها."),
+        .init(id: "advice",
+              english: "What would you want said at a wedding, years from now?",
+              arabic: "ماذا تودّ أن يُقال في عرس بعد سنوات من الآن؟"),
+        .init(id: "bedtime",
+              english: "Read a page of anything at all, in your ordinary reading voice.",
+              arabic: "اقرأ صفحة من أي شيء، بصوت القراءة المعتاد لديك."),
+    ]
+
     static let affirmations: [Affirmation] = [
         .init(id: "words",
               english: "You do not have to put everything into words.",

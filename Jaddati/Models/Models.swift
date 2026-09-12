@@ -192,6 +192,11 @@ struct AudioAsset: Identifiable, Codable, Equatable, Hashable {
     var bookId: UUID? = nil
     var pageIndex: Int? = nil
 
+    /// Which capture prompt this answered, so an answered prompt is not asked
+    /// for twice. Optional, like every other field added after libraries
+    /// already existed on disk.
+    var promptId: String? = nil
+
     var isGenerated: Bool { source == .generated }
 
     /// Decoded field by field, like `VoiceTuning`, and for the same reason.
@@ -216,6 +221,7 @@ struct AudioAsset: Identifiable, Codable, Equatable, Hashable {
         contentKind     = try c.decodeIfPresent(String.self, forKey: .contentKind)
         bookId          = try c.decodeIfPresent(UUID.self, forKey: .bookId)
         pageIndex       = try c.decodeIfPresent(Int.self, forKey: .pageIndex)
+        promptId        = try c.decodeIfPresent(String.self, forKey: .promptId)
     }
 
     init(personId: UUID, source: AudioSource, filename: String, text: String = "",
@@ -265,6 +271,13 @@ struct Book: Identifiable, Codable, Equatable, Hashable {
         self.title = title
         self.pages = pages
     }
+}
+
+/// One thing to ask a living person to say, while they still can.
+struct CapturePrompt: Identifiable, Hashable {
+    let id: String
+    let english: String
+    let arabic: String
 }
 
 /// Words sealed now, to be heard on a day that has not come.
