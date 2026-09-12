@@ -6,7 +6,7 @@ import {
   store, Consent, ConsentMissing, Config, Voice, Companion,
   Intent, INTENTS, TUNING, sameTuning, presetName,
   AFFIRMATIONS, STORIES, makeBook, ImportError, isDemoVoice, blobURL, DEMO_PREFIX,
-  FamilyAnswer, Translator, NotInNotesError,
+  FamilyAnswer, Translator, NotInNotesError, CAPTURE_PROMPTS,
 } from "./core.js";
 import {
   h, clear, bidi, icon, appBar, headline, eyebrow, sectionLabel, subtext,
@@ -1116,5 +1116,84 @@ export function lettersScreen({ personId }) {
 
       !due.length && !sealed.length && !opened.length
         ? emptyHint("lock", L("Nothing sealed yet"), L("Write something for a day that has not come.")) : null,
+    )));
+}
+
+// ── recorded before it is needed ────────────────────────────────────────
+// The hard part is not recording. It is knowing what to ask for — so this asks
+// for specific things rather than "record a voice sample", and saves each one
+// as an original recording, which is the one kind of audio in this app that
+// cannot be made again.
+
+export function captureScreen({ personId }) {
+  const person = store.person(personId);
+  const recorder = new Recorder();
+  let recordingId = null;
+
+  const errorSlot = h("div", {});
+  const meterFill = h("i");
+  const clockEl = h("span", { class: "caption", style: { fontVariantNumeric: "tabular-nums" } }, "0:00");
+  const meterRow = h("div", { class: "row gap-s hidden" }, h("div", { class: "meter" }, meterFill), clockEl);
+
+  const done = new Set(
+    store.assets.filter(a => a.personId === personId && a.source === "original")
+      .map(a => a.promptId).filter(Boolean));
+
+  async function toggle(prompt, button) {
+    if (recordingId === prompt.id) {
+      const out = await recorder.stop();
+      recordingId = null;
+      meterRow.classList.add("hidden");
+      if (out?.blob?.size) {
+        const words = isAr() ? prompt.arabic : prompt.english;
+        const saved = await store.storeAudio(out.blob, {
+          personId, source: "original", text: words,
+          duration: out.seconds, isSaved: true, promptId: prompt.id,
+          fileExtension: "webm",
+        });
+        if (!saved) errorSlot.append(errorNote(L("The audio arrived but could not be saved to this phone.")));
+      }
+      render();
+      return;
+    }
+    if (recordingId) return;              // one at a time, always
+    try {
+      await recorder.start((level, elapsed) => {
+        meterFill.style.width = Math.max(3, level * 100) + "%";
+        clockEl.textContent = Counts.clock(elapsed);
+      });
+      recordingId = prompt.id;
+      meterRow.classList.remove("hidden");
+      button.textContent = L("Stop recording");
+      render();
+    } catch {
+      errorSlot.append(errorNote(L("The microphone is not available. Check the browser's permission for this page.")));
+    }
+  }
+
+  const card = prompt => {
+    const words = isAr() ? prompt.arabic : prompt.english;
+    const button = h("button", { class: "btn-quiet" },
+      recordingId === prompt.id ? L("Stop recording") : L("Record this"));
+    button.addEventListener("click", () => toggle(prompt, button));
+    return panel(h("div", { class: "stack gap-s" },
+      h("div", { class: "row between" },
+        h("div", { class: "label" }, ""),
+        done.has(prompt.id) ? h("span", { class: "caption sage-text" }, L("Recorded")) : null),
+      bidi(words),
+      button));
+  };
+
+  return h("div", { class: "screen" },
+    appBar(L("Recorded before it is needed"), { onBack: pop }),
+    h("div", { class: "scroll" }, h("div", { class: "stack gap-m" },
+      person ? breadcrumb(person) : null,
+      headline(L("While they are\nstill here."), 30),
+      subtext(L("Most families find they have nothing usable — a few seconds of someone laughing behind a video, and that is all. These are worth having whatever happens, and together they are what a voice needs.")),
+      errorSlot,
+      meterRow,
+      h("p", { class: "small", style: { margin: 0 } },
+        L("Nothing here is sent anywhere. These are recordings, kept on this phone like any other.")),
+      CAPTURE_PROMPTS.map(card),
     )));
 }

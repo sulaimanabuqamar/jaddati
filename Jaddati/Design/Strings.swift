@@ -93,6 +93,21 @@ let arabicStrings: [String: String] = [
     "Delete permanently": "الحذف نهائيًا",
     "Say something": "كلمات تختارها",
 
+    // Recorded before it is needed.
+    "Recorded before it is needed": "سُجّل قبل الحاجة إليه",
+    "Ask for the recording while they are still here to give it": "اطلب التسجيل ما دام قادرًا على إعطائه",
+    "While they are\nstill here.": "ما داموا\nهنا بعد.",
+    "Most families find they have nothing usable — a few seconds of someone laughing behind a video, and that is all. These are worth having whatever happens, and together they are what a voice needs.": "تكتشف معظم العائلات أنه لا يوجد لديها ما يصلح — ثوانٍ من ضحكة خلف مقطع مصوّر، وهذا كل شيء. هذه التسجيلات تستحق الاقتناء مهما حدث، وهي مجتمعةً ما يحتاجه الصوت.",
+    "Nothing here is sent anywhere. These are recordings, kept on this phone like any other.": "لا يُرسَل شيء من هنا إلى أي جهة. هذه تسجيلات تُحفظ على هذا الجهاز كغيرها.",
+    "Record this": "سجّل هذا",
+    "Recorded": "مُسجَّل",
+    "Say the name of everyone in the family, one by one, the way you always say them.": "اذكر اسم كل فرد في العائلة، واحدًا واحدًا، بالطريقة التي تناديهم بها دائمًا.",
+    "Tell the story of how you met — take your time with it.": "احكِ قصة كيف تقابلتما — وخذ وقتك فيها.",
+    "Describe the house you grew up in, room by room.": "صف البيت الذي نشأت فيه، غرفة غرفة.",
+    "Talk me through making the dish you are known for.": "اشرح لي طريقة تحضير الأكلة التي تشتهر بها.",
+    "What would you want said at a wedding, years from now?": "ماذا تودّ أن يُقال في عرس بعد سنوات من الآن؟",
+    "Read a page of anything at all, in your ordinary reading voice.": "اقرأ صفحة من أي شيء، بصوت القراءة المعتاد لديك.",
+
     // One voice, the whole family.
     "One voice, the whole family": "صوت واحد، والعائلة كلها",
     "Give this to the family": "أعطِ هذا للعائلة",

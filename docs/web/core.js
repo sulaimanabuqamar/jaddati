@@ -117,6 +117,33 @@ export const AFFIRMATIONS = [
   { id: "breath", english: "If it helps, take one slow breath.", arabic: "إن كان ذلك يساعدك، خذ نفسًا بطيئًا." },
 ];
 
+/**
+ * What to ask for, while they are still here to give it.
+ *
+ * Most families discover too late that they have nothing usable — a few
+ * seconds of somebody laughing in the background of a video, and that is all.
+ * The hard part is not recording, it is knowing what to ask for, so the app
+ * asks for specific things rather than "record a voice sample".
+ *
+ * Chosen so that each one is a natural thing to say out loud, is worth having
+ * for its own sake, and together they cover the range a clone needs: normal
+ * speech, names, warmth and length.
+ */
+export const CAPTURE_PROMPTS = [
+  { id: "names",   english: "Say the name of everyone in the family, one by one, the way you always say them.",
+                   arabic: "اذكر اسم كل فرد في العائلة، واحدًا واحدًا، بالطريقة التي تناديهم بها دائمًا." },
+  { id: "meeting", english: "Tell the story of how you met — take your time with it.",
+                   arabic: "احكِ قصة كيف تقابلتما — وخذ وقتك فيها." },
+  { id: "home",    english: "Describe the house you grew up in, room by room.",
+                   arabic: "صف البيت الذي نشأت فيه، غرفة غرفة." },
+  { id: "recipe",  english: "Talk me through making the dish you are known for.",
+                   arabic: "اشرح لي طريقة تحضير الأكلة التي تشتهر بها." },
+  { id: "advice",  english: "What would you want said at a wedding, years from now?",
+                   arabic: "ماذا تودّ أن يُقال في عرس بعد سنوات من الآن؟" },
+  { id: "bedtime", english: "Read a page of anything at all, in your ordinary reading voice.",
+                   arabic: "اقرأ صفحة من أي شيء، بصوت القراءة المعتاد لديك." },
+];
+
 export const STORIES = [
   {
     id: "moon", title: "The moon’s little garden", titleArabic: "حديقة القمر الصغيرة",
@@ -440,6 +467,9 @@ class Store extends EventTarget {
       bookId: opts.bookId || null,
       pageIndex: opts.pageIndex === undefined ? null : opts.pageIndex,
       demo: opts.demo === true || undefined,
+      // Which capture prompt produced this, so the list can show what has
+      // already been answered rather than asking for it twice.
+      promptId: opts.promptId || undefined,
     };
     this.assets.push(asset);
     if (!this.save()) {
@@ -1118,3 +1148,143 @@ export async function makeBook(file, personId) {
 async function pdfPages() {
   throw new ImportError(L("PDF files cannot be read in the browser version. Save the text as a .txt file and import that, or use the iPhone app."));
 }
+
+// ── one voice, the whole family ─────────────────────────────────────────
+// A grandmother belongs to more than one phone. This moves her to another one.
+//
+// What travels is the person, the family's notes, any sealed letters, the
+// original recordings, and the voice identifier. That last one is why this
+// works at all: the voice itself lives at the voice service, not on the phone,
+// so a second device holding the same identifier can speak in it immediately
+// without paying to clone her twice or filling another voice slot.
+//
+// What does NOT travel is anything generated. Clips are cheap to remake and
+// expensive to carry, and a file large enough to choke on is a file that never
+// gets sent.
+
+export const ARCHIVE_VERSION = 1;
+
+/** Above this, the recordings are left behind rather than making a file too
+ *  large to share. Chosen to clear a WhatsApp document send with room over. */
+export const ARCHIVE_MAX_BYTES = 60 * 1024 * 1024;
+
+const toBase64 = blob => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onerror = () => reject(new Error("unreadable"));
+  r.onload = () => resolve(String(r.result).split(",")[1] || "");
+  r.readAsDataURL(blob);
+});
+
+const fromBase64 = (b64, type) => {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type });
+};
+
+export class ArchiveError extends Error {
+  constructor(message) { super(message); this.name = "ArchiveError"; }
+}
+
+export const Archive = {
+  /**
+   * Everything one person is, as a single object ready to be written to a file.
+   * Originals are carried as base64 until the budget runs out, and the result
+   * says plainly whether they made it — a silent partial export would have the
+   * family believing the recordings are safe on the other phone.
+   */
+  async export(personId) {
+    const person = store.person(personId);
+    if (!person) throw new ArchiveError(L("That person could not be found."));
+
+    const originals = store.assets
+      .filter(a => a.personId === personId && a.source === "original" && store.fileExists(a));
+
+    const recordings = [];
+    let carried = 0, leftBehind = 0;
+    for (const asset of originals) {
+      const blob = await Blobs.get(asset.filename).catch(() => null);
+      if (!blob) { leftBehind++; continue; }
+      if (carried + blob.size > ARCHIVE_MAX_BYTES) { leftBehind++; continue; }
+      carried += blob.size;
+      recordings.push({
+        asset: { ...asset, id: undefined, personId: undefined },
+        type: blob.type || "audio/mpeg",
+        data: await toBase64(blob),
+      });
+    }
+
+    return {
+      file: {
+        jaddati: ARCHIVE_VERSION,
+        exportedAt: new Date().toISOString(),
+        person: { ...person, id: undefined, photoFilename: null },
+        notes: store.memories(personId).map(n => ({ ...n, id: undefined, personId: undefined })),
+        // Only unopened letters: an opened one is already a clip, and its day
+        // has been and gone.
+        letters: store.lettersFor(personId)
+          .filter(l => !l.openedAt)
+          .map(l => ({ ...l, id: undefined, personId: undefined, assetId: null })),
+        recordings,
+      },
+      carried: recordings.length,
+      leftBehind,
+    };
+  },
+
+  /**
+   * The other side. The person arrives with fresh local ids — two phones must
+   * never share one — but keeps the voice identifier, which is the part that
+   * makes her speak here.
+   */
+  async import(text) {
+    let file;
+    try { file = JSON.parse(text); }
+    catch { throw new ArchiveError(L("That file is not a Jaddati archive.")); }
+
+    if (!file || typeof file !== "object" || !file.jaddati) {
+      throw new ArchiveError(L("That file is not a Jaddati archive."));
+    }
+    if (file.jaddati > ARCHIVE_VERSION) {
+      throw new ArchiveError(L("That archive was made by a newer version of Jaddati. Update this one first."));
+    }
+    if (!file.person || !file.person.name) {
+      throw new ArchiveError(L("That archive has no one in it."));
+    }
+
+    const personId = uuid();
+    const person = {
+      ...file.person,
+      id: personId,
+      photoFilename: null,
+      createdAt: file.person.createdAt || new Date().toISOString(),
+    };
+    store.people.push(person);
+
+    for (const n of file.notes || []) {
+      store.notes.push({ ...n, id: uuid(), personId });
+    }
+    for (const l of file.letters || []) {
+      store.letters.push({ ...l, id: uuid(), personId, openedAt: null, assetId: null });
+    }
+
+    let restored = 0;
+    for (const rec of file.recordings || []) {
+      try {
+        const blob = fromBase64(rec.data, rec.type);
+        const stored = await store.storeAudio(blob, {
+          personId, source: "original", text: rec.asset?.text || "",
+          duration: rec.asset?.durationSeconds || 0, isSaved: true,
+          fileExtension: (rec.type || "").includes("wav") ? "wav"
+            : (rec.type || "").includes("webm") ? "webm" : "mp3",
+        });
+        if (stored) restored++;
+      } catch {
+        // One unreadable recording must not cost the family the whole import.
+      }
+    }
+
+    store.save();
+    return { person, notes: (file.notes || []).length, letters: (file.letters || []).length, restored };
+  },
+};

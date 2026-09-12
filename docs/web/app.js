@@ -8,7 +8,7 @@ import {
   store, Consent, ConsentMissing, Config, Voice, Companion, VoiceError, CompanionError,
   Intent, INTENTS, ContentProvenance, TUNING, sameTuning, presetName,
   AFFIRMATIONS, STORIES, makeBook, ImportError, isDemoVoice, uuid, blobURL,
-  STOCK_VOICE_URL, STOCK_LLM_URL,
+  STOCK_VOICE_URL, STOCK_LLM_URL, Archive, ArchiveError,
 } from "./core.js";
 import {
   h, clear, bidi, icon, appBar, globeButton, headline, eyebrow, sectionLabel,
@@ -19,7 +19,7 @@ import {
 import { nav, remember, setRenderer, render, push, pop, popTo, goTab } from "./nav.js";
 import {
   createScreen, booksScreen, readerScreen, memoriesScreen, playerScreen, openAddVoice,
-  personHasVoice, lettersScreen,
+  personHasVoice, lettersScreen, captureScreen,
 } from "./screens.js";
 
 const root = document.getElementById("app");
@@ -279,11 +279,13 @@ function homeScreen() {
       !Config.isConfigured ? h("div", { class: "mt-16" }, unavailableNote()) : null,
 
       people.length === 0
-        ? h("div", {}, emptyHint("waveform", L("No people yet"), L("Start with a name. Add a recording when you are ready.")), addButton)
+        ? h("div", {}, emptyHint("waveform", L("No people yet"), L("Start with a name. Add a recording when you are ready.")),
+            addButton, h("div", { class: "mt-16" }, importPersonRow()))
         : h("div", { class: "stack" },
             h("div", { class: "mt-26" }, sectionLabel(L("People you keep here"))),
             people.map(personCard),
-            h("div", { style: { marginTop: "4px" } }, addButton)),
+            h("div", { style: { marginTop: "4px" } }, addButton),
+            h("div", { style: { marginTop: "4px" } }, importPersonRow())),
 
       privacyRow()));
 }
@@ -446,7 +448,9 @@ function personScreen({ personId }) {
         h("span", { class: "grow" }, L("Everything saved")),
         h("span", { class: "small" }, kept.length ? Counts.savedClips(kept.length) : L("Nothing saved yet"))),
 
-      deleteRow(person)));
+      captureRow(person),
+
+      personFooter(person)));
 }
 
 function pendingPanel(person) {
@@ -473,6 +477,24 @@ function pendingPanel(person) {
     h("p", { class: "small", style: { margin: 0 } }, L("Checking asks the service to say one short word."))));
 }
 
+/// Capturing someone who is still alive is a different act from everything the
+/// rest of this screen does, all of which is about someone who is not — and it
+/// is most useful BEFORE a voice exists, which is exactly when the experience
+/// list is hidden. So it renders on its own, either way.
+function captureRow(person) {
+  return h("div", { class: "mt-18" },
+    h("div", { class: "divider" }),
+    h("button", {
+      class: "feature-row",
+      onClick: () => push(captureScreen, { personId: person.id }),
+    },
+      h("span", { class: "feature-row__icon" }, icon("mic")),
+      h("span", { class: "grow stack", style: { gap: "3px", textAlign: "start" } },
+        h("span", { class: "feature-row__title" }, L("Recorded before it is needed")),
+        h("span", { class: "caption" }, L("Ask for the recording while they are still here to give it"))),
+      icon("chevron", isAr() ? "flip" : null)));
+}
+
 function intentList(person) {
   const dueCount = store.dueLetters(person.id).length;
 
@@ -495,6 +517,7 @@ function intentList(person) {
       dueCount ? h("span", { class: "badge badge--orig" }, String(dueCount)) : null,
       icon("chevron", isAr() ? "flip" : null)));
 
+
   return h("div", { class: "stack mt-22" }, INTENTS.map((key, i) => {
     const row = h("button", {
       class: "feature-row" + (i === 0 ? " feature-row--hero" : ""),
@@ -510,6 +533,10 @@ function intentList(person) {
     return h("div", {}, row,
       i > 0 && i < INTENTS.length - 1 ? h("div", { class: "divider" }) : null);
   }), lettersRow);
+}
+
+function personFooter(person) {
+  return h("div", {}, handoffRow(person), deleteRow(person));
 }
 
 function deleteRow(person) {
@@ -570,3 +597,72 @@ setRenderer(paintRoot);
 export { openAddPerson, openSettings, openPrivacy, unavailableNote, demoBanner, downscale };
 
 store.init().then(render).catch(() => render());
+
+// ── one voice, the whole family ─────────────────────────────────────────
+// The voice lives at the voice service, not on this phone, so handing another
+// family member the identifier lets them speak in it immediately — without
+// paying to clone her twice or taking a second voice slot for the same person.
+
+function handoffRow(person) {
+  const busy = h("span", { class: "caption hidden" }, L("Preparing…"));
+
+  const give = h("button", {
+    class: "btn-quiet",
+    onClick: async () => {
+      busy.classList.remove("hidden");
+      try {
+        const { file, carried, leftBehind } = await Archive.export(person.id);
+        const blob = new Blob([JSON.stringify(file)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = h("a", {
+          href: url,
+          download: (person.name || "jaddati").replace(/[^\w؀-ۿ -]/g, "") + ".jaddati.json",
+        });
+        document.body.append(a); a.click(); a.remove();
+        // Revoked on the next turn of the loop: revoking immediately can beat
+        // the browser to starting the download.
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+        busy.classList.add("hidden");
+        toast(leftBehind
+          ? L("Sent without some recordings — the file would have been too large.")
+          : carried ? L("Ready to send.") : L("Ready to send. No original recordings were included."));
+      } catch (e) {
+        busy.classList.add("hidden");
+        toast(e?.message || L("Something went wrong. Try again."));
+      }
+    },
+  }, L("Give this to the family"));
+
+  return h("div", { class: "stack mt-18", style: { gap: "6px" } },
+    h("div", { class: "divider" }),
+    h("div", { class: "label mt-16" }, L("One voice, the whole family")),
+    h("p", { class: "caption", style: { margin: 0 } },
+      L("Make a file another family member can open on their own phone. It carries this person, your notes, anything still sealed, and the recreated voice itself — so they can hear them straight away without making the voice a second time.")),
+    h("p", { class: "small", style: { margin: 0 } },
+      L("Clips already created are not included. They can be made again on the other phone.")),
+    give, busy);
+}
+
+function importPersonRow() {
+  const input = h("input", { type: "file", accept: ".json,application/json", class: "hidden",
+    onChange: async e => {
+      const f = e.target.files?.[0];
+      e.target.value = "";
+      if (!f) return;
+      try {
+        const result = await Archive.import(await f.text());
+        toast(L("Brought in") + " " + result.person.name);
+        nav.personId = result.person.id;
+        render();
+      } catch (err) {
+        toast(err instanceof ArchiveError ? err.message : L("That file could not be read."));
+      }
+    } });
+
+  return h("div", { class: "stack", style: { gap: "6px" } },
+    input,
+    h("button", { class: "btn-outline", onClick: () => input.click() },
+      icon("plus"), h("span", {}, L("Bring someone from another phone"))));
+}
+
+export { handoffRow, importPersonRow };
