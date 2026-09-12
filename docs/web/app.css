@@ -713,3 +713,18 @@ details[open] > summary::after { transform: rotate(90deg); }
 /* The rule inside the wine hero card is a light wash over a mid tone; on the
    darker wine it disappears. */
 :root[data-theme="dark"] .hero__rule { background: rgba(248, 239, 228, .22); }
+
+/* The code you read down a phone. Big, spaced, and unambiguous — this gets
+   copied by ear, so the glyphs have to survive being said aloud. */
+.codecard {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  text-align: center; padding: 18px 14px;
+  background: var(--sunk); border: 1px solid var(--hairline);
+  border-radius: var(--r-card); margin-top: 4px;
+}
+.code {
+  font-family: var(--serif); font-size: 38px; font-weight: 700;
+  letter-spacing: 8px; text-indent: 8px; color: var(--wine-ink);
+  line-height: 1.1; overflow-wrap: anywhere;
+}
+:root[dir="rtl"] .code { direction: ltr; }

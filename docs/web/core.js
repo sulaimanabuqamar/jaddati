@@ -1318,6 +1318,52 @@ export const Archive = {
    * never share one — but keeps the voice identifier, which is the part that
    * makes her speak here.
    */
+  /// Hand her over by code rather than by file.
+  ///
+  /// A file has to be found, attached, sent, found again and opened — five
+  /// places a family can lose her. This puts the same bytes on the relay for
+  /// a day and gives back six characters you can read down a phone.
+  ///
+  /// The archive is NOT smaller than the file version: it is the same bytes.
+  /// When it will not fit, that is said plainly and the file is still there.
+  async send(personId) {
+    const { file, carried, leftBehind } = await this.export(personId);
+    const body = JSON.stringify(file);
+
+    const r = await fetch(RELAY_URL + "/archive", {
+      method: "POST",
+      headers: voiceHeaders({ "content-type": "application/json" }),
+      body,
+    });
+    if (!r.ok) {
+      const detail = await r.json().catch(() => null);
+      throw new ArchiveError(
+        r.status === 413
+          ? L("This archive is too large to send by code. Use the file instead.")
+          : (detail && detail.detail) || L("The code could not be created. Try again."));
+    }
+    const { code, hours } = await r.json();
+    return { code, hours, carried, leftBehind };
+  },
+
+  /// The other side of it. Anything the relay refuses comes back as the same
+  /// sentence whether the code was never real or has simply expired — the
+  /// difference is no use to the person typing, and telling them which would
+  /// make the codes worth guessing at.
+  async fetchByCode(code) {
+    const r = await fetch(RELAY_URL + "/archive/fetch", {
+      method: "POST",
+      headers: voiceHeaders({ "content-type": "application/json" }),
+      body: JSON.stringify({ code }),
+    });
+    if (!r.ok) {
+      throw new ArchiveError(r.status === 404
+        ? L("No archive for that code. Codes last a day.")
+        : L("That code could not be checked. Try again."));
+    }
+    return this.import(await r.text());
+  },
+
   async import(text) {
     let file;
     try { file = JSON.parse(text); }

@@ -273,6 +273,80 @@ function withCors(response) {
   });
 }
 
+
+// ── handing someone to the family ───────────────────────────────────────
+// The archive used to leave as a file you had to find, attach and send, and
+// arrive as a file the other person had to find again. For a family that is
+// three chances to lose her. This holds the same bytes for a day under a
+// short code you can read down a phone.
+//
+// The worker never looks inside. It is the family's archive, not ours: it
+// goes in as opaque bytes and comes out the same, and it expires whether or
+// not anyone collects it.
+
+/** No 0/O/1/I/L: this gets read aloud and written down. */
+const CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+const CODE_LENGTH = 6;
+const ARCHIVE_TTL_SECONDS = 24 * 60 * 60;
+/** KV stops at 25 MiB. Leave room rather than fail at the very end of a
+ *  long upload — the app falls back to the file when it hears this. */
+const ARCHIVE_MAX_BYTES = 20 * 1024 * 1024;
+
+function newCode() {
+  const bytes = crypto.getRandomValues(new Uint8Array(CODE_LENGTH));
+  let out = "";
+  for (const b of bytes) out += CODE_ALPHABET[b % CODE_ALPHABET.length];
+  return out;
+}
+
+const codeKey = code => "arch:" + code;
+
+/** Read aloud, so accept it typed back in any case and with spaces in it. */
+function tidyCode(raw) {
+  const cleaned = String(raw || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return cleaned.length === CODE_LENGTH &&
+         [...cleaned].every(c => CODE_ALPHABET.includes(c)) ? cleaned : "";
+}
+
+async function putArchive(request, env) {
+  const body = await request.text();
+  if (!body) return json(400, "nothing to store");
+  // Bytes, not characters: the archive is mostly base64 audio.
+  const size = new TextEncoder().encode(body).length;
+  if (size > ARCHIVE_MAX_BYTES) {
+    return json(413, "archive too large to send by code");
+  }
+  try { JSON.parse(body); } catch { return json(400, "not an archive"); }
+
+  // Three tries before giving up. A collision at 31^6 is remote, but silently
+  // overwriting someone else's archive with yours would be unforgivable.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const code = newCode();
+    if (await env.JADDATI.get(codeKey(code))) continue;
+    await env.JADDATI.put(codeKey(code), body, { expirationTtl: ARCHIVE_TTL_SECONDS });
+    return new Response(JSON.stringify({ code, hours: ARCHIVE_TTL_SECONDS / 3600 }),
+                        { status: 200, headers: { "content-type": "application/json" } });
+  }
+  return json(503, "could not allocate a code");
+}
+
+async function takeArchive(request, env) {
+  let asked;
+  try { asked = await request.json(); } catch { return json(400, "no code"); }
+  const code = tidyCode(asked && asked.code);
+  if (!code) return json(400, "that is not a code");
+
+  const stored = await env.JADDATI.get(codeKey(code));
+  // Deliberately the same answer for "never existed" and "expired": the
+  // difference is not useful to whoever is typing, and telling them which
+  // would turn this into something worth guessing at.
+  if (!stored) return json(404, "no archive for that code");
+
+  // NOT deleted on collection. A family is more than two phones, and the
+  // second person to try should not find it gone.
+  return new Response(stored, { status: 200, headers: { "content-type": "application/json" } });
+}
+
 async function route(request, env) {
   const url = new URL(request.url);
 
@@ -297,6 +371,9 @@ async function route(request, env) {
     const voiceId = url.pathname.slice("/v1/voices/".length);
     return voiceId ? deleteVoice(request, env, voiceId) : json(400, "no voice id");
   }
+
+  if (url.pathname === "/archive") return putArchive(request, env);
+  if (url.pathname === "/archive/fetch") return takeArchive(request, env);
 
   if (url.pathname === "/v1/voices/add") return createVoice(request, env);
 

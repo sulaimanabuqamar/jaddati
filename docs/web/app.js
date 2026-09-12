@@ -779,72 +779,150 @@ store.init().then(render).catch(() => render());
 
 function handoffRow(person) {
   const busy = h("span", { class: "caption hidden" }, L("Preparing…"));
+  const out = h("div", {});
+
+  const asFile = async () => {
+    const { file, carried, leftBehind } = await Archive.export(person.id);
+    const blob = new Blob([JSON.stringify(file)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = h("a", {
+      href: url,
+      download: (person.name || "jaddati").replace(/[^\w؀-ۿ -]/g, "") + ".jaddati.json",
+    });
+    document.body.append(a); a.click(); a.remove();
+    // Revoked on the next turn of the loop: revoking immediately can beat the
+    // browser to starting the download.
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    toast(leftBehind
+      ? L("Sent without some recordings — the file would have been too large.")
+      : carried ? L("Ready to send.") : L("Ready to send. No original recordings were included."));
+  };
 
   const give = h("button", {
     class: "btn-quiet",
     onClick: async () => {
+      clear(out);
       busy.classList.remove("hidden");
+      give.disabled = true;
       try {
-        const { file, carried, leftBehind } = await Archive.export(person.id);
-        const blob = new Blob([JSON.stringify(file)], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const a = h("a", {
-          href: url,
-          download: (person.name || "jaddati").replace(/[^\w؀-ۿ -]/g, "") + ".jaddati.json",
-        });
-        document.body.append(a); a.click(); a.remove();
-        // Revoked on the next turn of the loop: revoking immediately can beat
-        // the browser to starting the download.
-        setTimeout(() => URL.revokeObjectURL(url), 10000);
-        busy.classList.add("hidden");
-        toast(leftBehind
-          ? L("Sent without some recordings — the file would have been too large.")
-          : carried ? L("Ready to send.") : L("Ready to send. No original recordings were included."));
+        const { code, hours } = await Archive.send(person.id);
+        out.append(h("div", { class: "codecard" },
+          h("div", { class: "caption" }, L("Read them this:")),
+          h("div", { class: "code" }, code),
+          h("div", { class: "small" }, L("They open Jaddati, choose Bring someone from another phone, and type it.")),
+          h("div", { class: "small" }, L("The code works for a day."))));
       } catch (e) {
+        out.append(errorNote(e?.message || L("Something went wrong. Try again.")));
+      } finally {
         busy.classList.add("hidden");
-        toast(e?.message || L("Something went wrong. Try again."));
+        give.disabled = false;
       }
     },
   }, L("Give this to the family"));
+
+  // Still here, and not buried: a code needs the internet and has a size
+  // ceiling the file does not. When either of those bites, this is the answer,
+  // and someone who has just been told "too large" should not have to go
+  // looking for it.
+  const file = h("button", {
+    class: "small", style: { textDecoration: "underline", minHeight: "var(--touch)" },
+    onClick: async () => {
+      clear(out);
+      busy.classList.remove("hidden");
+      try { await asFile(); }
+      catch (e) { out.append(errorNote(e?.message || L("Something went wrong. Try again."))); }
+      finally { busy.classList.add("hidden"); }
+    },
+  }, L("Save it as a file instead"));
 
   return h("div", { class: "stack mt-18", style: { gap: "6px" } },
     h("div", { class: "divider" }),
     h("div", { class: "label mt-16" }, L("One voice, the whole family")),
     h("p", { class: "caption", style: { margin: 0 } },
-      L("Make a file another family member can open on their own phone. It carries this person, your notes, anything still sealed, and the recreated voice itself — so they can hear them straight away without making the voice a second time.")),
+      L("Give another family member a short code. It carries this person, your notes, anything still sealed, and the recreated voice itself — so they can hear them straight away without making the voice a second time.")),
     h("p", { class: "small", style: { margin: 0 } },
       L("Clips already created are not included. They can be made again on the other phone.")),
-    give, busy);
+    give, busy, out, file);
 }
 
 function importPersonRow() {
+  // Kept, but no longer the front door. A file is still the only way in when
+  // the archive is too big for a code or there is no connection.
   const input = h("input", { type: "file", accept: ".json,application/json", class: "hidden",
     onChange: async e => {
       const f = e.target.files?.[0];
       e.target.value = "";
       if (!f) return;
-      try {
-        const result = await Archive.import(await f.text());
-        nav.personId = result.person.id;
-        // Say what actually arrived. "Brought in Teta" while the irreplaceable
-        // original recordings silently failed is the wrong thing to tell a
-        // family, and the one thing they cannot find out later.
-        const lost = result.recordingsOffered - result.restored;
-        toast(!result.saved
-          ? (store.storageError || L("Changes could not be saved."))
-          : lost > 0
-            ? L("Brought in") + " " + result.person.name + " — " +
-              L("some original recordings could not be saved.")
-            : L("Brought in") + " " + result.person.name);
-        render();
-      } catch (err) {
-        toast(err instanceof ArchiveError ? err.message : L("That file could not be read."));
-      }
+      try { arrived(await Archive.import(await f.text())); }
+      catch (err) { toast(err instanceof ArchiveError ? err.message : L("That file could not be read.")); }
     } });
+
+  /// Say what actually arrived. "Brought in Teta" while the irreplaceable
+  /// original recordings silently failed is the wrong thing to tell a family,
+  /// and the one thing they cannot find out later.
+  const arrived = result => {
+    nav.personId = result.person.id;
+    const lost = result.recordingsOffered - result.restored;
+    toast(!result.saved
+      ? (store.storageError || L("Changes could not be saved."))
+      : lost > 0
+        ? L("Brought in") + " " + result.person.name + " — " +
+          L("some original recordings could not be saved.")
+        : L("Brought in") + " " + result.person.name);
+    render();
+  };
+
+  const openCode = () => sheet(close => {
+    const field = h("input", {
+      type: "text", inputmode: "latin", autocapitalize: "characters",
+      autocomplete: "off", spellcheck: "false", placeholder: "K7M2Q4",
+      style: { textAlign: "center", letterSpacing: "6px", fontSize: "26px",
+               fontFamily: "var(--serif)", textTransform: "uppercase" },
+    });
+    const problem = h("div", {});
+    const bring = h("button", { class: "btn-primary", disabled: true }, L("Bring them in"));
+
+    // Read aloud, so accept it typed back however it arrives — spaces,
+    // lower case, the lot.
+    const tidy = () => field.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    field.addEventListener("input", () => { bring.disabled = tidy().length !== 6; clear(problem); });
+
+    bring.onclick = async () => {
+      bring.disabled = true;
+      bring.textContent = L("Looking…");
+      clear(problem);
+      try {
+        const result = await Archive.fetchByCode(tidy());
+        close();
+        arrived(result);
+      } catch (err) {
+        bring.disabled = false;
+        bring.textContent = L("Bring them in");
+        problem.append(errorNote(err instanceof ArchiveError ? err.message
+          : L("That code could not be checked. Try again.")));
+      }
+    };
+
+    return h("div", { class: "screen" },
+      appBar(L("Bring someone from another phone"), {
+        trailing: h("button", { class: "iconbtn", onClick: close, "aria-label": L("Cancel") }, icon("close")),
+      }),
+      h("div", { class: "scroll" },
+        h("div", { class: "stack gap-m" },
+          subtext(L("On the phone that has them, open that person, tap the gear, and choose Give this to the family. Type the code it shows here.")),
+          h("label", { class: "field" },
+            h("div", { class: "field__title" }, L("Their code")), field),
+          problem,
+          bring,
+          h("div", { class: "divider mt-16" }),
+          h("button", { class: "small", style: { textDecoration: "underline", minHeight: "var(--touch)" },
+            onClick: () => { close(); input.click(); } },
+            L("Bring them in from a file instead")))));
+  });
 
   return h("div", { class: "stack", style: { gap: "6px" } },
     input,
-    h("button", { class: "btn-outline", onClick: () => input.click() },
+    h("button", { class: "btn-outline", onClick: openCode },
       icon("plus"), h("span", {}, L("Bring someone from another phone"))));
 }
 
