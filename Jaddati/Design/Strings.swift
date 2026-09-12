@@ -93,6 +93,17 @@ let arabicStrings: [String: String] = [
     "Delete permanently": "الحذف نهائيًا",
     "Say something": "كلمات تختارها",
 
+    // From the adversarial review.
+    "Keep this as a memory": "احفظ هذا كذكرى",
+    "Kept as a memory.": "حُفظ كذكرى.",
+    "What your family has written down": "ما دوّنته عائلتك",
+    "These are what an answer is built from, and nothing else is.": "من هذه وحدها تُبنى الإجابة، ولا شيء غيرها.",
+    "Remove this memory?": "إزالة هذه الذكرى؟",
+    "It will no longer be used to answer questions about them.": "لن تُستخدم بعد الآن للإجابة عن الأسئلة عنه.",
+    "This person came from another family member's phone, so the voice is shared. It is left alone at the voice service — removing it here would take it from everyone who has them.": "جاء هذا الشخص من جهاز فرد آخر في العائلة، فالصوت مشترك. ولذلك يُترك كما هو لدى خدمة الصوت — فحذفه من هنا يسلبه من كل من لديه هذا الشخص.",
+    "some original recordings could not be saved.": "تعذّر حفظ بعض التسجيلات الأصلية.",
+    "That screen could not be opened. Nothing has been deleted.": "تعذّر فتح هذه الشاشة. ولم يُحذف شيء.",
+
     // Recorded before it is needed.
     "Recorded before it is needed": "سُجّل قبل الحاجة إليه",
     "Ask for the recording while they are still here to give it": "اطلب التسجيل ما دام قادرًا على إعطائه",

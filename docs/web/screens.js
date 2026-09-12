@@ -12,7 +12,7 @@ import {
   h, clear, bidi, icon, appBar, headline, eyebrow, sectionLabel, subtext,
   panel, panelS, errorNote, emptyHint, avatar, breadcrumb, sourceBadge,
   contentBadge, badgesFor, audioRow, player, confirmDialog, sheet, toast,
-  Recorder, durationOf, demoDuration,
+  Recorder, durationOf, demoDuration, track,
 } from "./ui.js";
 import { nav, push, pop, popTo, render } from "./nav.js";
 
@@ -243,6 +243,17 @@ export function createScreen({ personId, intent }) {
     toast(L("Saved")); sync();
   } }, L("Save this line"));
 
+  // The same affordance for memories, which nothing else in the app offered.
+  // "Ask about them" draws only on these, so with no way to write one down the
+  // feature could only ever refuse — and its refusal pointed at this screen.
+  const saveMemory = h("button", { class: "btn-quiet hidden", onClick: () => {
+    const t = trimmedOf(area.value); if (!t || !person) return;
+    store.addNote({ personId: person.id, text: t });
+    area.value = "";
+    toast(L("Kept as a memory."));
+    sync();
+  } }, L("Keep this as a memory"));
+
   function canSpeak() {
     const t = trimmedOf(area.value);
     return !!t && t.length <= limit && !generating && personHasVoice(person)
@@ -278,6 +289,8 @@ export function createScreen({ personId, intent }) {
     reason.textContent = disabledReason();
     const already = person && store.affirmations(person.id).some(n => trimmedOf(n.text) === t);
     saveLine.classList.toggle("hidden", !(intent === "comfort" && person && t && !already));
+    const kept = person && store.memories(person.id).some(n => trimmedOf(n.text) === t);
+    saveMemory.classList.toggle("hidden", !(intent === "storyFromMemories" && person && t && !kept));
     quote.textContent = "$" + Math.max(t.length * 0.00011, 0.01).toFixed(2);
   }
   area.addEventListener("input", sync);
@@ -362,6 +375,29 @@ export function createScreen({ personId, intent }) {
 
   const note = Intent.provenanceNote(intent);
   const shelved = intent === "storyFromMemories" ? ["storyFromMemories", "saySomething"] : [intent];
+  /// What the family has written down, listed where it is written — and the
+  /// only material "Ask about them" is allowed to draw on.
+  const memoryList = () => {
+    if (!person || intent !== "storyFromMemories") return null;
+    const mine = store.memories(person.id);
+    if (!mine.length) return null;
+    return h("div", { class: "stack gap-s mt-s" }, h("div", { class: "divider" }),
+      h("div", { class: "label" }, L("What your family has written down")),
+      h("p", { class: "caption", style: { margin: 0 } },
+        L("These are what an answer is built from, and nothing else is.")),
+      mine.map(n => panelS(h("div", { class: "row between", style: { gap: "var(--s)" } },
+        bidi(n.text, { style: { flex: "1" } }),
+        h("button", {
+          class: "iconbtn", "aria-label": L("Remove"),
+          onClick: () => confirmDialog({
+            title: L("Remove this memory?"),
+            message: L("It will no longer be used to answer questions about them."),
+            confirm: L("Remove"),
+            onConfirm: () => { store.removeNote(n.id); render(); },
+          }),
+        }, icon("trash"))))));
+  };
+
   const shelfTitle = intent === "comfort" ? L("Comfort you have kept")
     : intent === "storyFiction" ? L("Stories you have kept")
     : intent === "storyFromMemories" ? L("Words you have kept") : L("Previously kept");
@@ -382,6 +418,7 @@ export function createScreen({ personId, intent }) {
       headline(Intent.headline(intent)),
       subtext(Intent.standfirst(intent)),
       !Config.isConfigured ? errorNote(Config.unavailableMessage) : null,
+      memoryList(),
       intent === "storyFromMemories" ? shelf() : null,
       intent === "comfort" ? comfortPicker(person, pick) : null,
       intent === "storyFiction" ? fictionPicker(pick) : null,
@@ -396,7 +433,7 @@ export function createScreen({ personId, intent }) {
         h("span", { class: "small" }, L("This clip · example quote")),
         h("span", { class: "row", style: { gap: "4px" } }, quote, h("span", { class: "small" }, L("USD")))),
 
-      errorSlot, submit, saveLine, reason,
+      errorSlot, submit, saveLine, saveMemory, reason,
 
       h("label", { class: "switch switch--amber" },
         h("input", { type: "checkbox", onChange: e => { fast = e.target.checked; } }),
@@ -753,7 +790,7 @@ export function readerScreen({ bookId, personId }) {
   const sync = () => paint();
   player.addEventListener("change", sync);
   screen.addEventListener("jaddati:unmount", () => player.removeEventListener("change", sync));
-  return screen;
+  return track(screen);
 }
 
 // ── the archive ─────────────────────────────────────────────────────────
@@ -972,34 +1009,43 @@ export function playerScreen({ assetId }) {
 // would be the dishonest version of this feature. What actually happens is that
 // the letter becomes openable on its day, and the app says so plainly.
 
+/** Unsent letter drafts, held across rebuilds. The whole tree is rebuilt on any
+ *  store change, so without this, removing one letter — or a clip finishing
+ *  anywhere — silently discarded a letter someone was still writing. */
+const letterDrafts = new Map();
+
 export function lettersScreen({ personId }) {
+  const draft = letterDrafts.get(personId) || { text: "", occasion: "" };
   const person = store.person(personId);
   const errorSlot = h("div", {});
   let working = false;
+  /** Letters with a generation in flight, so a second tap cannot pay twice. */
+  const opening = new Set();
 
   const area = h("textarea", {
     class: "textarea", rows: 4,
     placeholder: L("Write what they should say when the day comes…"),
   });
+  area.value = draft.text;
 
   // Tomorrow, as the gentlest possible default: a letter dated today is not a
   // letter, it is just words.
   const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-  const when = h("input", { type: "date", class: "textinput", value: tomorrow, min: tomorrow });
-  const occasion = h("input", { type: "text", class: "textinput", placeholder: L("A birthday, a graduation, a wedding…") });
+  const when = h("input", { type: "date", value: tomorrow, min: tomorrow });
+  const occasion = h("input", { type: "text", placeholder: L("A birthday, a graduation, a wedding…") });
+  occasion.value = draft.occasion;
+  const remember = () => letterDrafts.set(personId, { text: area.value, occasion: occasion.value });
+  occasion.addEventListener("input", remember);
 
   const count = h("span", { class: "caption" }, Counts.characters(0, 800));
   const seal = h("button", { class: "btn-primary", disabled: true }, L("Seal it"));
 
-  function sync() {
-    const t = trimmedOf(area.value);
-    count.textContent = Counts.characters(t.length, 800);
-    count.className = "caption" + (t.length > 800 ? " danger" : "");
+  area.addEventListener("input", () => {
     area.dir = dirOf(area.value);
     area.style.textAlign = isArabicText(area.value) ? "right" : "left";
-    seal.disabled = !(t && t.length <= 800 && when.value && !working);
-  }
-  area.addEventListener("input", sync);
+    remember();
+    sync();
+  });
   when.addEventListener("change", sync);
 
   seal.addEventListener("click", () => {
@@ -1007,19 +1053,32 @@ export function lettersScreen({ personId }) {
     if (!t || !when.value) return;
     // Noon, not midnight: a letter dated for a birthday should arrive during
     // that day rather than in the small hours of it.
-    store.addLetter({
+    const sealed = store.addLetter({
       personId, text: t, occasion: trimmedOf(occasion.value),
       deliverAt: new Date(when.value + "T12:00:00").toISOString(),
     });
+    if (!sealed) {
+      // The draft is deliberately left in the box: it is the only copy.
+      clear(errorSlot);
+      errorSlot.append(errorNote(store.storageError || L("Changes could not be saved.")));
+      return;
+    }
     area.value = ""; occasion.value = "";
+    letterDrafts.delete(personId);
     toast(L("Sealed. It will be here on the day."));
     render();
   });
 
   async function open(letter) {
     const p = store.person(personId);
-    if (!p || working) return;
-    working = true; clear(errorSlot); render();
+    // The guard has to survive the click that follows it. Calling render() here
+    // rebuilt this screen with working = false and a detached errorSlot, so the
+    // button never disabled, a second tap generated the same letter a second
+    // time — billed twice — and every failure was appended to a node that was
+    // no longer on screen. Local state, local update.
+    if (!p || working || opening.has(letter.id) || letter.openedAt) return;
+    opening.add(letter.id);
+    working = true; clear(errorSlot); sync();
     try {
       const result = await Voice.synthesize(letter.text, p.voiceId,
         Config.defaultModelId, p.tuning || TUNING.natural);
@@ -1030,20 +1089,32 @@ export function lettersScreen({ personId }) {
           .toLocaleDateString(isAr() ? "ar" : "en", { dateStyle: "medium" }),
         intent: "saySomething", content: "wordsSuppliedByYou", isSaved: true,
       });
-      working = false;
+      working = false; opening.delete(letter.id);
       if (asset) {
         store.updateLetter({ ...letter, openedAt: new Date().toISOString(), assetId: asset.id });
         push(playerScreen, { assetId: asset.id });
       } else {
-        render();
+        sync();
         errorSlot.append(errorNote(L("The audio arrived but could not be saved to this phone.")));
       }
     } catch (e) {
-      working = false; render();
+      working = false; opening.delete(letter.id); sync();
       const consent = e instanceof ConsentMissing;
       errorSlot.append(errorNote(consent ? Config.unavailableMessage
         : (e?.message || L("Something went wrong. Try again.")),
         consent ? null : () => { clear(errorSlot); open(letter); }));
+    }
+  }
+
+  const openButtons = [];
+  function sync() {
+    const t = trimmedOf(area.value);
+    count.textContent = Counts.characters(t.length, 800);
+    count.className = "caption" + (t.length > 800 ? " danger" : "");
+    seal.disabled = !(t && t.length <= 800 && when.value && !working);
+    for (const { id, button } of openButtons) {
+      button.disabled = working || !personHasVoice(person) || !Config.isConfigured;
+      button.textContent = opening.has(id) ? L("Opening…") : L("Open it");
     }
   }
 
@@ -1059,11 +1130,11 @@ export function lettersScreen({ personId }) {
       h("div", { class: "label" }, letter.occasion || L("A letter for today")),
       h("span", { class: "caption sage-text" }, L("Ready"))),
     h("p", { class: "caption", style: { margin: 0 } }, L("Sealed on") + " " + dateLine(letter.createdAt)),
-    h("button", {
-      class: "btn-primary",
-      disabled: working || !personHasVoice(person) || !Config.isConfigured,
-      onClick: () => open(letter),
-    }, working ? L("Opening…") : L("Open it"))));
+    (() => {
+      const button = h("button", { class: "btn-primary", onClick: () => open(letter) }, L("Open it"));
+      openButtons.push({ id: letter.id, button });
+      return button;
+    })()));
 
   // A sealed letter shows its date and its occasion, never its words. Being
   // able to read it early is the same as not having sealed it.
@@ -1083,7 +1154,10 @@ export function lettersScreen({ personId }) {
       }),
     }, L("Remove"))));
 
-  return h("div", { class: "screen" },
+  // Built first, synced second: the open buttons are created inside this tree,
+  // so settling their state before it exists left them enabled on a person with
+  // no voice at all.
+  const screen = h("div", { class: "screen" },
     appBar(L("Words that arrive later"), { onBack: pop }),
     h("div", { class: "scroll" }, h("div", { class: "stack gap-m" },
       person ? breadcrumb(person) : null,
@@ -1117,6 +1191,9 @@ export function lettersScreen({ personId }) {
       !due.length && !sealed.length && !opened.length
         ? emptyHint("lock", L("Nothing sealed yet"), L("Write something for a day that has not come.")) : null,
     )));
+
+  sync();
+  return screen;
 }
 
 // ── recorded before it is needed ────────────────────────────────────────
@@ -1135,56 +1212,76 @@ export function captureScreen({ personId }) {
   const clockEl = h("span", { class: "caption", style: { fontVariantNumeric: "tabular-nums" } }, "0:00");
   const meterRow = h("div", { class: "row gap-s hidden" }, h("div", { class: "meter" }, meterFill), clockEl);
 
-  const done = new Set(
+  const answered = new Set(
     store.assets.filter(a => a.personId === personId && a.source === "original")
       .map(a => a.promptId).filter(Boolean));
 
-  async function toggle(prompt, button) {
+  // One card per prompt, built once and mutated in place.
+  //
+  // Calling render() here instead would rebuild this whole screen from
+  // scratch — a new Recorder, a new recordingId of null, new buttons — while
+  // the old recorder kept running with nothing pointing at it. The stop branch
+  // became unreachable, every take was lost, and the microphone stayed open.
+  // Local state belongs to a local update; render() is for navigation and for
+  // changes that came from the store.
+  const cards = CAPTURE_PROMPTS.map(prompt => {
+    const words = isAr() ? prompt.arabic : prompt.english;
+    const mark = h("span", { class: "caption sage-text" + (answered.has(prompt.id) ? "" : " hidden") }, L("Recorded"));
+    const button = h("button", { class: "btn-quiet" }, L("Record this"));
+    button.addEventListener("click", () => toggle(prompt));
+    const panelEl = panel(h("div", { class: "stack gap-s" },
+      h("div", { class: "row between" }, h("div", { class: "label" }, ""), mark),
+      bidi(words),
+      button));
+    return { prompt, button, mark, panelEl };
+  });
+
+  function sync() {
+    for (const c of cards) {
+      const mine = recordingId === c.prompt.id;
+      c.button.textContent = mine ? L("Stop recording") : L("Record this");
+      c.button.disabled = recordingId !== null && !mine;
+      c.mark.classList.toggle("hidden", !answered.has(c.prompt.id));
+    }
+    meterRow.classList.toggle("hidden", recordingId === null);
+  }
+
+  async function toggle(prompt) {
+    clear(errorSlot);
+
     if (recordingId === prompt.id) {
-      const out = await recorder.stop();
       recordingId = null;
-      meterRow.classList.add("hidden");
-      if (out?.blob?.size) {
-        const words = isAr() ? prompt.arabic : prompt.english;
-        const saved = await store.storeAudio(out.blob, {
-          personId, source: "original", text: words,
-          duration: out.seconds, isSaved: true, promptId: prompt.id,
-          fileExtension: "webm",
-        });
-        if (!saved) errorSlot.append(errorNote(L("The audio arrived but could not be saved to this phone.")));
+      sync();
+      const out = await recorder.stop();
+      if (!out?.blob?.size) {
+        errorSlot.append(errorNote(L("That recording came out silent. Nothing reached the microphone — check nothing is covering it and try again.")));
+        return;
       }
-      render();
+      const saved = await store.storeAudio(out.blob, {
+        personId, source: "original", text: isAr() ? prompt.arabic : prompt.english,
+        duration: out.seconds, isSaved: true, promptId: prompt.id, fileExtension: "webm",
+      });
+      if (saved) { answered.add(prompt.id); sync(); }
+      else errorSlot.append(errorNote(L("The audio arrived but could not be saved to this phone.")));
       return;
     }
-    if (recordingId) return;              // one at a time, always
+
+    if (recordingId !== null) return;              // one at a time, always
     try {
       await recorder.start((level, elapsed) => {
         meterFill.style.width = Math.max(3, level * 100) + "%";
         clockEl.textContent = Counts.clock(elapsed);
       });
       recordingId = prompt.id;
-      meterRow.classList.remove("hidden");
-      button.textContent = L("Stop recording");
-      render();
+      sync();
     } catch {
       errorSlot.append(errorNote(L("The microphone is not available. Check the browser's permission for this page.")));
     }
   }
 
-  const card = prompt => {
-    const words = isAr() ? prompt.arabic : prompt.english;
-    const button = h("button", { class: "btn-quiet" },
-      recordingId === prompt.id ? L("Stop recording") : L("Record this"));
-    button.addEventListener("click", () => toggle(prompt, button));
-    return panel(h("div", { class: "stack gap-s" },
-      h("div", { class: "row between" },
-        h("div", { class: "label" }, ""),
-        done.has(prompt.id) ? h("span", { class: "caption sage-text" }, L("Recorded")) : null),
-      bidi(words),
-      button));
-  };
-
-  return h("div", { class: "screen" },
+  // Leaving the screen mid-take must release the microphone, or the browser
+  // keeps its recording indicator lit for the rest of the session.
+  const screen = h("div", { class: "screen" },
     appBar(L("Recorded before it is needed"), { onBack: pop }),
     h("div", { class: "scroll" }, h("div", { class: "stack gap-m" },
       person ? breadcrumb(person) : null,
@@ -1194,6 +1291,9 @@ export function captureScreen({ personId }) {
       meterRow,
       h("p", { class: "small", style: { margin: 0 } },
         L("Nothing here is sent anywhere. These are recordings, kept on this phone like any other.")),
-      CAPTURE_PROMPTS.map(card),
+      cards.map(c => c.panelEl),
     )));
+  screen.addEventListener("jaddati:unmount", () => { try { recorder.cancel(); } catch {} });
+  sync();
+  return track(screen);
 }

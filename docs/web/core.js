@@ -252,10 +252,19 @@ class Store extends EventTarget {
   save() {
     if (this.loadFailed) return false;
     try {
-      prefs.set(INDEX_KEY, JSON.stringify({
+      const wrote = prefs.set(INDEX_KEY, JSON.stringify({
         people: this.people, assets: this.assets, notes: this.notes, books: this.books,
         letters: this.letters,
       }));
+      // The write is only real if it reached durable storage. Held in memory
+      // alone it survives until the tab closes and then is simply gone, which
+      // is worse than an error because the app looked like it worked.
+      if (!wrote) {
+        this.storageError = L("Changes could not be saved.") + " " +
+          L("There is no room left in this browser's storage.");
+        this.changed();
+        return false;
+      }
       this.storageError = null;
       this.changed();
       return true;
@@ -389,7 +398,12 @@ class Store extends EventTarget {
       id: uuid(), createdAt: new Date().toISOString(), openedAt: null, assetId: null, ...l,
     };
     this.letters.push(letter);
-    this.save();
+    if (!this.save()) {
+      // Announcing "it will be here on the day" for something that is not on
+      // disk is the cruellest possible version of this failing.
+      this.letters = this.letters.filter(l => l.id !== letter.id);
+      return null;
+    }
     return letter;
   }
 
@@ -508,6 +522,10 @@ class Store extends EventTarget {
     if (person.photoFilename) { try { await Blobs.del(person.photoFilename); } catch {} }
     this.assets = this.assets.filter(a => a.personId !== person.id);
     this.notes = this.notes.filter(n => n.personId !== person.id);
+    // Sealed letters are the most private thing in here and were surviving the
+    // deletion that promised to remove them — orphaned in storage, unreachable
+    // from any screen, and still counted as due.
+    this.letters = this.letters.filter(l => l.personId !== person.id);
     this.books = this.books.filter(b => b.personId !== person.id);
     this.people = this.people.filter(p => p.id !== person.id);
     this.save();
@@ -1010,9 +1028,18 @@ export const FamilyAnswer = {
       numbered,
     ].join("\n");
 
-    const answer = await chat(system, String(question || "").slice(0, 300),
+    // The compose box offers 600 and the clip records all 600 as "You asked:",
+    // so cutting to 300 here half-asked the question and then filed the answer
+    // against wording the model never saw.
+    const answer = await chat(system, String(question || "").slice(0, 600),
                               { maxTokens: 160, temperature: 0.2 });
-    if (answer.toUpperCase().includes(NOT_IN_NOTES)) throw new NotInNotesError();
+    // Whitespace-insensitive: models routinely normalise the underscores out of
+    // a token they were shown inline in prose, and "NOT IN NOTES" returned as
+    // an answer would be billed, captioned "From your family's notes", and read
+    // aloud in her voice. The refusal is the feature; it has to be hard to miss.
+    if (answer.toUpperCase().replace(/[^A-Z]/g, "").includes("NOTINNOTES")) {
+      throw new NotInNotesError();
+    }
     return answer;
   },
 };
@@ -1253,23 +1280,65 @@ export const Archive = {
     }
 
     const personId = uuid();
+    const voiceId = typeof file.person.voiceId === "string" ? file.person.voiceId : null;
     const person = {
       ...file.person,
+      name: String(file.person.name),
+      fullName: typeof file.person.fullName === "string" ? file.person.fullName : "",
+      relationship: typeof file.person.relationship === "string" ? file.person.relationship : "",
+      // A non-string here would be concatenated straight into a request URL.
+      voiceId,
       id: personId,
       photoFilename: null,
       createdAt: file.person.createdAt || new Date().toISOString(),
+      // The whole point of the handoff is that every phone speaks in the SAME
+      // clone. That makes the voice shared property, so this device must not
+      // delete it at the service when tidying up — whoever tidied first would
+      // silently destroy it for the rest of the family, including the phone
+      // that recorded and paid for it, and the others would keep reporting
+      // "voice ready" until a generation failed.
+      voiceIsShared: true,
     };
     store.people.push(person);
 
-    for (const n of file.notes || []) {
-      store.notes.push({ ...n, id: uuid(), personId });
+    // Everything below is shaped, not trusted. A file this app wrote is
+    // well-formed; a file that reached a phone through four apps and a laptop
+    // may not be, and a screen builder that throws leaves the app blank with no
+    // way back but a reload — paintRoot has already cleared the root by then.
+    const str = v => (typeof v === "string" ? v : "");
+    const when = v => {
+      const d = new Date(typeof v === "string" || typeof v === "number" ? v : NaN);
+      return Number.isNaN(d.getTime()) ? null : d.toISOString();
+    };
+    const list = v => (Array.isArray(v) ? v : []);
+
+    for (const n of list(file.notes)) {
+      const body = str(n?.text).trim();
+      if (!body) continue;
+      store.notes.push({
+        id: uuid(), personId, text: body,
+        addedBy: str(n?.addedBy),
+        createdAt: when(n?.createdAt) || new Date().toISOString(),
+        kind: n?.kind === "affirmation" ? "affirmation" : undefined,
+      });
     }
-    for (const l of file.letters || []) {
-      store.letters.push({ ...l, id: uuid(), personId, openedAt: null, assetId: null });
+    for (const l of list(file.letters)) {
+      const body = str(l?.text).trim();
+      const deliverAt = when(l?.deliverAt);
+      // A letter with no words or no date is not a letter, and carrying it
+      // through would crash the screen that lists it.
+      if (!body || !deliverAt) continue;
+      store.letters.push({
+        id: uuid(), personId, text: body,
+        occasion: str(l?.occasion),
+        deliverAt,
+        createdAt: when(l?.createdAt) || new Date().toISOString(),
+        openedAt: null, assetId: null,
+      });
     }
 
     let restored = 0;
-    for (const rec of file.recordings || []) {
+    for (const rec of list(file.recordings)) {
       try {
         const blob = fromBase64(rec.data, rec.type);
         const stored = await store.storeAudio(blob, {
@@ -1284,7 +1353,15 @@ export const Archive = {
       }
     }
 
-    store.save();
-    return { person, notes: (file.notes || []).length, letters: (file.letters || []).length, restored };
+    // The caller has to be able to tell the family what actually arrived.
+    const saved = store.save();
+    return {
+      person,
+      notes: store.memories(personId).length,
+      letters: store.lettersFor(personId).length,
+      recordingsOffered: list(file.recordings).length,
+      restored,
+      saved,
+    };
   },
 };

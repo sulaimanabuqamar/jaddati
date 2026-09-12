@@ -97,6 +97,24 @@ export function icon(name, cls) {
   return svg;
 }
 
+
+// ── mount lifecycle ─────────────────────────────────────────────────────
+// Screens and rows register cleanup with a "jaddati:unmount" listener, which
+// only fires if the element is tracked. This lived in app.js, which screens.js
+// cannot import without a cycle — so every screen-level listener registered
+// there was silently never called, leaking a player subscription per visit and,
+// once the capture screen existed, leaving the microphone open after you left.
+
+let mounted = [];
+
+/** Register an element so its cleanup runs when the tree is next rebuilt. */
+export const track = el => { mounted.push(el); return el; };
+
+export function unmountAll() {
+  for (const el of mounted) el.dispatchEvent(new Event("jaddati:unmount"));
+  mounted = [];
+}
+
 // ── chrome ──────────────────────────────────────────────────────────────
 
 export function appBar(title, { onBack = null, trailing = null } = {}) {
@@ -426,7 +444,7 @@ export class Recorder {
       this.recorder.onstop = () => {
         cancelAnimationFrame(this.raf);
         this.stream?.getTracks().forEach(t => t.stop());
-        this.ctx?.close?.();
+        this.release();
         const blob = new Blob(this.chunks, { type: this.recorder.mimeType || "audio/webm" });
         this.recorder = null;
         resolve({ blob, seconds });
@@ -435,11 +453,20 @@ export class Recorder {
     });
   }
 
-  cancel() {
-    try { this.recorder?.stop(); } catch {}
+  /// Idempotent teardown. stop() and cancel() both run on a screen that is
+  /// left mid-take, and closing an AudioContext twice throws.
+  release() {
     cancelAnimationFrame(this.raf);
     this.stream?.getTracks().forEach(t => t.stop());
-    this.ctx?.close?.();
+    this.stream = null;
+    const ctx = this.ctx;
+    this.ctx = null;
+    try { if (ctx && ctx.state !== "closed") ctx.close(); } catch {}
+  }
+
+  cancel() {
+    try { this.recorder?.stop(); } catch {}
+    this.release();
     this.recorder = null;
   }
 }

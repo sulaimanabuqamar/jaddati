@@ -14,7 +14,7 @@ import {
   h, clear, bidi, icon, appBar, globeButton, headline, eyebrow, sectionLabel,
   subtext, caption, panel, panelS, errorNote, emptyHint, avatar, breadcrumb,
   sourceBadge, contentBadge, badgesFor, audioRow, player, confirmDialog, sheet,
-  toast, Recorder, durationOf, demoDuration,
+  toast, Recorder, durationOf, demoDuration, track, unmountAll,
 } from "./ui.js";
 import { nav, remember, setRenderer, render, push, pop, popTo, goTab } from "./nav.js";
 import {
@@ -31,12 +31,6 @@ function selectedPerson() {
 
 // ── render ──────────────────────────────────────────────────────────────
 
-let mounted = [];
-function unmountAll() {
-  for (const el of mounted) el.dispatchEvent(new Event("jaddati:unmount"));
-  mounted = [];
-}
-export const track = el => { mounted.push(el); return el; };
 
 function paintRoot() {
   unmountAll();
@@ -48,12 +42,25 @@ function paintRoot() {
   // The rail is furniture, not content: it stays put while screens push and
   // pop above it, exactly as the pager does in the app.
   const top = nav.stack[nav.stack.length - 1];
-  const screen = top ? top.screen(top.props)
+  // clear(root) has already run, so a screen builder that throws leaves an
+  // empty page with no way back but a reload. Falling back to the root of the
+  // tab keeps the app usable and says what happened.
+  let screen;
+  try {
+    screen = top ? top.screen(top.props)
     : nav.tab === "people" ? homeScreen()
     : nav.tab === "saved" ? personScoped(p => memoriesScreen({ personId: p.id, isTabRoot: true }),
         L("Open a person to see what is kept for them."), L("Saved"))
     : personScoped(p => booksScreen({ personId: p.id, isTabRoot: true }),
         L("Open a person to bring them a text."), L("Books"));
+  } catch (e) {
+    console.error("screen failed to build", e);
+    nav.stack.length = 0;
+    screen = h("div", { class: "screen" },
+      appBar(L("Jaddati")),
+      h("div", { class: "scroll" },
+        errorNote(L("That screen could not be opened. Nothing has been deleted."))));
+  }
 
   root.append(screen, tabRail());
 }
@@ -546,7 +553,11 @@ function deleteRow(person) {
 
   const remove = async () => {
     clear(problem);
-    if (!person.voiceId) { await store.deletePerson(person); popTo(0); return; }
+    // A voice that arrived with a family archive belongs to everyone holding
+    // that archive. Removing this copy must not reach the service.
+    if (!person.voiceId || person.voiceIsShared) {
+      await store.deletePerson(person); popTo(0); return;
+    }
     busy.classList.remove("hidden");
     try {
       await Voice.deleteVoice(person.voiceId);
@@ -570,8 +581,11 @@ function deleteRow(person) {
       confirmDialog({
         title: L("Delete this person?"),
         message: L("This removes their profile, original recordings, saved clips and imported books from Jaddati.") + "\n\n" +
-          (person.voiceId ? L("The voice built for them is deleted from the voice service first. If that fails, nothing here is removed, so you can try again.")
-                          : L("Nothing was ever sent to the voice service for this person.")),
+          (person.voiceIsShared
+            ? L("This person came from another family member's phone, so the voice is shared. It is left alone at the voice service — removing it here would take it from everyone who has them.")
+            : person.voiceId
+              ? L("The voice built for them is deleted from the voice service first. If that fails, nothing here is removed, so you can try again.")
+              : L("Nothing was ever sent to the voice service for this person.")),
         confirm: L("Delete permanently"), onConfirm: remove,
       }) }, L("Remove this person")),
     busy, problem);
@@ -651,8 +665,17 @@ function importPersonRow() {
       if (!f) return;
       try {
         const result = await Archive.import(await f.text());
-        toast(L("Brought in") + " " + result.person.name);
         nav.personId = result.person.id;
+        // Say what actually arrived. "Brought in Teta" while the irreplaceable
+        // original recordings silently failed is the wrong thing to tell a
+        // family, and the one thing they cannot find out later.
+        const lost = result.recordingsOffered - result.restored;
+        toast(!result.saved
+          ? (store.storageError || L("Changes could not be saved."))
+          : lost > 0
+            ? L("Brought in") + " " + result.person.name + " — " +
+              L("some original recordings could not be saved.")
+            : L("Brought in") + " " + result.person.name);
         render();
       } catch (err) {
         toast(err instanceof ArchiveError ? err.message : L("That file could not be read."));

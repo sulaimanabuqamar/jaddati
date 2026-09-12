@@ -43,10 +43,21 @@ export const prefs = {
     return memory.has(key) ? memory.get(key) : null;
   },
 
+  /**
+   * Returns whether the value reached durable storage.
+   *
+   * It used to swallow the failure and report nothing, which made every caller
+   * downstream lie: the store's own try/catch never fired, save() always
+   * returned true, the quota message was unreachable, and a letter someone had
+   * just sealed was announced as kept and was gone at the next reload. Memory
+   * is still written either way — losing the session as well would help nobody
+   * — but the caller is now told the difference.
+   */
   set(key, value) {
     memory.set(key, String(value));
-    if (!available) return;
-    try { localStorage.setItem(key, String(value)); } catch { /* memory has it */ }
+    if (!available) return false;
+    try { localStorage.setItem(key, String(value)); return true; }
+    catch { return false; }
   },
 
   remove(key) {
