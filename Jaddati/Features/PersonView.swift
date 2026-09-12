@@ -380,8 +380,12 @@ struct PersonView: View {
                 .foregroundStyle(Theme.Palette.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if let exported {
-                ShareLink(item: exported) {
+            // Bound to a different name on purpose. `if let exported` shadows the
+            // @State with an unwrapped `let URL`, so clearing it inside this
+            // branch assigns to the constant rather than to the state — which is
+            // exactly the pair of errors the compiler gave.
+            if let archiveFile = exported {
+                ShareLink(item: archiveFile) {
                     Text(L("Give this to the family"))
                         .frame(maxWidth: .infinity)
                 }
