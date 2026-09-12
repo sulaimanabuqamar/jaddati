@@ -54,11 +54,13 @@ struct MemoriesView: View {
     }
 
     enum ExperienceFilter: Hashable, CaseIterable {
-        case all, saySomething, comfort, story, kept, book
+        case all, saySomething, asked, across, comfort, story, kept, book
         var title: String {
             switch self {
             case .all:  return L("All")
             case .saySomething: return Intent.saySomething.title
+            case .asked:        return Intent.askAboutThem.title
+            case .across:       return Intent.bridgeLanguage.title
             case .comfort:      return Intent.comfort.title
             case .story:        return Intent.storyFiction.title
             case .kept:         return Intent.storyFromMemories.title
@@ -69,6 +71,8 @@ struct MemoriesView: View {
             switch self {
             case .all:          return nil
             case .saySomething: return .saySomething
+            case .asked:        return .askAboutThem
+            case .across:       return .bridgeLanguage
             case .comfort:      return .comfort
             case .story:        return .storyFiction
             case .kept:         return .storyFromMemories

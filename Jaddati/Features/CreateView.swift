@@ -64,6 +64,10 @@ struct CreateView: View {
             return L("Choose a line, or write what feels right to you.")
         case .storyFiction:
             return L("Choose a story, or write your own.")
+        case .askAboutThem:
+            return L("Ask a question about them.")
+        case .bridgeLanguage:
+            return L("Write something to carry across.")
         case .saySomething, .storyFromMemories, .readBook:
             return L("Type something for them to say.")
         }
@@ -586,9 +590,33 @@ struct CreateView: View {
         switch intent {
         case .storyFiction:
             return L("These are invented stories, not memories or stories told by this person.")
+        case .askAboutThem:
+            // The question, kept beside the answer it produced, so a clip can
+            // still be traced back to what was actually asked.
+            return L("You asked:") + " " + trimmed
+        case .bridgeLanguage:
+            return L("You wrote:") + " " + trimmed
         case .saySomething, .comfort, .storyFromMemories, .readBook:
             // Words a person typed. The content badge already says whose.
             return nil
+        }
+    }
+
+    /// The words that actually get spoken.
+    ///
+    /// For most experiences this is exactly what was typed. `askAboutThem` and
+    /// `bridgeLanguage` transform it first, and the RESULT is what the clip is
+    /// labelled with — storing the question and playing the answer would leave
+    /// an archive whose captions do not match its audio.
+    private func resolveSpokenText(for person: Person) async throws -> String {
+        switch intent {
+        case .askAboutThem:
+            return try await FamilyAnswerService()
+                .answer(question: trimmed, notes: library.memories(for: person))
+        case .bridgeLanguage:
+            return try await TranslatorService().translate(trimmed)
+        case .saySomething, .comfort, .storyFiction, .storyFromMemories, .readBook:
+            return trimmed
         }
     }
 
@@ -606,8 +634,35 @@ struct CreateView: View {
 
         let model = useFastModel ? AppConfig.fastModelId : AppConfig.defaultModelId
         let service: VoiceService = AppConfig.voiceService()
-        let words = trimmed
         let provenance = provenanceForCurrentText()
+
+        // Two experiences put a step between what was typed and what is spoken:
+        // a question becomes an answer drawn from the family's notes, and a
+        // sentence becomes its translation. It runs BEFORE the voice service is
+        // touched, so a refusal costs nothing and is reported as an answer
+        // rather than as a failed generation.
+        let words: String
+        do {
+            words = try await resolveSpokenText(for: person)
+        } catch is NotInNotes {
+            isGenerating = false
+            errorAllowsRetry = false
+            failure = nil
+            errorText = NotInNotes().errorDescription
+            return
+        } catch is ConsentMissing {
+            isGenerating = false
+            errorAllowsRetry = false
+            failure = nil
+            errorText = AppConfig.unavailableMessage
+            return
+        } catch {
+            isGenerating = false
+            errorAllowsRetry = true
+            errorText = error.localizedDescription
+            return
+        }
+        guard !words.isEmpty else { isGenerating = false; return }
 
         do {
             let data = try await service.synthesize(text: words,

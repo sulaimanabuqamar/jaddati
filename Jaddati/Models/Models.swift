@@ -299,6 +299,8 @@ enum ContentProvenance: String, Codable, CaseIterable {
     case keptWords
     case importedText
     case answerWhileReading
+    case answerFromNotes
+    case translatedWords
 
     var label: String {
         switch self {
@@ -308,6 +310,8 @@ enum ContentProvenance: String, Codable, CaseIterable {
         case .keptWords:          return L("Saved words")
         case .importedText:       return L("From an imported file")
         case .answerWhileReading: return L("Answer to a question")
+        case .answerFromNotes:    return L("From your family's notes")
+        case .translatedWords:    return L("Translated words")
         }
     }
 
@@ -319,12 +323,16 @@ enum ContentProvenance: String, Codable, CaseIterable {
         case .keptWords:          return "tray.full"
         case .importedText:       return "doc.text"
         case .answerWhileReading: return "questionmark.bubble"
+        case .answerFromNotes:    return "questionmark.bubble"
+        case .translatedWords:    return "globe"
         }
     }
 }
 
 enum Intent: String, Codable, CaseIterable {
     case saySomething
+    case askAboutThem
+    case bridgeLanguage
     case comfort
     case storyFiction
     case storyFromMemories
@@ -339,6 +347,8 @@ enum Intent: String, Codable, CaseIterable {
     var title: String {
         switch self {
         case .saySomething:      return L("Say something")
+        case .askAboutThem:      return L("Ask about them")
+        case .bridgeLanguage:    return L("Say it in their language")
         case .comfort:           return L("Words of comfort")
         case .storyFiction:      return L("Tell me a story")
         case .storyFromMemories: return L("Words & memories")
@@ -351,6 +361,8 @@ enum Intent: String, Codable, CaseIterable {
     var characterLimit: Int {
         switch self {
         case .saySomething:      return 800
+        case .askAboutThem:      return 600
+        case .bridgeLanguage:    return 600
         case .comfort:           return 400
         case .storyFiction:      return 2_500
         case .storyFromMemories: return 800
@@ -361,6 +373,8 @@ enum Intent: String, Codable, CaseIterable {
     var subtitle: String {
         switch self {
         case .saySomething:      return L("Words you choose, in a recreated voice")
+        case .askAboutThem:      return L("A question, answered only from what your family wrote down")
+        case .bridgeLanguage:    return L("Your words, carried across the language they spoke")
         case .comfort:           return L("A short, steadying line you choose")
         case .storyFiction:      return L("An invented story for a quiet moment")
         case .storyFromMemories: return L("The words you have kept, in one place")
@@ -372,6 +386,8 @@ enum Intent: String, Codable, CaseIterable {
     var headline: String {
         switch self {
         case .saySomething:      return L("Words of\nyour choosing.")
+        case .askAboutThem:      return L("What the family\nwrote down.")
+        case .bridgeLanguage:    return L("Across the\nlanguage.")
         case .comfort:           return L("A little\nsteadiness.")
         case .storyFiction:      return L("A small story.\nA quiet moment.")
         case .storyFromMemories: return L("Words worth\nkeeping.")
@@ -382,6 +398,8 @@ enum Intent: String, Codable, CaseIterable {
     var standfirst: String {
         switch self {
         case .saySomething:      return L("Write something new to be spoken in a recreated voice.")
+        case .askAboutThem:      return L("The answer is assembled only from the memories your family has written here. If the answer is not among them, it says so rather than inventing one.")
+        case .bridgeLanguage:    return L("Write in either language. It is spoken in the other, in a recreated voice.")
         case .comfort:           return L("Choose a line, or write what feels right to you.")
         case .storyFiction:      return L("These are invented stories, not memories or stories told by this person.")
         case .storyFromMemories: return L("A place for your memories and the words you have chosen.")
@@ -393,6 +411,8 @@ enum Intent: String, Codable, CaseIterable {
     var defaultContentProvenance: ContentProvenance {
         switch self {
         case .saySomething:      return .wordsSuppliedByYou
+        case .askAboutThem:      return .answerFromNotes
+        case .bridgeLanguage:    return .translatedWords
         case .comfort:           return .comfortLine
         case .storyFiction:      return .inventedStory
         case .storyFromMemories: return .keptWords
@@ -404,6 +424,8 @@ enum Intent: String, Codable, CaseIterable {
     var icon: String {
         switch self {
         case .saySomething:      return "pencil"
+        case .askAboutThem:      return "questionmark.bubble"
+        case .bridgeLanguage:    return "globe"
         case .comfort:           return "leaf"
         case .storyFiction:      return "moon.stars"
         case .storyFromMemories: return "tray.full"
@@ -419,6 +441,10 @@ enum Intent: String, Codable, CaseIterable {
             return L("An invented story. Not a real memory.")
         case .readBook:
             return L("Read from a file you provided.")
+        case .askAboutThem:
+            return L("Assembled from your family's notes. Nothing here was invented.")
+        case .bridgeLanguage:
+            return L("A translation of your words, not their own phrasing.")
         default:
             // Everything else is words a person typed. Nothing to disclaim.
             return nil

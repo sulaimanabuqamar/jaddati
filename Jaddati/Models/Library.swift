@@ -199,6 +199,14 @@ final class Library: ObservableObject {
             .sorted { $0.createdAt > $1.createdAt }
     }
 
+    /// What the family wrote down about this person, as distinct from the
+    /// comfort lines they collected. This is the ENTIRE source a grounded
+    /// answer may draw on, so it must never widen to another person's notes.
+    func memories(for person: Person) -> [FamilyNote] {
+        notes.filter { $0.personId == person.id && !$0.isAffirmation }
+            .sorted { $0.createdAt < $1.createdAt }
+    }
+
     /// Kept clips produced by one experience, newest first.
     func savedAssets(for person: Person, intent: Intent) -> [AudioAsset] {
         savedAssets(for: person, intents: [intent])
