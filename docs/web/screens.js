@@ -14,7 +14,7 @@ import {
   contentBadge, badgesFor, audioRow, player, confirmDialog, sheet, toast,
   Recorder, durationOf, demoDuration, track,
 } from "./ui.js";
-import { nav, push, pop, popTo, render } from "./nav.js";
+import { nav, push, pop, popTo, render, replace } from "./nav.js";
 
 const trimmedOf = s => (s || "").trim();
 
@@ -411,10 +411,27 @@ export function createScreen({ personId, intent }) {
       mine.map(a => audioRow(a, asset => push(playerScreen, { assetId: asset.id }))));
   };
 
+  // The six ways of asking used to be six full-width rows on the person
+  // screen, each with a title and a sentence under it, and you had to read the
+  // lot to find the one you wanted. They belong here: the box is the thing,
+  // and these are the other ways to fill it. Switching swaps this screen
+  // rather than stacking another, so Back still means "out of here".
+  const ways = () => h("div", { class: "chiprow" },
+    INTENTS.filter(k => k !== "readBook").map(key =>
+      h("button", {
+        class: "chip" + (key === intent ? " chip--on" : ""),
+        "aria-pressed": String(key === intent),
+        onClick: () => { if (key !== intent) replace(createScreen, { personId, intent: key }); },
+      }, Intent.title(key))));
+
+  // The bar used to name the intent, which the selected chip below it and the
+  // headline below that both already say. Three ways of saying the same thing
+  // pushed the box the user actually came for most of the way down the
+  // screen; the bar now says WHO, and the breadcrumb that repeated it is gone.
   const screen = h("div", { class: "screen" },
-    appBar(Intent.title(intent), { onBack: pop }),
+    appBar(person?.name ?? Intent.title(intent), { onBack: pop }),
     h("div", { class: "scroll" }, h("div", { class: "stack gap-m" },
-      person ? breadcrumb(person) : null,
+      ways(),
       headline(Intent.headline(intent)),
       subtext(Intent.standfirst(intent)),
       !Config.isConfigured ? errorNote(Config.unavailableMessage) : null,

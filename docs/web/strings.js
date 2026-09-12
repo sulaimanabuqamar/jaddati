@@ -14,6 +14,7 @@ export const AR = {
  "A clear sample makes a difference.": "وضوح التسجيل يصنع فرقًا.",
  "A code identifying this phone, so that one phone cannot use up everyone's allowance. It is not a name and is not linked to one.": "رمز يميّز هذا الهاتف، حتى لا يستهلك هاتف واحد حصة الجميع. وهو ليس اسمًا ولا مرتبطًا باسم.",
  "A family archive": "أرشيف عائلي",
+ "A letter": "رسالة",
  "A letter for today": "رسالة لهذا اليوم",
  "A little\nsteadiness.": "شيءٌ من السكينة.",
  "A longer, clear sample may produce a more consistent voice.": "قد يساعد تسجيل أوضح وأطول على إنشاء صوت أكثر ثباتًا.",
@@ -83,6 +84,7 @@ export const AR = {
  "Bring a text to read one page at a time.": "أضف نصًا لقراءته صفحةً صفحة.",
  "Bring a text. Hear it in a recreated voice, one page at a time.": "أضف نصًا، واسمعه بصوت يُعاد إنشاؤه، صفحةً صفحة.",
  "Bring someone from another phone": "أحضر شخصًا من جهاز آخر",
+ "Bring them a text": "أحضر له نصًا",
  "Brought in": "أُحضر",
  "Cancel": "إلغاء",
  "Carefully kept.": "محفوظة بعناية.",
@@ -92,6 +94,7 @@ export const AR = {
  "Character limit reached": "بلغت الحد الأقصى للأحرف",
  "Characters": "الأحرف",
  "Check availability": "التحقّق من الجاهزية",
+ "Check if it is ready": "تحقّق إن كان جاهزًا",
  "Checking asks the service to say one short word.": "التحقّق يطلب من الخدمة نطق كلمة واحدة قصيرة.",
  "Checking…": "جارٍ التحقّق…",
  "Choose a file": "اختيار ملف",
@@ -168,6 +171,7 @@ export const AR = {
  "Fine-tune the voice": "ضبط دقيق للصوت",
  "Finished": "انتهى المقطع",
  "First page": "الصفحة الأولى",
+ "For a day you choose": "ليوم تختاره",
  "Friend": "صديق",
  "From an imported file": "من ملف مستورد",
  "From this person’s recordings": "من تسجيلات هذا الشخص",
@@ -223,6 +227,7 @@ export const AR = {
  "Leave as it is unless you run a relay of your own.": "اتركه كما هو ما لم تكن تُشغّل وسيطًا خاصًا بك.",
  "Length unknown": "المدة غير معروفة",
  "Less similar": "تشابه أقل",
+ "Letters": "رسائل",
  "Likeness to the original": "التشابه مع الصوت الأصلي",
  "Load in Arabic": "استخدام النص العربي",
  "Load in English": "استخدام النص الإنجليزي",
@@ -249,6 +254,7 @@ export const AR = {
  "No clips match this filter": "لا توجد مقاطع مطابقة",
  "No connection. New audio needs the internet — saved memories still play.": "لا يوجد اتصال. إنشاء مقاطع جديدة يحتاج إلى الإنترنت — والمقاطع المحفوظة ما زالت تُشغَّل.",
  "No internet connection.": "لا يوجد اتصال بالإنترنت.",
+ "No letters yet": "لا رسائل بعد",
  "No original recordings yet.": "لا توجد تسجيلات أصلية بعد.",
  "No people yet": "لم تُضِف أحدًا بعد",
  "No recording chosen": "لم يُختَر أي تسجيل",
@@ -276,6 +282,7 @@ export const AR = {
  "Open a person to see what is kept for them.": "افتح ملف شخص لترى ما احتفظت به له.",
  "Open book": "فتح الكتاب",
  "Open it": "افتحها",
+ "Open someone and write words for a day that has not come yet.": "افتح شخصًا واكتب له كلمات ليوم لم يأتِ بعد.",
  "Opening…": "أفتحها…",
  "Origin": "المصدر",
  "Original and recreated. Always distinct.": "الأصلي والمُعاد إنشاؤه. متمايزان دائمًا.",
@@ -347,6 +354,7 @@ export const AR = {
  "Removing a person also deletes the voice built for them at the voice service. That happens first, and if it fails nothing here is removed, so it can be tried again.": "إزالة شخص تحذف أيضًا الصوت المُنشأ له لدى خدمة الصوت. يحدث ذلك أولًا، وإذا تعذّر لا يُحذف شيء من هنا، فيمكن إعادة المحاولة.",
  "Removing the app removes all of it.": "وإزالة التطبيق تزيلها جميعًا.",
  "Removing the voice from the voice service…": "جارٍ حذف الصوت من خدمة الصوت…",
+ "Replace their voice": "استبدال صوته",
  "Replay": "إعادة التشغيل",
  "Replay this page": "إعادة تشغيل هذه الصفحة",
  "Results may differ from the original recording.": "قد تختلف النتيجة عن التسجيل الأصلي.",
@@ -380,6 +388,7 @@ export const AR = {
  "Sent without some recordings — the file would have been too large.": "أُرسل دون بعض التسجيلات — كان حجم الملف سيصبح كبيرًا جدًا.",
  "Set up voice service": "إعداد خدمة الصوت",
  "Settings": "الإعدادات",
+ "Setup": "الإعداد",
  "Shorten the text to continue.": "اختصر النص للمتابعة.",
  "Shorten the text to fit the limit.": "اختصر النص ضمن الحد المسموح.",
  "Show all clips": "عرض كل المقاطع",
@@ -477,6 +486,7 @@ export const AR = {
  "The words are still here.": "الكلمات ما زالت هنا.",
  "The words you have kept, in one place": "الكلمات التي احتفظت بها، في مكان واحد",
  "Their own voice": "الصوت الأصلي",
+ "Their voice": "صوته",
  "There is no hurry. Your archive can grow in your own time.": "على مهل. لكلّ ذكرى وقتها.",
  "There is no previous page.": "لا توجد صفحة سابقة.",
  "There is no room for another voice at the moment. Remove one you have already made, or try again in a few days.": "لا توجد مساحة لصوت آخر في الوقت الحالي. احذف صوتًا أنشأته من قبل، أو حاول مجددًا بعد بضعة أيام.",
@@ -487,8 +497,10 @@ export const AR = {
  "These are held in this browser's own storage. There is no account and no sign-in, and none of it is uploaded to us.": "تُحفظ هذه في تخزين هذا المتصفح الخاص. لا يوجد حساب ولا تسجيل دخول، ولا يُرفع منها شيء إلينا.",
  "These are invented stories, not memories or stories told by this person.": "هذه قصص متخيّلة، وليست ذكريات أو قصصًا رواها هذا الشخص.",
  "These are what an answer is built from, and nothing else is.": "من هذه وحدها تُبنى الإجابة، ولا شيء غيرها.",
+ "They are still here? Record them now": "ما زال معك؟ سجّل صوته الآن",
  "Thinking…": "جارٍ التفكير…",
  "This account has no free voice slots left. Remove an unused voice at the voice service, then try again.": "لم تعد في الحساب خانات أصوات متاحة. احذف صوتًا غير مستخدم لدى خدمة الصوت ثم حاول مجددًا.",
+ "This app": "هذا التطبيق",
  "This audio could not be played.": "تعذّر تشغيل هذا المقطع.",
  "This audio could not be played. It may be an unsupported format.": "تعذّر تشغيل هذا المقطع. قد تكون صيغته غير مدعومة.",
  "This audio file is not available. Playback is unavailable.": "هذا الملف الصوتي غير متاح، لذلك لا يمكن تشغيله.",
@@ -519,6 +531,7 @@ export const AR = {
  "Try another filter or show all clips.": "اختر تصفية أخرى أو اعرض كل المقاطع.",
  "Two services outside this phone are in use.": "تُستخدم خدمتان خارج هذا الهاتف.",
  "Type something for them to say.": "اكتب كلمات ليقولوها.",
+ "Type the words. Hear them in their voice.": "اكتب الكلمات، واسمعها بصوته.",
  "USD": "دولار",
  "Untitled book": "كتاب بلا عنوان",
  "Uploading recording…": "جارٍ رفع التسجيل…",
@@ -567,6 +580,7 @@ export const AR = {
  "Words you choose, spoken in their recreated voice.": "كلمات تختارها، بصوت يُعاد إنشاؤه بالذكاء الاصطناعي.",
  "Words you have kept": "كلمات احتفظت بها",
  "Words you have kept, together in one place.": "كلمات احتفظت بها، مجتمعة في مكان واحد.",
+ "Words you seal now and hear on a day you choose.": "كلمات تختمها الآن وتسمعها في يوم تختاره.",
  "Write in either language. It is spoken in the other, in a recreated voice.": "اكتب بأي من اللغتين. ويُنطق النص باللغة الأخرى، بصوت مُعاد إنشاؤه.",
  "Write in either language…": "اكتب بأي من اللغتين…",
  "Write something for a day that has not come.": "اكتب شيئًا ليومٍ لم يأتِ بعد.",
@@ -576,6 +590,7 @@ export const AR = {
  "Write the words here…": "اكتب الكلمات هنا…",
  "Write what they should say when the day comes…": "اكتب ما تريد أن يقوله عندما يحين اليوم…",
  "Writing it down…": "جارٍ تحويل الكلام إلى نص…",
+ "You": "أنت",
  "You allowed the app to use the two services above.": "سمحت للتطبيق باستخدام الخدمتين أعلاه.",
  "You are on the first page.": "أنت في الصفحة الأولى.",
  "You are on the last page.": "أنت في الصفحة الأخيرة.",
@@ -658,6 +673,20 @@ export const Counts = {
     if (n === 2) return "مقطعان محفوظان";
     if (n >= 3 && n <= 10) return `${this.number(n)} مقاطع محفوظة`;
     return `${this.number(n)} مقطعًا محفوظًا`;
+  },
+  books(n) {
+    if (!isAr()) return n === 1 ? "1 book" : `${this.number(n)} books`;
+    if (n === 1) return "كتاب واحد";
+    if (n === 2) return "كتابان";
+    if (n >= 3 && n <= 10) return `${this.number(n)} كتب`;
+    return `${this.number(n)} كتابًا`;
+  },
+  sealed(n) {
+    if (!isAr()) return n === 1 ? "1 sealed letter" : `${this.number(n)} sealed letters`;
+    if (n === 1) return "رسالة مختومة واحدة";
+    if (n === 2) return "رسالتان مختومتان";
+    if (n >= 3 && n <= 10) return `${this.number(n)} رسائل مختومة`;
+    return `${this.number(n)} رسالة مختومة`;
   },
   pagesRead(read, total) {
     if (!isAr()) return `${this.number(read)} of ${this.number(total)} pages read`;

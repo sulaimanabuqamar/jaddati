@@ -3,7 +3,7 @@
 // and Saved and Books are scoped to one person because a pile of clips with no
 // name on it is not an archive.
 
-import { L, isAr, isArabicText, dirOf, Counts, state as lang, setLang } from "./strings.js";
+import { L, isAr, isArabicText, dirOf, Counts, state as lang, setLang, toggleLang } from "./strings.js";
 import {
   store, Consent, ConsentMissing, Config, Voice, Companion, VoiceError, CompanionError,
   Intent, INTENTS, ContentProvenance, TUNING, sameTuning, presetName,
@@ -48,11 +48,9 @@ function paintRoot() {
   let screen;
   try {
     screen = top ? top.screen(top.props)
-    : nav.tab === "people" ? homeScreen()
-    : nav.tab === "saved" ? personScoped(p => memoriesScreen({ personId: p.id, isTabRoot: true }),
-        L("Open a person to see what is kept for them."), L("Saved"))
-    : personScoped(p => booksScreen({ personId: p.id, isTabRoot: true }),
-        L("Open a person to bring them a text."), L("Books"));
+    : nav.tab === "letters" ? allLettersScreen()
+    : nav.tab === "you" ? youScreen()
+    : homeScreen();
   } catch (e) {
     console.error("screen failed to build", e);
     nav.stack.length = 0;
@@ -65,22 +63,20 @@ function paintRoot() {
   root.append(screen, tabRail());
 }
 
-function personScoped(build, emptyMessage, title) {
-  const person = selectedPerson();
-  if (person) return build(person);
-  return h("div", { class: "screen" },
-    appBar(title),
-    h("div", { class: "scroll", style: { display: "flex", flexDirection: "column", justifyContent: "center" } },
-      emptyHint("personSlash", L("Choose someone first"), emptyMessage),
-      h("button", { class: "btn-quiet", onClick: () => goTab("people") }, L("Go to People"))));
-}
-
+/** Every tab works from a cold start now, so the rail carries no dead ends.
+ *  Letters is the one thing in the app that is about a DATE rather than about
+ *  a person, which is exactly why it earns a place of its own: a sealed letter
+ *  whose day has come has to find you without your remembering whose it was. */
 function tabRail() {
-  const tabs = [["people", L("People"), "house"], ["saved", L("Saved"), "tray"], ["books", L("Books"), "book"]];
+  const due = store.people.reduce((n, p) => n + store.dueLetters(p.id).length, 0);
+  const tabs = [["people", L("People"), "house"], ["letters", L("Letters"), "lock"], ["you", L("You"), "person"]];
   return h("nav", { class: "tabrail" }, tabs.map(([key, title, ic]) =>
     h("button", {
       "aria-selected": String(nav.tab === key), onClick: () => goTab(key),
-    }, icon(ic), h("span", {}, title))));
+    },
+      h("span", { class: "tabrail__icon" }, icon(ic),
+        key === "letters" && due ? h("span", { class: "tabrail__dot" }) : null),
+      h("span", {}, title))));
 }
 
 store.addEventListener("change", () => { if (!document.querySelector(".sheet-scrim")) render(); });
@@ -263,9 +259,9 @@ function homeScreen() {
     icon("plus"), h("span", {}, L("Add someone")));
 
   return h("div", { class: "screen" },
-    h("header", { class: "appbar" }, h("div", { class: "grow" }),
-      h("button", { class: "iconbtn", onClick: openSettings, "aria-label": L("Voice service") }, icon("key")),
-      globeButton()),
+    // The key moved to You. An unlabelled key on the first screen of the app
+    // asked a first-time user to wonder what it wanted from them.
+    h("header", { class: "appbar" }, h("div", { class: "grow" }), globeButton()),
 
     h("div", { class: "scroll" },
       h("div", { class: "stack", style: { paddingTop: "8px" } },
@@ -292,9 +288,7 @@ function homeScreen() {
             h("div", { class: "mt-26" }, sectionLabel(L("People you keep here"))),
             people.map(personCard),
             h("div", { style: { marginTop: "4px" } }, addButton),
-            h("div", { style: { marginTop: "4px" } }, importPersonRow())),
-
-      privacyRow()));
+            h("div", { style: { marginTop: "4px" } }, importPersonRow()))));
 }
 
 /** Loud on purpose. A demo that looks like the real thing is how a browser's
@@ -350,17 +344,6 @@ function personCard(person) {
     icon("chevron", isAr() ? "flip" : null));
 }
 
-function privacyRow() {
-  return h("button", { class: "privacy-row", onClick: () => openPrivacy(true) },
-    icon(Consent.allowsNetwork ? "unlock" : "lock"),
-    h("div", { class: "grow" },
-      h("div", { class: "label" }, L("Privacy and data")),
-      h("div", { class: "small" }, Consent.allowsNetwork
-        ? L("Two services outside this phone are in use.")
-        : L("Everything is being kept on this phone."))),
-    icon("chevron", isAr() ? "flip" : null));
-}
-
 function openAddPerson() {
   sheet(close => {
     const name = h("input", { type: "text", placeholder: "جدّتي" });
@@ -383,6 +366,97 @@ function openAddPerson() {
         h("label", { class: "field" }, h("div", { class: "field__title" }, L("Relationship")), rel),
         h("div", { class: "mt-l" }, submit)));
   });
+}
+
+// ── letters, across everyone ────────────────────────────────────────────
+// The only part of this app that is about a DATE rather than about a person.
+// A letter whose day has come has to find you without your having remembered
+// whose it was, which is why it earns a tab instead of sitting one level down
+// inside whichever person you happened to open.
+
+function allLettersScreen() {
+  const dateLine = iso => new Date(iso).toLocaleDateString(isAr() ? "ar" : "en", { dateStyle: "medium" });
+
+  const due = [], sealed = [];
+  for (const p of store.people) {
+    for (const l of store.dueLetters(p.id)) due.push([p, l]);
+    for (const l of store.sealedLetters(p.id)) sealed.push([p, l]);
+  }
+  const soonest = (a, b) => new Date(a[1].deliverAt) - new Date(b[1].deliverAt);
+  due.sort(soonest); sealed.sort(soonest);
+
+  const row = (entry, isDue) => {
+    const [person, letter] = entry;
+    return h("button", {
+      class: "feature-row",
+      onClick: () => { nav.personId = person.id; push(lettersScreen, { personId: person.id }); },
+    },
+      avatar(person, 40),
+      h("span", { class: "grow stack", style: { gap: "3px", textAlign: "start" } },
+        bidi(letter.occasion || L("A letter"), { class: "feature-row__title" }),
+        h("span", { class: "caption" }, person.name + " · " + dateLine(letter.deliverAt))),
+      isDue ? h("span", { class: "badge badge--orig" }, L("Ready"))
+            : icon("lock"));
+  };
+
+  const body = !store.people.length
+    ? h("div", {},
+        emptyHint("lock", L("No letters yet"), L("Words you seal now and hear on a day you choose.")),
+        h("button", { class: "btn-quiet", onClick: () => goTab("people") }, L("Go to People")))
+    : !due.length && !sealed.length
+      ? emptyHint("lock", L("No letters yet"),
+          L("Open someone and write words for a day that has not come yet."))
+      : h("div", { class: "stack" },
+          due.length ? h("div", { class: "mt-22" }, sectionLabel(L("Waiting for you"))) : null,
+          ...due.map(e => row(e, true)),
+          sealed.length ? h("div", { class: "mt-22" }, sectionLabel(L("Sealed"))) : null,
+          ...sealed.map(e => row(e, false)));
+
+  return h("div", { class: "screen" },
+    appBar(L("Letters"), { trailing: globeButton() }),
+    h("div", { class: "scroll" }, body));
+}
+
+// ── you ─────────────────────────────────────────────────────────────────
+// Everything that is about the app rather than about a person. There was no
+// settings screen at all before: the key lived behind an unlabelled icon on
+// the home screen and privacy behind a row at the bottom of it.
+
+function youScreen() {
+  const row = (ic, title, note, onClick) =>
+    h("button", { class: "feature-row", onClick },
+      h("span", { class: "feature-row__icon" }, icon(ic)),
+      h("span", { class: "grow stack", style: { gap: "3px", textAlign: "start" } },
+        h("span", { class: "feature-row__title" }, title),
+        h("span", { class: "caption" }, note)),
+      icon("chevron", isAr() ? "flip" : null));
+
+  return h("div", { class: "screen" },
+    appBar(L("You")),
+    h("div", { class: "scroll" },
+      Config.isDemo ? h("div", { class: "mt-16" }, demoBanner()) : null,
+      store.storageError ? h("div", { class: "mt-16" }, errorNote(store.storageError)) : null,
+
+      h("div", { class: "mt-16" }, sectionLabel(L("This app"))),
+      row("globe", L("Language"), isAr() ? "العربية" : "English",
+        () => { toggleLang(); window.dispatchEvent(new Event("jaddati:lang")); }),
+      h("div", { class: "divider" }),
+      row(Consent.allowsNetwork ? "unlock" : "lock", L("Privacy and data"),
+        Consent.allowsNetwork ? L("Two services outside this phone are in use.")
+                              : L("Everything is being kept on this phone."),
+        () => openPrivacy(true)),
+      h("div", { class: "divider" }),
+      row("key", L("Voice service"), L("Leave as it is unless you run a relay of your own."),
+        openSettings),
+
+      h("div", { class: "quiet-divider" }),
+      h("div", { class: "stack", style: { gap: "6px" } },
+        h("div", { class: "row between", style: { alignItems: "baseline" } },
+          h("span", { class: "serif", style: { fontSize: "26px" } }, "Jaddati"),
+          h("span", { class: "serif wine-text", dir: "rtl", style: { fontSize: "22px" } }, "جدّتي")),
+        subtext(L("A place for a familiar voice.")),
+        h("div", { class: "row gap-s", style: { marginTop: "8px" } }, icon("seal"),
+          h("span", { class: "small" }, L("Original and recreated. Always distinct."))))));
 }
 
 // ── one person ──────────────────────────────────────────────────────────
@@ -414,132 +488,155 @@ function personScreen({ personId }) {
   } });
 
   return h("div", { class: "screen" },
-    appBar(person.name, { onBack: pop }),
+    appBar(person.name, { onBack: pop, trailing:
+      h("button", { class: "iconbtn", onClick: () => push(setupScreen, { personId: person.id }),
+                    "aria-label": L("Setup") }, icon("gear")) }),
     h("div", { class: "scroll" },
       photoInput,
-      h("div", { class: "row", style: { gap: "16px", marginTop: "16px" } },
-        h("button", { style: { position: "relative", background: "none", padding: 0 }, onClick: () => photoInput.click(),
-          "aria-label": person.photoFilename ? L("Change photo") : L("Add photo") },
-          avatar(person, 88),
-          h("span", { style: { position: "absolute", insetInlineEnd: "-2px", bottom: "-2px", width: "22px", height: "22px", borderRadius: "50%", background: "var(--wine)", color: "var(--paper)", display: "grid", placeItems: "center", border: "2px solid var(--paper)", fontSize: "12px", fontWeight: "700" } },
-            person.photoFilename ? "✎" : "+")),
-        h("div", { class: "grow stack", style: { gap: "5px" } },
-          bidi(person.name, { class: "serif", style: { fontSize: "33px" } }),
-          person.relationship ? bidi(person.relationship, { class: "caption" }) : null,
-          voiceTag())),
 
-      person.photoFilename ? h("button", { class: "small", style: { marginTop: "10px", textAlign: "start" },
-        onClick: () => store.removePhoto(person) }, L("Remove photo")) : null,
+      // Centred, because this screen now has one thing to say and one thing to
+      // offer. Left-aligned was right when it was a header above a list of
+      // seven rows. It is not a header any more.
+      h("div", { class: "person-hero" },
+        h("button", { class: "person-hero__photo", onClick: () => photoInput.click(),
+          "aria-label": person.photoFilename ? L("Change photo") : L("Add photo") },
+          avatar(person, 104),
+          h("span", { class: "person-hero__edit" }, person.photoFilename ? "✎" : "+")),
+        bidi(person.name, { class: "serif person-hero__name" }),
+        person.relationship ? bidi(person.relationship, { class: "caption" }) : null,
+        voiceTag()),
 
       !Config.isConfigured ? h("div", { class: "mt-21" }, unavailableNote()) : null,
 
-      hasVoice ? intentList(person)
-        : placeholder ? h("div", { class: "mt-21" }, panel(h("div", { class: "stack gap-s" },
-            h("div", { class: "serif", style: { fontSize: "22px", fontWeight: "700" } }, L("Test voice only")),
-            h("p", { style: { margin: 0 } }, L("Created in offline test mode. This is not a usable voice.")),
-            h("button", { class: "btn-primary", onClick: () => openAddVoice(person.id) }, L("Create a real voice")))))
-        : pending ? h("div", { class: "mt-21" }, pendingPanel(person))
-        : h("div", { class: "mt-21" }, panel(h("div", { class: "stack gap-s" },
-            h("div", { class: "serif", style: { fontSize: "22px", fontWeight: "700" } }, L("No recreated voice yet")),
-            h("p", { style: { margin: 0 } }, L("Add an original recording to create a voice.") + " " + L("About a minute. One voice. A quiet room.")),
-            h("button", { class: "btn-primary", onClick: () => openAddVoice(person.id) }, L("Add their voice"))))),
+      primaryAction(person, { hasVoice, placeholder, pending }),
+
+      hasVoice ? personCards(person) : null));
+}
+
+/** One button, and which button depends entirely on where this person is.
+ *
+ *  The screen used to show all four voice states' worth of copy plus seven
+ *  things to do, and a first-time user had to read the lot to work out which
+ *  one applied to them. There is only ever one sensible next move here, so
+ *  that is the only one offered. */
+function primaryAction(person, { hasVoice, placeholder, pending }) {
+  const wrap = (button, note, extra) =>
+    h("div", { class: "primary-action" }, button,
+      note ? h("p", { class: "primary-action__note" }, note) : null, extra || null);
+
+  if (placeholder) {
+    return wrap(
+      h("button", { class: "btn-primary", onClick: () => openAddVoice(person.id) }, L("Create a real voice")),
+      L("Created in offline test mode. This is not a usable voice."));
+  }
+
+  if (pending) {
+    const note = h("div", {});
+    const btn = h("button", { class: "btn-primary", onClick: async () => {
+      btn.disabled = true; btn.textContent = L("Checking…"); clear(note);
+      try {
+        // There is no "is it ready" endpoint. The only honest test is to use
+        // the voice: if the service speaks, it is available.
+        await Voice.synthesize(L("Hello"), person.voiceId, Config.defaultModelId, person.tuning || TUNING.natural);
+        store.updatePerson({ ...person, voiceRequiresVerification: false });
+      } catch (e) {
+        btn.disabled = false; btn.textContent = L("Check if it is ready");
+        note.append(h("p", { class: "caption danger", style: { margin: 0 } },
+          e instanceof ConsentMissing ? Config.unavailableMessage
+            : (e?.message || L("The service has not made this voice available yet."))));
+      }
+    } }, L("Check if it is ready"));
+    return wrap(btn, L("The voice has been created, but the service has not made it available yet."), note);
+  }
+
+  if (!hasVoice) {
+    // Capturing someone who is still alive is the one other thing worth
+    // offering here, and it matters MOST before a voice exists — which is
+    // exactly when it used to be buried furthest down the screen.
+    return wrap(
+      h("button", { class: "btn-primary", onClick: () => openAddVoice(person.id) }, L("Add their voice")),
+      L("About a minute. One voice. A quiet room."),
+      h("button", { class: "primary-action__aside", onClick: () => push(captureScreen, { personId: person.id }) },
+        icon("mic"), h("span", {}, L("They are still here? Record them now"))));
+  }
+
+  return wrap(
+    h("button", { class: "btn-primary", onClick: () =>
+      push(createScreen, { personId: person.id, intent: "saySomething" }) }, L("Say something")),
+    L("Type the words. Hear them in their voice."));
+}
+
+/** Three cards, not seven rows. Each one is a place, and each says how much is
+ *  in it so nobody has to open an empty room to find out it is empty. */
+function personCards(person) {
+  const kept = store.keptClips(person.id).length;
+  const books = store.booksFor(person.id).length;
+  const due = store.dueLetters(person.id).length;
+  const sealed = store.sealedLetters(person.id).length;
+
+  const card = (ic, title, note, onClick, badge) =>
+    h("button", { class: "bigcard", onClick },
+      h("span", { class: "bigcard__icon" }, icon(ic),
+        badge ? h("span", { class: "bigcard__badge" }, String(badge)) : null),
+      h("span", { class: "bigcard__title" }, title),
+      h("span", { class: "bigcard__note" }, note));
+
+  return h("div", { class: "cardgrid" },
+    card("tray", L("Saved"), kept ? Counts.savedClips(kept) : L("Nothing saved yet"),
+      () => push(memoriesScreen, { personId: person.id })),
+    card("book", L("Books"), books ? Counts.books(books) : L("Bring them a text"),
+      () => push(booksScreen, { personId: person.id })),
+    card(due ? "unlock" : "lock", L("Letters"),
+      due ? L("Waiting for you") : sealed ? Counts.sealed(sealed) : L("For a day you choose"),
+      () => push(lettersScreen, { personId: person.id }), due || null));
+}
+
+/** Everything you do once: give them a voice, record them while you still can,
+ *  hand the archive to the family, remove them.
+ *
+ *  All of this used to sit inline on the person screen, which meant the rare
+ *  and the daily competed for the same attention every time you opened
+ *  someone. Behind a gear it is still one tap away and no longer in the way. */
+function setupScreen({ personId }) {
+  const person = store.person(personId);
+  if (!person) return h("div", { class: "screen" }, appBar(L("Setup"), { onBack: pop }),
+    h("div", { class: "scroll" }, emptyHint("personSlash", L("No people yet"),
+      L("A place for voices you want to keep."))));
+
+  const originals = store.assetsFor(person.id, "original");
+  const hasVoice = personHasVoice(person);
+
+  const row = (ic, title, note, onClick) =>
+    h("button", { class: "feature-row", onClick },
+      h("span", { class: "feature-row__icon" }, icon(ic)),
+      h("span", { class: "grow stack", style: { gap: "3px", textAlign: "start" } },
+        h("span", { class: "feature-row__title" }, title),
+        h("span", { class: "caption" }, note)),
+      icon("chevron", isAr() ? "flip" : null));
+
+  return h("div", { class: "screen" },
+    appBar(L("Setup"), { onBack: pop }),
+    h("div", { class: "scroll" },
+      h("div", { class: "mt-16" }, sectionLabel(L("Their voice"))),
+      row("waveform", hasVoice ? L("Replace their voice") : L("Add their voice"),
+        L("About a minute. One voice. A quiet room."), () => openAddVoice(person.id)),
+      h("div", { class: "divider" }),
+      row("mic", L("Recorded before it is needed"),
+        L("Ask for the recording while they are still here to give it"),
+        () => push(captureScreen, { personId: person.id })),
 
       h("div", { class: "quiet-divider" }),
-      h("div", { class: "row between" }, sectionLabel(L("Original recordings")),
-        h("button", { class: "wine-text", style: { fontSize: "13px", fontWeight: "500" }, onClick: () => openAddVoice(person.id) }, L("Add their voice"))),
+      sectionLabel(L("Original recordings")),
       originals.length
         ? originals.map(a => track(audioRow(a, asset => push(playerScreen, { assetId: asset.id }))))
         : h("div", { style: { marginTop: "10px" } }, subtext(L("No recordings yet"))),
 
-      h("button", { class: "list-link mt-22", onClick: () => push(memoriesScreen, { personId: person.id }) },
-        h("span", { class: "grow" }, L("Everything saved")),
-        h("span", { class: "small" }, kept.length ? Counts.savedClips(kept.length) : L("Nothing saved yet"))),
-
-      captureRow(person),
+      person.photoFilename
+        ? h("button", { class: "small", style: { marginTop: "18px", textAlign: "start", textDecoration: "underline", minHeight: "var(--touch)" },
+            onClick: () => store.removePhoto(person) }, L("Remove photo"))
+        : null,
 
       personFooter(person)));
-}
-
-function pendingPanel(person) {
-  const note = h("div", {});
-  const btn = h("button", { class: "btn-primary", onClick: async () => {
-    btn.disabled = true; btn.textContent = L("Checking…"); clear(note);
-    try {
-      // There is no "is it ready" endpoint. The only honest test is to use the
-      // voice: if the service speaks, it is available.
-      await Voice.synthesize(L("Hello"), person.voiceId, Config.defaultModelId, person.tuning || TUNING.natural);
-      store.updatePerson({ ...person, voiceRequiresVerification: false });
-    } catch (e) {
-      btn.disabled = false; btn.textContent = L("Check availability");
-      note.append(h("p", { class: "caption danger", style: { margin: 0 } },
-        e instanceof ConsentMissing ? Config.unavailableMessage
-          : (e?.message || L("The service has not made this voice available yet."))));
-    }
-  } }, L("Check availability"));
-
-  return panel(h("div", { class: "stack gap-s" },
-    h("div", { class: "serif", style: { fontSize: "22px", fontWeight: "700" } }, L("Voice is being prepared")),
-    h("p", { style: { margin: 0 } }, L("The voice has been created, but the service has not made it available yet.")),
-    btn, note,
-    h("p", { class: "small", style: { margin: 0 } }, L("Checking asks the service to say one short word."))));
-}
-
-/// Capturing someone who is still alive is a different act from everything the
-/// rest of this screen does, all of which is about someone who is not — and it
-/// is most useful BEFORE a voice exists, which is exactly when the experience
-/// list is hidden. So it renders on its own, either way.
-function captureRow(person) {
-  return h("div", { class: "mt-18" },
-    h("div", { class: "divider" }),
-    h("button", {
-      class: "feature-row",
-      onClick: () => push(captureScreen, { personId: person.id }),
-    },
-      h("span", { class: "feature-row__icon" }, icon("mic")),
-      h("span", { class: "grow stack", style: { gap: "3px", textAlign: "start" } },
-        h("span", { class: "feature-row__title" }, L("Recorded before it is needed")),
-        h("span", { class: "caption" }, L("Ask for the recording while they are still here to give it"))),
-      icon("chevron", isAr() ? "flip" : null)));
-}
-
-function intentList(person) {
-  const dueCount = store.dueLetters(person.id).length;
-
-  // The letters row sits with the experiences but is not one of them: it has a
-  // date, so it does not fit the compose screen's shape. A letter whose day has
-  // come says so here, because a sealed letter nobody is told about is a letter
-  // that never arrives.
-  const lettersRow = h("div", {},
-    h("div", { class: "divider" }),
-    h("button", {
-      class: "feature-row",
-      onClick: () => push(lettersScreen, { personId: person.id }),
-    },
-      h("span", { class: "feature-row__icon" }, icon(dueCount ? "unlock" : "lock")),
-      h("span", { class: "grow stack", style: { gap: "3px", textAlign: "start" } },
-        h("span", { class: "feature-row__title" }, L("Words that arrive later")),
-        h("span", { class: "caption" }, dueCount
-          ? L("Waiting for you")
-          : L("Sealed now, heard on a day you choose"))),
-      dueCount ? h("span", { class: "badge badge--orig" }, String(dueCount)) : null,
-      icon("chevron", isAr() ? "flip" : null)));
-
-
-  return h("div", { class: "stack mt-22" }, INTENTS.map((key, i) => {
-    const row = h("button", {
-      class: "feature-row" + (i === 0 ? " feature-row--hero" : ""),
-      onClick: () => key === "readBook"
-        ? push(booksScreen, { personId: person.id })
-        : push(createScreen, { personId: person.id, intent: key }),
-    },
-      h("span", { class: "feature-row__icon" }, icon(Intent.icon(key))),
-      h("span", { class: "grow stack", style: { gap: "3px", textAlign: "start" } },
-        h("span", { class: "feature-row__title" }, Intent.title(key)),
-        h("span", { class: "caption" }, Intent.subtitle(key))),
-      icon("chevron", isAr() ? "flip" : null));
-    return h("div", {}, row,
-      i > 0 && i < INTENTS.length - 1 ? h("div", { class: "divider" }) : null);
-  }), lettersRow);
 }
 
 function personFooter(person) {

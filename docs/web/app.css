@@ -550,3 +550,82 @@ details > summary::after {
 details[open] > summary::after { transform: rotate(90deg); }
 [dir="rtl"] details > summary::after { content: "‹"; }
 [dir="rtl"] details[open] > summary::after { transform: rotate(-90deg); }
+
+/* ── the person screen ────────────────────────────────────────────────── */
+/* One face, one action, three doors. What used to be seven feature rows and
+   four competing voice-state panels stacked down a single scroll. */
+
+.person-hero {
+  display: flex; flex-direction: column; align-items: center; gap: 7px;
+  text-align: center; padding: 22px 0 4px;
+}
+.person-hero__photo { position: relative; background: none; padding: 0; }
+.person-hero__edit {
+  position: absolute; inset-inline-end: 0; bottom: 2px;
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--wine); color: var(--paper);
+  display: grid; place-items: center;
+  border: 2px solid var(--paper); font-size: 13px; font-weight: 700;
+}
+.person-hero__name { font-size: 31px; line-height: 1.15; }
+/* The tag is left-aligned where it is used in a list row. In the hero it is
+   the only thing not on the centre line, which reads as a mistake. */
+.person-hero .voicetag { align-self: center; }
+
+.primary-action { margin-top: 20px; }
+.primary-action__note {
+  margin: 10px 2px 0; text-align: center;
+  font-size: 13px; line-height: 1.45; color: var(--ink-soft);
+}
+.primary-action__aside {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  width: 100%; min-height: var(--touch); margin-top: 6px;
+  color: var(--wine); font-size: 13px; font-weight: 500;
+}
+.primary-action__aside svg { width: 16px; height: 16px; }
+
+.cardgrid {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 9px; margin-top: 26px;
+}
+.bigcard {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 5px;
+  padding: 14px 11px 13px; text-align: start;
+  background: var(--card); border: 1px solid var(--hairline);
+  border-radius: var(--r-card); min-height: 112px;
+}
+.bigcard:active { background: var(--sunk); }
+.bigcard__icon { position: relative; display: block; color: var(--wine); margin-bottom: 2px; }
+.bigcard__icon svg { width: 21px; height: 21px; }
+.bigcard__badge {
+  position: absolute; inset-inline-start: 14px; top: -5px;
+  min-width: 17px; height: 17px; padding: 0 4px;
+  border-radius: 999px; background: var(--danger); color: var(--paper);
+  font-size: 10px; font-weight: 700; display: grid; place-items: center;
+}
+.bigcard__title { font-size: 14px; font-weight: 600; line-height: 1.2; }
+.bigcard__note { font-size: 11px; line-height: 1.35; color: var(--ink-soft); }
+
+/* A letter that has come due has to be visible from anywhere in the app. */
+.tabrail__icon { position: relative; display: block; }
+.tabrail__dot {
+  position: absolute; inset-inline-end: -4px; top: -1px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--danger); border: 1.5px solid var(--paper);
+}
+
+/* The other ways of asking. A compact switcher above the box, rather than six
+   full-width rows with a sentence each on the screen before this one. */
+.chiprow {
+  display: flex; gap: 7px; overflow-x: auto; scrollbar-width: none;
+  margin-inline: calc(-1 * var(--pad)); padding: 2px var(--pad);
+}
+.chiprow::-webkit-scrollbar { display: none; }
+.chip {
+  flex: none; min-height: var(--touch); padding: 0 14px; border-radius: 999px;
+  background: var(--sunk); color: var(--ink-soft);
+  font-size: 13px; font-weight: 500; white-space: nowrap;
+  border: 1px solid transparent;
+}
+.chip--on { background: var(--wine); color: var(--cream); font-weight: 600; }
+.chip:active:not(.chip--on) { border-color: var(--hairline); }
