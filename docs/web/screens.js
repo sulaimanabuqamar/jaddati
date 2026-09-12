@@ -6,6 +6,7 @@ import {
   store, Consent, ConsentMissing, Config, Voice, Companion,
   Intent, INTENTS, TUNING, sameTuning, presetName,
   AFFIRMATIONS, STORIES, makeBook, ImportError, isDemoVoice, blobURL, DEMO_PREFIX,
+  FamilyAnswer, Translator, NotInNotesError,
 } from "./core.js";
 import {
   h, clear, bidi, icon, appBar, headline, eyebrow, sectionLabel, subtext,
@@ -194,7 +195,15 @@ export function openAddVoice(personId) {
               Config.isDemo
                 ? L("In demo mode nothing is uploaded anywhere. The app speaks with this browser's own voice.")
                 : L("The recording is sent to") + " " + Config.providerName + ". " +
-                  L("It does not stay on this phone only, and deleting a person here does not delete it there."))),
+                  L("It does not stay on this phone only. Deleting this person removes it from there as well."))),
+
+          // Only on the relay: someone using their own key keeps their voices
+          // until they remove them, and telling them otherwise would be a lie
+          // about their own account.
+          Config.usesRelayVoice && !Config.isDemo
+            ? h("p", { class: "caption amber-text", style: { margin: 0 } },
+                L("Voices made here are removed automatically about every ten minutes, so that everyone seeing the demonstration gets a turn. The recording you add stays on this device."))
+            : null,
           h("div", { class: "stack", style: { gap: "3px" } },
             h("div", { class: "label" }, L("Voice service") + ": " + Config.providerName),
             h("p", { class: "caption", style: { margin: 0 } },
@@ -218,7 +227,12 @@ export function createScreen({ personId, intent }) {
   let tuning = { ...(person?.tuning || TUNING.natural) };
   let fast = false, generating = false;
 
-  const area = h("textarea", { class: "textarea", placeholder: L("Write the words here…"), rows: 4 });
+  const area = h("textarea", {
+    class: "textarea", rows: 4,
+    placeholder: intent === "askAboutThem" ? L("What do you want to ask?")
+      : intent === "bridgeLanguage" ? L("Write in either language…")
+      : L("Write the words here…"),
+  });
   const count = h("span", { class: "caption" }, Counts.characters(0, limit));
   const errorSlot = h("div", {});
   const reason = h("div", { class: "caption center" }, "");
@@ -244,6 +258,8 @@ export function createScreen({ personId, intent }) {
     if (t.length > limit) return L("Shorten the text to fit the limit.");
     if (intent === "comfort") return L("Choose a line, or write what feels right to you.");
     if (intent === "storyFiction") return L("Choose a story, or write your own.");
+    if (intent === "askAboutThem") return L("Ask a question about them.");
+    if (intent === "bridgeLanguage") return L("Write something to carry across.");
     return L("Type something for them to say.");
   }
 
@@ -254,7 +270,11 @@ export function createScreen({ personId, intent }) {
     area.dir = dirOf(area.value);
     area.style.textAlign = isArabicText(area.value) ? "right" : "left";
     submit.disabled = !canSpeak();
-    submit.textContent = generating ? L("Creating audio…") : L("Create audio");
+    submit.textContent = generating
+      ? (intent === "askAboutThem" ? L("Looking through the notes…")
+         : intent === "bridgeLanguage" ? L("Translating…") : L("Creating audio…"))
+      : (intent === "askAboutThem" ? L("Ask")
+         : intent === "bridgeLanguage" ? L("Say it across") : L("Create audio"));
     reason.textContent = disabledReason();
     const already = person && store.affirmations(person.id).some(n => trimmedOf(n.text) === t);
     saveLine.classList.toggle("hidden", !(intent === "comfort" && person && t && !already));
@@ -264,19 +284,61 @@ export function createScreen({ personId, intent }) {
 
   const quote = h("span", { style: { fontSize: "14px", fontWeight: "600" } }, "$0.01");
 
+  /**
+   * What actually gets spoken.
+   *
+   * For most experiences it is exactly what was typed. Two of them put a step
+   * in between: a question becomes an answer drawn from the family's notes, and
+   * a sentence becomes its translation. Both return the SPOKEN words, because
+   * that is what the clip has to be labelled with — storing the question and
+   * playing the answer would leave an archive whose captions do not match its
+   * audio.
+   */
+  async function resolve(typed, p) {
+    if (intent === "askAboutThem") {
+      return FamilyAnswer.answer(typed, store.memories(p.id));
+    }
+    if (intent === "bridgeLanguage") {
+      return Translator.translate(typed);
+    }
+    return typed;
+  }
+
   async function speak() {
     const p = store.person(personId);
     if (!p || !canSpeak()) return;
     generating = true; clear(errorSlot); sync();
-    const words = trimmedOf(area.value);
+    const typed = trimmedOf(area.value);
+    let words;
+    try {
+      words = await resolve(typed, p);
+    } catch (e) {
+      generating = false; sync();
+      // Not knowing is the designed outcome here, not a fault: it is what
+      // stops the app inventing a grandmother nobody had. So it reads as an
+      // answer rather than as an error with a retry button.
+      const gentle = e instanceof NotInNotesError;
+      errorSlot.append(errorNote(
+        e instanceof ConsentMissing ? Config.unavailableMessage
+          : (e?.message || L("Something went wrong. Try again.")),
+        gentle || e instanceof ConsentMissing ? null : () => { clear(errorSlot); speak(); }));
+      return;
+    }
+    if (!words) { generating = false; sync(); return; }
     try {
       const result = await Voice.synthesize(words, p.voiceId,
         fast ? Config.fastModelId : Config.defaultModelId, tuning);
       const asset = await keepAudio(result, {
         personId: p.id, source: "generated", text: words,
         modelId: fast ? Config.fastModelId : Config.defaultModelId,
+        // The words that were typed, kept beside the words that were spoken,
+        // so an answer or a translation can still be traced back to what was
+        // actually asked for months later.
         provenance: intent === "storyFiction"
-          ? L("These are invented stories, not memories or stories told by this person.") : null,
+          ? L("These are invented stories, not memories or stories told by this person.")
+          : intent === "askAboutThem" ? L("You asked:") + " " + typed
+          : intent === "bridgeLanguage" ? L("You wrote:") + " " + typed
+          : null,
         intent, content: Intent.defaultContent(intent), isSaved: false,
       });
       generating = false;

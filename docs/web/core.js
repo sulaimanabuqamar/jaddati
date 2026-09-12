@@ -5,7 +5,7 @@
 // is where those live — IndexedDB for the audio blobs, because a browser has no
 // application-support directory, and localStorage for the index.
 
-import { L, Counts, state as lang } from "./strings.js";
+import { L, Counts, isArabicText, state as lang } from "./strings.js";
 import { prefs } from "./prefs.js";
 
 export const uuid = () =>
@@ -18,49 +18,64 @@ export const uuid = () =>
 // ── the words ───────────────────────────────────────────────────────────
 // Ported from Models.swift. Raw values are persisted; never rename one.
 
-export const INTENTS = ["saySomething", "comfort", "storyFiction", "storyFromMemories", "readBook"];
+export const INTENTS = ["saySomething", "askAboutThem", "bridgeLanguage",
+                        "comfort", "storyFiction", "storyFromMemories", "readBook"];
 
 export const Intent = {
   title: k => L({
-    saySomething: "Say something", comfort: "Words of comfort",
+    saySomething: "Say something", askAboutThem: "Ask about them",
+    bridgeLanguage: "Say it in their language", comfort: "Words of comfort",
     storyFiction: "Tell me a story", storyFromMemories: "Words & memories",
     readBook: "Read me a book",
   }[k]),
   subtitle: k => L({
     saySomething: "Words you choose, in a recreated voice",
+    askAboutThem: "A question, answered only from what your family wrote down",
+    bridgeLanguage: "Your words, carried across the language they spoke",
     comfort: "A short, steadying line you choose",
     storyFiction: "An invented story for a quiet moment",
     storyFromMemories: "The words you have kept, in one place",
     readBook: "Your own text, a page at a time",
   }[k]),
   headline: k => L({
-    saySomething: "Words of\nyour choosing.", comfort: "A little\nsteadiness.",
+    saySomething: "Words of\nyour choosing.", askAboutThem: "What the family\nwrote down.",
+    bridgeLanguage: "Across the\nlanguage.", comfort: "A little\nsteadiness.",
     storyFiction: "A small story.\nA quiet moment.", storyFromMemories: "Words worth\nkeeping.",
     readBook: "A shelf of\nfamiliar pages.",
   }[k]),
   standfirst: k => L({
     saySomething: "Write something new to be spoken in a recreated voice.",
+    askAboutThem: "The answer is assembled only from the memories your family has written here. If the answer is not among them, it says so rather than inventing one.",
+    bridgeLanguage: "Write in either language. It is spoken in the other, in a recreated voice.",
     comfort: "Choose a line, or write what feels right to you.",
     storyFiction: "These are invented stories, not memories or stories told by this person.",
     storyFromMemories: "A place for your memories and the words you have chosen.",
     readBook: "Bring a text. Hear it in a recreated voice, one page at a time.",
   }[k]),
   characterLimit: k => ({
-    saySomething: 800, comfort: 400, storyFiction: 2500,
+    saySomething: 800, askAboutThem: 600, bridgeLanguage: 600, comfort: 400, storyFiction: 2500,
     storyFromMemories: 800, readBook: 1500,
   }[k]),
   icon: k => ({
-    saySomething: "pencil", comfort: "leaf", storyFiction: "moon",
+    saySomething: "pencil", askAboutThem: "question", bridgeLanguage: "globe",
+    comfort: "leaf", storyFiction: "moon",
     storyFromMemories: "tray", readBook: "book",
   }[k]),
   defaultContent: k => ({
-    saySomething: "wordsSuppliedByYou", comfort: "comfortLine",
+    saySomething: "wordsSuppliedByYou", askAboutThem: "answerFromNotes",
+    bridgeLanguage: "translatedWords", comfort: "comfortLine",
     storyFiction: "inventedStory", storyFromMemories: "keptWords",
     readBook: "importedText",
   }[k]),
   // Fiction must announce itself. Everything else is words a person typed.
+  // Each of these is a promise about where the words came from, and the two
+  // new ones are the most easily misread in the app: an answer built from
+  // family notes is not the person speaking, and a translation is not their
+  // phrasing. Both say so on the clip, for as long as the clip exists.
   provenanceNote: k => (k === "storyFiction" ? L("An invented story. Not a real memory.")
-    : k === "readBook" ? L("Read from a file you provided.") : null),
+    : k === "readBook" ? L("Read from a file you provided.")
+    : k === "askAboutThem" ? L("Assembled from your family's notes. Nothing here was invented.")
+    : k === "bridgeLanguage" ? L("A translation of your words, not their own phrasing.") : null),
 };
 
 export const ContentProvenance = {
@@ -68,10 +83,12 @@ export const ContentProvenance = {
     wordsSuppliedByYou: "Words supplied by you", comfortLine: "Comfort line",
     inventedStory: "Invented story", keptWords: "Saved words",
     importedText: "From an imported file", answerWhileReading: "Answer to a question",
+    answerFromNotes: "From your family's notes", translatedWords: "Translated words",
   }[k] || "Words supplied by you"),
   icon: k => ({
     wordsSuppliedByYou: "pencil", comfortLine: "leaf", inventedStory: "sparkles",
     keptWords: "tray", importedText: "doc", answerWhileReading: "question",
+    answerFromNotes: "question", translatedWords: "globe",
   }[k] || "pencil"),
 };
 
@@ -285,6 +302,14 @@ class Store extends EventTarget {
   affirmations(personId) {
     return this.notes.filter(n => n.personId === personId && n.kind === "affirmation")
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  }
+
+  /** What the family wrote down about this person, as distinct from the comfort
+   *  lines they collected. This is the entire source a grounded answer is
+   *  allowed to draw on, so it must never widen to other people's notes. */
+  memories(personId) {
+    return this.notes.filter(n => n.personId === personId && n.kind !== "affirmation")
+      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
   }
 
   /** A page already generated, found by id and index so it is replayed rather
@@ -818,6 +843,132 @@ export const Companion = {
     return cleaned;
   },
 };
+
+/**
+ * Shared plumbing for the two things that ask a model for words. Both send the
+ * same shape to the same endpoint; only the instructions differ, so the retry
+ * and error handling live here rather than being written twice and drifting.
+ */
+async function chat(system, user, { maxTokens = 200, temperature = 0.3 } = {}) {
+  if (!Consent.allowsNetwork) throw new ConsentMissing();
+  if (!Config.llmKey) throw new CompanionError(L("Questions are not set up on this build."));
+
+  const r = await fetch(`${Config.llmBaseURL}/chat/completions`, {
+    method: "POST",
+    headers: textHeaders({ "content-type": "application/json" }),
+    body: JSON.stringify({
+      model: Config.llmModel,
+      messages: [{ role: "system", content: system }, { role: "user", content: user }],
+      max_tokens: maxTokens, temperature,
+    }),
+  }).catch(() => { throw new CompanionError(L("No internet connection.")); });
+
+  if (r.status === 429) throw new CompanionError(L("The question service is busy right now. Wait a few seconds and ask again."));
+  if (!r.ok) throw new CompanionError(L("The question service reported a problem.") + ` (${r.status})`);
+  const j = await r.json().catch(() => null);
+  const content = j?.choices?.[0]?.message?.content;
+  if (!content) throw new CompanionError(L("The question service replied in a shape the app did not understand."));
+  const cleaned = tidyAnswer(content);
+  if (!cleaned) throw new CompanionError(L("No answer came back. Try asking it a different way."));
+  return cleaned;
+}
+
+/** The sentinel the grounded answer returns when the notes do not cover it. */
+const NOT_IN_NOTES = "NOT_IN_NOTES";
+
+export class NotInNotesError extends Error {
+  constructor() {
+    super(L("That is not in the memories your family has written down. Add it under Words & memories and ask again."));
+    this.name = "NotInNotesError";
+  }
+}
+
+/**
+ * An answer built ONLY from what the family wrote down.
+ *
+ * The model is still never told whose voice will read this out — the same rule
+ * the book companion follows, and for the same reason. What changes here is the
+ * source: instead of a page of a storybook, it is given the family's own notes
+ * and forbidden from going outside them. A model allowed to fill a gap will
+ * invent a grandmother's favourite dish and say it warmly, and the family will
+ * believe it, because it arrived in her voice.
+ *
+ * So the failure is made explicit rather than smoothed over: when the notes do
+ * not answer the question, it returns a sentinel and the app says it does not
+ * know. That refusal is the feature.
+ */
+export const FamilyAnswer = {
+  async answer(question, notes) {
+    const material = (notes || [])
+      .map(n => (n.text || "").trim())
+      .filter(Boolean);
+    if (!material.length) throw new NotInNotesError();
+
+    if (Config.isDemo) {
+      await pause(700);
+      const first = material[0];
+      return L("This is the demo answer. With a question service connected, a reply drawn only from your family's notes would be written here.")
+        + " " + L("Your notes say:") + " " + first.slice(0, 160);
+    }
+
+    const numbered = material.map((t, i) => `[${i + 1}] ${t}`).join("\n");
+    const system = [
+      "You are given a set of notes a family wrote down about someone who has died.",
+      "Answer the question using ONLY the information in those notes.",
+      "",
+      "Rules, all of them:",
+      `- If the notes do not contain the answer, reply with exactly ${NOT_IN_NOTES} and nothing else.`,
+      "- Never guess, never generalise from what is typical, never fill a gap.",
+      "- Do not speak as the person. Do not say 'I'. Do not claim to remember anything.",
+      "- One or two short sentences. It will be read out loud, so write words that sound natural spoken.",
+      "- Answer in the same language the question is written in.",
+      "- Plain words only: no markdown, no lists, no emoji, no quotation marks around the whole answer.",
+      "",
+      "The notes:",
+      numbered,
+    ].join("\n");
+
+    const answer = await chat(system, String(question || "").slice(0, 300),
+                              { maxTokens: 160, temperature: 0.2 });
+    if (answer.toUpperCase().includes(NOT_IN_NOTES)) throw new NotInNotesError();
+    return answer;
+  },
+};
+
+/**
+ * Carrying words across the language a family stopped sharing.
+ *
+ * Deliberately a translation and nothing more: it does not try to guess how she
+ * would have phrased it, because that would be invention wearing her voice. The
+ * clip says so — see Intent.provenanceNote for bridgeLanguage.
+ */
+export const Translator = {
+  /** "ar" or "en" — whichever the text is NOT. */
+  targetFor(text) { return isArabicText(text) ? "en" : "ar"; },
+
+  async translate(text, target) {
+    const source = (text || "").trim();
+    if (!source) return "";
+    const to = target || this.targetFor(source);
+
+    if (Config.isDemo) {
+      await pause(600);
+      return (to === "ar" ? "[" + L("Demo translation") + "] " : "[" + L("Demo translation") + "] ") + source;
+    }
+
+    const system = to === "ar"
+      ? ["Translate the text into Arabic.",
+         "Use everyday spoken Gulf wording, the way a grandmother in the Emirates would say it at home,",
+         "rather than formal newspaper Arabic.",
+         "Return only the translation. No transliteration, no explanation, no quotation marks."].join("\n")
+      : ["Translate the text into English.",
+         "Use plain, warm, spoken English — the way it would be said aloud to a child, not written formally.",
+         "Return only the translation. No explanation, no quotation marks."].join("\n");
+
+    return chat(system, source.slice(0, 900), { maxTokens: 400, temperature: 0.2 });
+  },
+};
+
 
 /** Demo mode answers from the page itself rather than inventing anything. It
  *  says plainly that it is not a real answer, because a canned line presented
