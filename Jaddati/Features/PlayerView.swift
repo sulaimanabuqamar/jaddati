@@ -28,67 +28,83 @@ struct PlayerView: View {
         VStack(spacing: 0) {
             AppBar(title: L("Playing"))
 
-            VStack(spacing: Theme.Space.l) {
-                Spacer(minLength: 0)
+            // A ScrollView, which this did not have.
+            //
+            // The content was a VStack between two Spacers, so it centred
+            // nicely when it fitted and OVERFLOWED UPWARD when it did not —
+            // taking the app bar off the top of the screen with it. On a clip
+            // with a long transcript, or at a larger text size, the only way
+            // out of this screen was to keep or discard the clip, which is
+            // not a choice anyone should be forced into to leave a page.
+            //
+            // minHeight keeps the centred composition when there is room, and
+            // lets it scroll when there is not.
+            GeometryReader { proxy in
+                ScrollView {
+                    VStack(spacing: Theme.Space.l) {
+                        Spacer(minLength: 0)
 
-                // Provenance first, words second. Which of the two things this
-                // is — a recording of them, or audio a machine made — has to be
-                // settled before anyone reads a single word of it.
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 6) { provenanceBadges }
-                    VStack(spacing: 6) { provenanceBadges }
-                }
+                        // Provenance first, words second. Which of the two things this
+                        // is — a recording of them, or audio a machine made — has to be
+                        // settled before anyone reads a single word of it.
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 6) { provenanceBadges }
+                            VStack(spacing: 6) { provenanceBadges }
+                        }
 
-                // A still archive mark. Nothing here moves with the sound.
-                PlayerArt()
+                        // A still archive mark. Nothing here moves with the sound.
+                        PlayerArt()
 
-                if !asset.text.isEmpty {
-                    Text(asset.text)
-                        .font(Theme.Font.display(27))
-                        .tracking(-0.35)
-                        .foregroundStyle(Theme.Palette.ink)
-                        .multilineTextAlignment(.center)
-                        .environment(\.layoutDirection,
-                                      TextDirection.isArabic(asset.text) ? .rightToLeft : .leftToRight)
-                        .lineSpacing(6 + Theme.textLineSpacing)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, Theme.Space.s)
-                }
+                        if !asset.text.isEmpty {
+                            Text(asset.text)
+                                .font(Theme.Font.display(27))
+                                .tracking(-0.35)
+                                .foregroundStyle(Theme.Palette.ink)
+                                .multilineTextAlignment(.center)
+                                .environment(\.layoutDirection,
+                                              TextDirection.isArabic(asset.text) ? .rightToLeft : .leftToRight)
+                                .lineSpacing(6 + Theme.textLineSpacing)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.horizontal, Theme.Space.s)
+                        }
 
-                // Read from the asset, not from whichever screen opened it, so a
-                // fiction label still shows when the clip is replayed months later.
-                if let note = asset.provenance, !note.isEmpty {
-                    Text(note)
-                        .font(Theme.Font.caption)
-                        .foregroundStyle(Theme.Palette.wineInk)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                        // Read from the asset, not from whichever screen opened it, so a
+                        // fiction label still shows when the clip is replayed months later.
+                        if let note = asset.provenance, !note.isEmpty {
+                            Text(note)
+                                .font(Theme.Font.caption)
+                                .foregroundStyle(Theme.Palette.wineInk)
+                                .multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
 
-                Spacer(minLength: 0)
+                        Spacer(minLength: 0)
 
-                // Grouped so the transport counts as one child: this stack
-                // was sitting on SwiftUI's ten-child ViewBuilder limit, where
-                // one more line fails with an unreadable inference error.
-                Group {
-                    if fileIsPresent {
-                        transport
-                    } else {
-                        ErrorNote(message: L("This audio file is not available. Playback is unavailable."))
+                        // Grouped so the transport counts as one child: this stack
+                        // was sitting on SwiftUI's ten-child ViewBuilder limit, where
+                        // one more line fails with an unreadable inference error.
+                        Group {
+                            if fileIsPresent {
+                                transport
+                            } else {
+                                ErrorNote(message: L("This audio file is not available. Playback is unavailable."))
+                            }
+
+                            if let problem = player.playbackError {
+                                ErrorNote(message: problem)
+                            }
+
+                            if asset.isGenerated {
+                                keepControls
+                            }
+                        }
+
+                        Spacer(minLength: Theme.Space.m)
                     }
-
-                    if let problem = player.playbackError {
-                        ErrorNote(message: problem)
-                    }
-
-                    if asset.isGenerated {
-                        keepControls
-                    }
+                    .padding(.horizontal, Theme.Metric.screenPadding)
+                    .frame(minHeight: proxy.size.height)
                 }
-
-                Spacer(minLength: Theme.Space.m)
             }
-            .padding(.horizontal, Theme.Metric.screenPadding)
         }
         .background(Theme.Palette.paper)
         .navigationBarHidden(true)

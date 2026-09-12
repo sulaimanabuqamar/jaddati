@@ -22,6 +22,16 @@ struct RootView: View {
                 set: { storedTab = $0.rawValue })
     }
 
+    /// Bumped when you tap the tab you are already on. Each tab's content
+    /// carries its token as identity, so a new value rebuilds that tab from
+    /// its root — which is what "go home" means.
+    ///
+    /// Identity rather than a NavigationPath binding on purpose: the screens
+    /// below People are reached with destination-based NavigationLinks, and
+    /// emptying a path does not reliably pop those. Rebuilding does, whichever
+    /// form the link took.
+    @State private var resetTokens: [RootTab: Int] = [:]
+
     private var selectedPersonId: Binding<UUID?> {
         Binding(get: { storedPerson.isEmpty ? nil : UUID(uuidString: storedPerson) },
                 set: { storedPerson = $0?.uuidString ?? "" })
@@ -36,19 +46,33 @@ struct RootView: View {
             // still remembers where you were when you come back to it. The
             // switch it replaced tore down the navigation stack every time.
             TabView(selection: tab) {
-                HomeView(selectedPersonId: selectedPersonId)
-                    .tag(RootTab.people)
+                // The token sits INSIDE a stable container, so changing it
+                // rebuilds the tab's content without disturbing the identity
+                // the TabView uses to track which tab is selected.
+                VStack(spacing: 0) {
+                    HomeView(selectedPersonId: selectedPersonId)
+                        .id(resetTokens[.people, default: 0])
+                }
+                .tag(RootTab.people)
 
-                NavigationStack { AllLettersView().swipeBackEnabled() }
-                    .tag(RootTab.letters)
+                VStack(spacing: 0) {
+                    NavigationStack { AllLettersView().swipeBackEnabled() }
+                        .id(resetTokens[.letters, default: 0])
+                }
+                .tag(RootTab.letters)
 
-                NavigationStack { YouView().swipeBackEnabled() }
-                    .tag(RootTab.you)
+                VStack(spacing: 0) {
+                    NavigationStack { YouView().swipeBackEnabled() }
+                        .id(resetTokens[.you, default: 0])
+                }
+                .tag(RootTab.you)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            TabRail(selection: tab)
+            TabRail(selection: tab) { tapped in
+                resetTokens[tapped, default: 0] += 1
+            }
         }
         // The ground, as a background rather than as a sibling in a ZStack. A
         // sibling that ignores the safe area can hand its expanded frame to the

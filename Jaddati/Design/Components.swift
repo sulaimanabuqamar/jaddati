@@ -115,6 +115,13 @@ struct GlobeButton: View {
 /// hiding which person they belong to.
 struct TabRail: View {
     @Binding var selection: RootTab
+
+    /// Tapping the tab you are already on goes back to that tab's root, the
+    /// way a tab bar behaves everywhere else. The web version has done this
+    /// since it was written; the phone did not, so a screen whose back button
+    /// had gone missing had no way out of it at all.
+    var onReselect: (RootTab) -> Void = { _ in }
+
     @EnvironmentObject private var library: Library
 
     /// A letter whose day has come has to be findable without remembering
@@ -126,7 +133,7 @@ struct TabRail: View {
             ForEach(RootTab.allCases, id: \.self) { tab in
                 let on = selection == tab
                 Button {
-                    selection = tab
+                    if selection == tab { onReselect(tab) } else { selection = tab }
                 } label: {
                     VStack(spacing: 4) {
                         Image(systemName: tab.icon)
