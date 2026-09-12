@@ -64,18 +64,27 @@ enum AppConfig {
     private static let stockVoiceURL = "https://api.elevenlabs.io"
     private static let stockTextURL = "https://api.groq.com/openai/v1"
 
+    /// Our own relay. It is a post office, not a recipient: naming it in the
+    /// disclosure would tell someone their recording goes to a workers.dev
+    /// address and stops there, which is the opposite of what that screen
+    /// exists to make plain. The data still reaches ElevenLabs and Groq, and
+    /// the consent gate has to say so.
+    static let relayURL = "https://jaddati-proxy.sulaimanabuqamar.workers.dev"
+    private static var usesRelayVoice: Bool { voiceBaseURL == relayURL }
+    private static var usesRelayText: Bool { llmBaseURL == relayURL }
+
     /// Named in the disclosure. Derived, because a build pointed at a relay is
     /// not talking to the company the screen would otherwise name.
     static var voiceProviderName: String {
         if isUsingMock { return "Offline test mode" }
-        return voiceBaseURL == stockVoiceURL
-            ? "ElevenLabs" : (URL(string: voiceBaseURL)?.host ?? voiceBaseURL)
+        if voiceBaseURL == stockVoiceURL || usesRelayVoice { return "ElevenLabs" }
+        return URL(string: voiceBaseURL)?.host ?? voiceBaseURL
     }
 
     static var textProviderName: String {
         if isUsingMock { return "Offline test mode" }
-        return llmBaseURL == stockTextURL
-            ? "Groq" : (URL(string: llmBaseURL)?.host ?? llmBaseURL)
+        if llmBaseURL == stockTextURL || usesRelayText { return "Groq" }
+        return URL(string: llmBaseURL)?.host ?? llmBaseURL
     }
 
     /// Key for the debug-only offline mode. Never consulted in a Release build.
