@@ -7,6 +7,9 @@ struct PersonView: View {
     let personId: UUID
 
     @EnvironmentObject private var library: Library
+    @State private var exported: URL?
+    @State private var preparingArchive = false
+    @State private var archiveNote: String?
     @State private var addingVoice = false
     #if DEBUG
     /// Not read anywhere. It exists so this screen re-renders when offline test
@@ -58,6 +61,7 @@ struct PersonView: View {
                         }
 
                         capture(person)
+                        handoff(person)
                         originals(person)
                         savedLink(person)
                         deleteRow(person)
@@ -357,6 +361,64 @@ struct PersonView: View {
     /// else on this screen, all of which is about someone who is not — and it
     /// is most useful BEFORE a voice exists, which is exactly when the
     /// experience list is hidden. So it renders on its own, either way.
+    /// The voice lives at the voice service, not on this phone, so handing
+    /// another family member the identifier lets them speak in it immediately —
+    /// without paying to clone her twice or taking a second voice slot for the
+    /// same person.
+    private func handoff(_ person: Person) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Theme.Palette.hairline.frame(height: 1).padding(.bottom, 16)
+            Text(L("One voice, the whole family"))
+                .font(Theme.Font.label)
+                .foregroundStyle(Theme.Palette.ink)
+            Text(L("Make a file another family member can open on their own phone. It carries this person, your notes, anything still sealed, and the recreated voice itself — so they can hear them straight away without making the voice a second time."))
+                .font(Theme.Font.caption)
+                .foregroundStyle(Theme.Palette.inkSoft)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(L("Clips already created are not included. They can be made again on the other phone."))
+                .font(Theme.Font.caption)
+                .foregroundStyle(Theme.Palette.inkSoft)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let exported {
+                ShareLink(item: exported) {
+                    Text(L("Give this to the family"))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(QuietButtonStyle())
+            } else {
+                Button(preparingArchive ? L("Preparing…") : L("Give this to the family")) {
+                    prepareArchive(for: person)
+                }
+                .buttonStyle(QuietButtonStyle())
+                .disabled(preparingArchive)
+            }
+
+            if let archiveNote {
+                Text(archiveNote)
+                    .font(Theme.Font.caption)
+                    .foregroundStyle(Theme.Palette.inkSoft)
+            }
+        }
+        .padding(.top, 18)
+    }
+
+    private func prepareArchive(for person: Person) {
+        preparingArchive = true
+        archiveNote = nil
+        do {
+            let result = try Archive.export(person: person, library: library)
+            exported = result.url
+            archiveNote = result.leftBehind > 0
+                ? L("Sent without some recordings — the file would have been too large.")
+                : result.carried > 0 ? L("Ready to send.")
+                : L("Ready to send. No original recordings were included.")
+        } catch {
+            archiveNote = error.localizedDescription
+        }
+        preparingArchive = false
+    }
+
     private func capture(_ person: Person) -> some View {
         VStack(spacing: 0) {
             Theme.Palette.hairline.frame(height: 1)

@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The front door. People come first — no feed, no counters that reward coming
 /// back, no engagement score. The counts that are here describe a collection.
@@ -7,6 +8,8 @@ struct HomeView: View {
 
     @EnvironmentObject private var library: Library
     @State private var addingPerson = false
+    @State private var importingArchive = false
+    @State private var importProblem: String?
     @State private var showingPrivacy = false
     @EnvironmentObject private var consent: Consent
     #if DEBUG
@@ -148,6 +151,45 @@ struct HomeView: View {
             }
 
             addButton.padding(.top, 4)
+            bringInButton.padding(.top, 4)
+            if let importProblem {
+                ErrorNote(message: importProblem).padding(.top, 8)
+            }
+        }
+    }
+
+    /// The other half of the handoff: a family member's archive, opened here.
+    private var bringInButton: some View {
+        Button { importingArchive = true } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "square.and.arrow.down")
+                Text(L("Bring someone from another phone"))
+            }
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(Theme.Palette.wine)
+            .frame(maxWidth: .infinity, minHeight: Theme.Metric.buttonHeight)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Metric.buttonRadius, style: .continuous)
+                    .stroke(Theme.Palette.hairline, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .fileImporter(isPresented: $importingArchive,
+                      allowedContentTypes: [.json],
+                      allowsMultipleSelection: false) { result in
+            importProblem = nil
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first else { return }
+                do {
+                    let brought = try Archive.importArchive(from: url, into: library)
+                    selectedPersonId = brought.person.id
+                } catch {
+                    importProblem = error.localizedDescription
+                }
+            case .failure(let error):
+                importProblem = error.localizedDescription
+            }
         }
     }
 
