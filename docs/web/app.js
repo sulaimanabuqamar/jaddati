@@ -19,7 +19,7 @@ import {
 import { nav, remember, setRenderer, render, push, pop, popTo, goTab } from "./nav.js";
 import {
   createScreen, booksScreen, readerScreen, memoriesScreen, playerScreen, openAddVoice,
-  personHasVoice,
+  personHasVoice, lettersScreen,
 } from "./screens.js";
 
 const root = document.getElementById("app");
@@ -474,6 +474,27 @@ function pendingPanel(person) {
 }
 
 function intentList(person) {
+  const dueCount = store.dueLetters(person.id).length;
+
+  // The letters row sits with the experiences but is not one of them: it has a
+  // date, so it does not fit the compose screen's shape. A letter whose day has
+  // come says so here, because a sealed letter nobody is told about is a letter
+  // that never arrives.
+  const lettersRow = h("div", {},
+    h("div", { class: "divider" }),
+    h("button", {
+      class: "feature-row",
+      onClick: () => push(lettersScreen, { personId: person.id }),
+    },
+      h("span", { class: "feature-row__icon" }, icon(dueCount ? "unlock" : "lock")),
+      h("span", { class: "grow stack", style: { gap: "3px", textAlign: "start" } },
+        h("span", { class: "feature-row__title" }, L("Words that arrive later")),
+        h("span", { class: "caption" }, dueCount
+          ? L("Waiting for you")
+          : L("Sealed now, heard on a day you choose"))),
+      dueCount ? h("span", { class: "badge badge--orig" }, String(dueCount)) : null,
+      icon("chevron", isAr() ? "flip" : null)));
+
   return h("div", { class: "stack mt-22" }, INTENTS.map((key, i) => {
     const row = h("button", {
       class: "feature-row" + (i === 0 ? " feature-row--hero" : ""),
@@ -488,7 +509,7 @@ function intentList(person) {
       icon("chevron", isAr() ? "flip" : null));
     return h("div", {}, row,
       i > 0 && i < INTENTS.length - 1 ? h("div", { class: "divider" }) : null);
-  }));
+  }), lettersRow);
 }
 
 function deleteRow(person) {

@@ -961,3 +961,160 @@ export function playerScreen({ assetId }) {
   if (present) setTimeout(() => player.play(asset), 60);
   return screen;
 }
+
+// ── words that arrive later ─────────────────────────────────────────────
+// A letter is words plus a date. The audio is made when the letter is opened
+// and never in advance: generating early would spend the allowance on
+// something nobody may ever hear, and would fix a voice that might still be
+// improved before the day arrives.
+//
+// There is no background delivery on either platform, and pretending otherwise
+// would be the dishonest version of this feature. What actually happens is that
+// the letter becomes openable on its day, and the app says so plainly.
+
+export function lettersScreen({ personId }) {
+  const person = store.person(personId);
+  const errorSlot = h("div", {});
+  let working = false;
+
+  const area = h("textarea", {
+    class: "textarea", rows: 4,
+    placeholder: L("Write what they should say when the day comes…"),
+  });
+
+  // Tomorrow, as the gentlest possible default: a letter dated today is not a
+  // letter, it is just words.
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const when = h("input", { type: "date", class: "textinput", value: tomorrow, min: tomorrow });
+  const occasion = h("input", { type: "text", class: "textinput", placeholder: L("A birthday, a graduation, a wedding…") });
+
+  const count = h("span", { class: "caption" }, Counts.characters(0, 800));
+  const seal = h("button", { class: "btn-primary", disabled: true }, L("Seal it"));
+
+  function sync() {
+    const t = trimmedOf(area.value);
+    count.textContent = Counts.characters(t.length, 800);
+    count.className = "caption" + (t.length > 800 ? " danger" : "");
+    area.dir = dirOf(area.value);
+    area.style.textAlign = isArabicText(area.value) ? "right" : "left";
+    seal.disabled = !(t && t.length <= 800 && when.value && !working);
+  }
+  area.addEventListener("input", sync);
+  when.addEventListener("change", sync);
+
+  seal.addEventListener("click", () => {
+    const t = trimmedOf(area.value);
+    if (!t || !when.value) return;
+    // Noon, not midnight: a letter dated for a birthday should arrive during
+    // that day rather than in the small hours of it.
+    store.addLetter({
+      personId, text: t, occasion: trimmedOf(occasion.value),
+      deliverAt: new Date(when.value + "T12:00:00").toISOString(),
+    });
+    area.value = ""; occasion.value = "";
+    toast(L("Sealed. It will be here on the day."));
+    render();
+  });
+
+  async function open(letter) {
+    const p = store.person(personId);
+    if (!p || working) return;
+    working = true; clear(errorSlot); render();
+    try {
+      const result = await Voice.synthesize(letter.text, p.voiceId,
+        Config.defaultModelId, p.tuning || TUNING.natural);
+      const asset = await keepAudio(result, {
+        personId: p.id, source: "generated", text: letter.text,
+        modelId: Config.defaultModelId,
+        provenance: L("Sealed on") + " " + new Date(letter.createdAt)
+          .toLocaleDateString(isAr() ? "ar" : "en", { dateStyle: "medium" }),
+        intent: "saySomething", content: "wordsSuppliedByYou", isSaved: true,
+      });
+      working = false;
+      if (asset) {
+        store.updateLetter({ ...letter, openedAt: new Date().toISOString(), assetId: asset.id });
+        push(playerScreen, { assetId: asset.id });
+      } else {
+        render();
+        errorSlot.append(errorNote(L("The audio arrived but could not be saved to this phone.")));
+      }
+    } catch (e) {
+      working = false; render();
+      const consent = e instanceof ConsentMissing;
+      errorSlot.append(errorNote(consent ? Config.unavailableMessage
+        : (e?.message || L("Something went wrong. Try again.")),
+        consent ? null : () => { clear(errorSlot); open(letter); }));
+    }
+  }
+
+  const dateLine = iso => new Date(iso).toLocaleDateString(isAr() ? "ar" : "en",
+    { year: "numeric", month: "long", day: "numeric" });
+
+  const due = store.dueLetters(personId);
+  const sealed = store.sealedLetters(personId);
+  const opened = store.lettersFor(personId).filter(l => l.openedAt);
+
+  const dueCard = letter => panel(h("div", { class: "stack gap-s" },
+    h("div", { class: "row between" },
+      h("div", { class: "label" }, letter.occasion || L("A letter for today")),
+      h("span", { class: "caption sage-text" }, L("Ready"))),
+    h("p", { class: "caption", style: { margin: 0 } }, L("Sealed on") + " " + dateLine(letter.createdAt)),
+    h("button", {
+      class: "btn-primary",
+      disabled: working || !personHasVoice(person) || !Config.isConfigured,
+      onClick: () => open(letter),
+    }, working ? L("Opening…") : L("Open it"))));
+
+  // A sealed letter shows its date and its occasion, never its words. Being
+  // able to read it early is the same as not having sealed it.
+  const sealedCard = letter => panelS(h("div", { class: "stack", style: { gap: "4px" } },
+    h("div", { class: "row between" },
+      h("div", { class: "label" }, letter.occasion || L("Sealed words")),
+      h("span", { class: "caption" }, dateLine(letter.deliverAt))),
+    h("p", { class: "caption", style: { margin: 0 } },
+      Counts.characters(letter.text.length, 800) + " · " + L("Sealed until the day")),
+    h("button", {
+      class: "wine-text", style: { fontSize: "13px", fontWeight: "600", textAlign: "start", minHeight: "var(--touch)" },
+      onClick: () => confirmDialog({
+        title: L("Remove this letter?"),
+        message: L("The words are deleted from this phone. This cannot be undone."),
+        confirm: L("Remove"),
+        onConfirm: () => { store.removeLetter(letter.id); render(); },
+      }),
+    }, L("Remove"))));
+
+  return h("div", { class: "screen" },
+    appBar(L("Words that arrive later"), { onBack: pop }),
+    h("div", { class: "scroll" }, h("div", { class: "stack gap-m" },
+      person ? breadcrumb(person) : null,
+      headline(L("Sealed now.\nHeard later."), 30),
+      subtext(L("Write something now and choose the day it can be heard. Nothing is created until you open it, and until then the words stay sealed on this phone.")),
+
+      errorSlot,
+      !Config.isConfigured ? errorNote(Config.unavailableMessage) : null,
+
+      due.length ? h("div", { class: "stack gap-s" },
+        sectionLabel(L("Waiting for you")), due.map(dueCard)) : null,
+
+      panel(h("div", { class: "stack gap-s" },
+        sectionLabel(L("Seal something new")),
+        h("label", { class: "field" },
+          h("div", { class: "field__title" }, L("The occasion")), occasion),
+        h("label", { class: "field" },
+          h("div", { class: "field__title" }, L("The day it can be heard")), when),
+        area,
+        h("div", { class: "row between" }, count, h("span", {})),
+        seal)),
+
+      sealed.length ? h("div", { class: "stack gap-s" },
+        sectionLabel(L("Sealed")), sealed.map(sealedCard)) : null,
+
+      opened.length ? h("div", { class: "stack gap-s" },
+        sectionLabel(L("Already opened")),
+        opened.map(l => h("div", { class: "caption" },
+          (l.occasion || L("Sealed words")) + " · " + dateLine(l.deliverAt)))) : null,
+
+      !due.length && !sealed.length && !opened.length
+        ? emptyHint("lock", L("Nothing sealed yet"), L("Write something for a day that has not come.")) : null,
+    )));
+}

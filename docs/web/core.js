@@ -187,7 +187,7 @@ const INDEX_KEY = "jaddati.library";
 class Store extends EventTarget {
   constructor() {
     super();
-    this.people = []; this.assets = []; this.notes = []; this.books = [];
+    this.people = []; this.assets = []; this.notes = []; this.books = []; this.letters = [];
     this.storageError = null;
     this.loadFailed = false;
     /** Filenames known to exist, so a list does not hit IndexedDB per row. */
@@ -209,6 +209,9 @@ class Store extends EventTarget {
       this.assets = index.assets || [];
       this.notes = index.notes || [];
       this.books = index.books || [];
+      // Absent in every library written before sealed letters existed, which
+      // must still load rather than being quarantined as corrupt.
+      this.letters = index.letters || [];
     } catch {
       // Same rule as the app: a corrupt index must not be overwritten by the
       // next save. Move it aside under its own name first, so nothing is lost
@@ -224,6 +227,7 @@ class Store extends EventTarget {
     try {
       prefs.set(INDEX_KEY, JSON.stringify({
         people: this.people, assets: this.assets, notes: this.notes, books: this.books,
+        letters: this.letters,
       }));
       this.storageError = null;
       this.changed();
@@ -346,6 +350,54 @@ class Store extends EventTarget {
     this.save();
   }
   removeNote(id) { this.notes = this.notes.filter(n => n.id !== id); this.save(); }
+
+  // ── words that arrive later ───────────────────────────────────────────
+  // A letter holds only the words and the date. The audio is made when it is
+  // opened, never in advance: generating early would spend the allowance on
+  // something nobody may ever hear, and would freeze a voice that might still
+  // be improved before the day comes.
+
+  addLetter(l) {
+    const letter = {
+      id: uuid(), createdAt: new Date().toISOString(), openedAt: null, assetId: null, ...l,
+    };
+    this.letters.push(letter);
+    this.save();
+    return letter;
+  }
+
+  updateLetter(l) {
+    const i = this.letters.findIndex(x => x.id === l.id);
+    if (i < 0) return;
+    this.letters[i] = l; this.save();
+  }
+
+  removeLetter(id) { this.letters = this.letters.filter(l => l.id !== id); this.save(); }
+
+  lettersFor(personId) {
+    return this.letters.filter(l => l.personId === personId)
+      .sort((a, b) => new Date(a.deliverAt) - new Date(b.deliverAt));
+  }
+
+  /** Sealed, and the day has come. Unopened only — an opened letter is a clip. */
+  dueLetters(personId) {
+    const now = Date.now();
+    return this.lettersFor(personId)
+      .filter(l => !l.openedAt && new Date(l.deliverAt).getTime() <= now);
+  }
+
+  /** Sealed, still waiting. */
+  sealedLetters(personId) {
+    const now = Date.now();
+    return this.lettersFor(personId)
+      .filter(l => !l.openedAt && new Date(l.deliverAt).getTime() > now);
+  }
+
+  /** Across everyone, for the badge on the home screen. */
+  dueLetterCount() {
+    const now = Date.now();
+    return this.letters.filter(l => !l.openedAt && new Date(l.deliverAt).getTime() <= now).length;
+  }
 
   addBook(b) {
     const book = { id: uuid(), addedAt: new Date().toISOString(), currentPage: 0, ...b };
