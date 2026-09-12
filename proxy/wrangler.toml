@@ -9,9 +9,10 @@ crons = ["0 3 * * *"]
 
 [vars]
 # How many characters of speech one device may spend in a calendar month.
-# One page of a book is roughly 900, so 500 is about half a page — enough to
-# hear the voice properly, not enough to drain the account.
-CREDITS_PER_DEVICE = "500"
+# One page of a book is roughly 900, so 1000 is about a page — enough for
+# someone handed the phone to type a few real sentences and hear them back,
+# without one visitor draining the account.
+CREDITS_PER_DEVICE = "1000"
 
 # Ceiling on shared voices alive at once, ACROSS everyone. Set this BELOW the
 # number of slots the plan actually has, so the demo always has room.
