@@ -329,7 +329,7 @@ struct CreateView: View {
                 }
             }
         }
-        .tint(Theme.Palette.forest)
+        .tint(Theme.Palette.wineInk)
     }
 
     private func tuningPreset(_ name: String, _ value: VoiceTuning) -> some View {
@@ -339,7 +339,7 @@ struct CreateView: View {
         } label: {
             Text(name)
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(draftTuning == value ? Theme.Palette.ivory : Theme.Palette.forest)
+                .foregroundStyle(draftTuning == value ? Theme.Palette.ivory : Theme.Palette.wineInk)
                 .frame(maxWidth: .infinity, minHeight: 34)
                 .background(
                     RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
@@ -549,7 +549,7 @@ struct CreateView: View {
                                     Spacer(minLength: 0)
                                     Text(L("Load in English"))
                                         .font(.system(size: 11, weight: .semibold))
-                                        .foregroundStyle(Theme.Palette.forest)
+                                        .foregroundStyle(Theme.Palette.wineInk)
                                 }
                                 Text(story.text)
                                     .font(Theme.Font.caption)

@@ -3,14 +3,15 @@
    this has to be the same app, not one that resembles it. */
 
 :root {
-  color-scheme: light;
+  color-scheme: light dark;
 
   --paper:      #F9F5EF;
   --ink:        #302725;
   --ink-soft:   #766861;
   --hairline:   #E4DCD3;
 
-  --wine:       #592C43;
+  --wine:       #592C43;   /* fill: buttons, the hero card */
+  --wine-ink:   #592C43;   /* the same colour as TEXT and icons */
   --wine-deep:  #3E2031;
   --wine-light: #F0E5EB;
 
@@ -53,6 +54,23 @@
   --r-card: 20px;
   --r-control: 15px;
 
+  /* Colours that used to be written inline and so could not follow the
+     appearance. Light values here are byte-identical to what they replaced. */
+  --avatar-ink:    rgba(48,39,37,.75);
+  --art-fill:      #E9DDCE;
+  --art-edge:      #D8C5B1;
+  --art-line:      rgba(89,44,67,.22);
+  --art-dot:       rgba(89,44,67,.55);
+  --art-glow:      rgba(89,44,67,.25);
+  --disabled-fill: rgba(118,104,97,.35);
+  --disabled-sunk: rgba(241,235,227,.5);
+  --disabled-ink:  rgba(118,104,97,.45);
+  --danger-wash:   rgba(150,62,59,.08);
+  --scrim:         rgba(48,39,37,.35);
+  --gutter:        #EFE7DC;
+  --lift:          rgba(73,59,40,.10);
+  --book-shadow:   rgba(73,59,40,.13);
+
   --serif: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
   --sys: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --leading: 2px;
@@ -77,7 +95,7 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
    Everything below this line is a deliberate override of it. */
 svg { width: 19px; height: 19px; flex: none; display: block; }
 input, textarea { font: inherit; color: inherit; }
-a { color: var(--wine); }
+a { color: var(--wine-ink); }
 
 /* The app is a phone-shaped column, centred on anything wider. */
 #app {
@@ -87,8 +105,8 @@ a { color: var(--wine); }
   min-height: 0;
 }
 @media (min-width: 560px) {
-  body { background: #EFE7DC; }
-  #app { box-shadow: 0 0 0 1px var(--hairline), 0 18px 50px rgba(73,59,40,.10); }
+  body { background: var(--gutter); }
+  #app { box-shadow: 0 0 0 1px var(--hairline), 0 18px 50px var(--lift); }
 }
 
 /* ── chrome ───────────────────────────────────────────────────────────── */
@@ -134,7 +152,7 @@ a { color: var(--wine); }
   color: var(--ink-soft); font-size: 10px; padding: 4px 0;
 }
 .tabrail button svg { width: 19px; height: 19px; }
-.tabrail button[aria-selected="true"] { color: var(--wine); font-weight: 600; }
+.tabrail button[aria-selected="true"] { color: var(--wine-ink); font-weight: 600; }
 
 /* ── type ─────────────────────────────────────────────────────────────── */
 
@@ -169,7 +187,7 @@ a { color: var(--wine); }
 .serif { font-family: var(--serif); }
 .danger { color: var(--danger); }
 .amber-text { color: var(--amber); }
-.wine-text { color: var(--wine); }
+.wine-text { color: var(--wine-ink); }
 .sage-text { color: var(--sage); }
 
 /* ── surfaces ─────────────────────────────────────────────────────────── */
@@ -206,21 +224,21 @@ a { color: var(--wine); }
   transition: background .12s ease, transform .12s ease;
 }
 .btn-primary:active:not(:disabled) { background: var(--wine-deep); transform: scale(.985); }
-.btn-primary:disabled { background: rgba(118,104,97,.35); cursor: default; }
+.btn-primary:disabled { background: var(--disabled-fill); cursor: default; }
 
 .btn-quiet {
   display: flex; align-items: center; justify-content: center;
   width: 100%; min-height: 48px;
   border-radius: var(--r-control); background: var(--sunk);
-  color: var(--wine); font-size: 15px; font-weight: 500;
+  color: var(--wine-ink); font-size: 15px; font-weight: 500;
 }
 .btn-quiet:active:not(:disabled) { opacity: .75; }
-.btn-quiet:disabled { color: rgba(118,104,97,.45); background: rgba(241,235,227,.5); cursor: default; }
+.btn-quiet:disabled { color: var(--disabled-ink); background: var(--disabled-sunk); cursor: default; }
 
 .btn-danger {
   display: flex; align-items: center; justify-content: center;
   width: 100%; min-height: 48px; border-radius: var(--r-control);
-  background: rgba(150,62,59,.08); color: var(--danger);
+  background: var(--danger-wash); color: var(--danger);
   font-size: 15px; font-weight: 500;
 }
 
@@ -228,12 +246,12 @@ a { color: var(--wine); }
   display: flex; align-items: center; justify-content: center; gap: 8px;
   width: 100%; min-height: var(--h-button);
   border: 1px solid var(--hairline); border-radius: var(--r-button);
-  color: var(--wine); font-size: 14px; font-weight: 600;
+  color: var(--wine-ink); font-size: 14px; font-weight: 600;
 }
 
 .chip {
   padding-inline: 14px; min-height: 40px; border-radius: 999px;
-  background: var(--sunk); color: var(--wine);
+  background: var(--sunk); color: var(--wine-ink);
   font-size: 13px; font-weight: 500; display: inline-flex; align-items: center;
   white-space: nowrap;
 }
@@ -295,7 +313,7 @@ a { color: var(--wine); }
 
 .avatar {
   flex: none; display: grid; place-items: center;
-  background: var(--arch-warm); color: rgba(48,39,37,.75);
+  background: var(--arch-warm); color: var(--avatar-ink);
   font-family: var(--serif); font-weight: 700;
   background-size: cover; background-position: center;
 }
@@ -311,7 +329,7 @@ a { color: var(--wine); }
 }
 :root[dir="rtl"] .badge { letter-spacing: 0; }
 .badge svg { width: 11px; height: 11px; flex: none; }
-.badge--gen { color: var(--wine); background: var(--wine-light); }
+.badge--gen { color: var(--wine-ink); background: var(--wine-light); }
 .badge--orig { color: var(--sage); background: var(--sage-light); }
 .badge--content {
   color: var(--ink-soft); background: var(--sunk);
@@ -346,7 +364,7 @@ a { color: var(--wine); }
 }
 .feature-row__icon {
   width: 44px; height: 44px; flex: none; border-radius: 50%;
-  background: var(--sunk); color: var(--wine);
+  background: var(--sunk); color: var(--wine-ink);
   display: grid; place-items: center;
 }
 .feature-row__icon svg { width: 19px; height: 19px; }
@@ -365,7 +383,7 @@ a { color: var(--wine); }
 .audio-row__play {
   width: 36px; height: 36px; flex: none; border-radius: 50%;
   background: var(--sunk); border: 1px solid var(--hairline);
-  display: grid; place-items: center; color: var(--wine);
+  display: grid; place-items: center; color: var(--wine-ink);
 }
 .audio-row__play svg { width: 13px; height: 13px; }
 .audio-row__body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
@@ -379,7 +397,7 @@ a { color: var(--wine); }
   display: flex; align-items: center; gap: var(--s); width: 100%;
   padding: 0 16px; min-height: var(--h-button); text-align: start;
   background: var(--card-2); border: 1px solid var(--hairline);
-  border-radius: var(--r-button); color: var(--wine);
+  border-radius: var(--r-button); color: var(--wine-ink);
   font-size: 14px; font-weight: 600;
 }
 
@@ -397,7 +415,7 @@ a { color: var(--wine); }
   padding: 11px 10px 11px 15px;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 6px; text-align: center; position: relative; overflow: hidden;
-  box-shadow: 3px 4px 3px rgba(73,59,40,.13);
+  box-shadow: 3px 4px 3px var(--book-shadow);
 }
 .book-cover--rust { background: var(--cover-rust); }
 .book-cover::before {
@@ -423,15 +441,15 @@ a { color: var(--wine); }
 
 .player-art {
   width: 116px; height: 139px; flex: none; position: relative;
-  background: #E9DDCE; border: 1px solid #D8C5B1;
+  background: var(--art-fill); border: 1px solid var(--art-edge);
   border-radius: 50% 50% 21% 21% / 41.7% 41.7% 18% 18%;
   display: grid; place-items: center;
 }
 .player-art i {
-  position: absolute; border: 1px solid rgba(89,44,67,.22);
+  position: absolute; border: 1px solid var(--art-line);
   border-radius: 50% 50% 21% 21% / 41.7% 41.7% 18% 18%;
 }
-.player-art b { width: 7px; height: 7px; border-radius: 50%; background: rgba(89,44,67,.55); }
+.player-art b { width: 7px; height: 7px; border-radius: 50%; background: var(--art-dot); }
 
 .track { width: 100%; height: 20px; position: relative; display: grid; align-items: center;
   cursor: pointer; touch-action: none; }
@@ -447,12 +465,12 @@ a { color: var(--wine); }
 .bigplay {
   width: 76px; height: 76px; border-radius: 50%; background: var(--wine);
   color: var(--paper); display: grid; place-items: center;
-  box-shadow: 0 4px 6px rgba(89,44,67,.25); transition: box-shadow .35s ease;
+  box-shadow: 0 4px 6px var(--art-glow); transition: box-shadow .35s ease;
 }
-.bigplay--on { box-shadow: 0 4px 18px rgba(89,44,67,.25); }
+.bigplay--on { box-shadow: 0 4px 18px var(--art-glow); }
 .bigplay svg { width: 28px; height: 28px; }
 .skip { width: var(--touch); height: var(--touch); display: grid; place-items: center;
-  color: var(--wine); }
+  color: var(--wine-ink); }
 .skip:disabled { opacity: .35; }
 .skip svg { width: 24px; height: 24px; }
 
@@ -461,7 +479,7 @@ a { color: var(--wine); }
 .errornote {
   display: flex; gap: var(--s); align-items: flex-start;
   padding: var(--s); border-radius: var(--r-control);
-  background: rgba(150,62,59,.08);
+  background: var(--danger-wash);
 }
 .errornote svg { width: 15px; height: 15px; flex: none; color: var(--danger); margin-top: 2px; }
 .errornote__body { flex: 1; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
@@ -490,7 +508,7 @@ a { color: var(--wine); }
 
 /* Modal sheets — Add person, Add voice, Privacy. */
 .sheet-scrim {
-  position: fixed; inset: 0; background: rgba(48,39,37,.35);
+  position: fixed; inset: 0; background: var(--scrim);
   display: flex; align-items: flex-end; justify-content: center; z-index: 40;
 }
 .sheet {
@@ -504,7 +522,7 @@ a { color: var(--wine); }
 
 /* Confirmation dialogs. */
 .dialog-scrim {
-  position: fixed; inset: 0; background: rgba(48,39,37,.35); z-index: 50;
+  position: fixed; inset: 0; background: var(--scrim); z-index: 50;
   display: flex; align-items: center; justify-content: center; padding: var(--m);
 }
 .dialog {
@@ -541,7 +559,7 @@ a { color: var(--wine); }
 /* The panel that hides the key fields. The rehearsal toggle uses the app's own
    .switch, defined far above — naming a second thing .switch down here quietly
    overrode the first and flattened every toggle in the app. */
-details > summary { list-style: none; color: var(--wine); font-weight: 600; }
+details > summary { list-style: none; color: var(--wine-ink); font-weight: 600; }
 details > summary::-webkit-details-marker { display: none; }
 details > summary::after {
   content: "›"; margin-inline-start: 6px; font-size: 18px; line-height: 1;
@@ -580,7 +598,7 @@ details[open] > summary::after { transform: rotate(90deg); }
 .primary-action__aside {
   display: flex; align-items: center; justify-content: center; gap: 7px;
   width: 100%; min-height: var(--touch); margin-top: 6px;
-  color: var(--wine); font-size: 13px; font-weight: 500;
+  color: var(--wine-ink); font-size: 13px; font-weight: 500;
 }
 .primary-action__aside svg { width: 16px; height: 16px; }
 
@@ -595,7 +613,7 @@ details[open] > summary::after { transform: rotate(90deg); }
   border-radius: var(--r-card); min-height: 112px;
 }
 .bigcard:active { background: var(--sunk); }
-.bigcard__icon { position: relative; display: block; color: var(--wine); margin-bottom: 2px; }
+.bigcard__icon { position: relative; display: block; color: var(--wine-ink); margin-bottom: 2px; }
 .bigcard__icon svg { width: 21px; height: 21px; }
 .bigcard__badge {
   position: absolute; inset-inline-start: 14px; top: -5px;
@@ -629,3 +647,70 @@ details[open] > summary::after { transform: rotate(90deg); }
 }
 .chip--on { background: var(--wine); color: var(--cream); font-weight: 600; }
 .chip:active:not(.chip--on) { border-color: var(--hairline); }
+
+/* ── dark ─────────────────────────────────────────────────────────────── */
+/* The app forced light before this. On a phone set to dark that reads as a
+   web page in a wrapper rather than an app.
+
+   Not a generic dark theme: the ground stays WARM, because the whole design
+   is paper and wine and a cold neutral grey would throw that away. Three of
+   the accents are lifted, because #592C43 wine, #775829 amber and #426858
+   sage were chosen to sit on near-white and are close to illegible on a dark
+   ground — same hue, enough lightness to read. */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper:      #14100E;
+    --ink:        #F2EAE1;
+    --ink-soft:   #A89B92;
+    --hairline:   #332A25;
+
+    --wine:       #7A3D5B;
+    /* Lifted until it clears 4.5:1 on the dark ground — measured,
+       not picked by eye. The fill above cannot double as this. */
+    --wine-ink:   #C67A99;
+    --wine-deep:  #5E2E46;
+    --wine-light: #2E1C26;
+
+    --sage:       #6E9C87;
+    --sage-light: #1C2620;
+
+    --amber:      #C4954E;
+    --amber-light:#2A2113;
+    --danger:     #D9736F;
+
+    --card:       #1E1815;
+    --bar:        #14100E;
+    --sunk:       #241D19;
+
+    --arch-warm:  #3A302A;
+    --arch-sage:  #2A322C;
+
+    --chevron:    #6B5E55;
+    --card-2:     #231C18;
+
+    /* The initial sits ON the arch, which is now dark — the old ink-on-warm
+       would have been dark on dark. */
+    --avatar-ink:    rgba(242,234,225,.82);
+    --art-fill:      #2A221D;
+    --art-edge:      #3D332C;
+    --art-line:      rgba(219,158,188,.28);
+    --art-dot:       rgba(219,158,188,.62);
+    --art-glow:      rgba(0,0,0,.45);
+    --disabled-fill: rgba(255,255,255,.10);
+    /* Was a near-white wash. On a dark ground a disabled button was the
+       brightest thing on the screen. */
+    --disabled-sunk: rgba(255,255,255,.05);
+    --disabled-ink:  rgba(242,234,225,.32);
+    --danger-wash:   rgba(217,115,111,.14);
+    /* A 35% scrim over dark barely separates the sheet from the page. */
+    --scrim:         rgba(0,0,0,.6);
+    --gutter:        #0B0908;
+    --lift:          rgba(0,0,0,.55);
+    --book-shadow:   rgba(0,0,0,.4);
+  }
+
+  /* The rule inside the wine hero card is a light wash over a mid tone; on
+     the darker wine it disappears. */
+  .hero__rule { background: rgba(248, 239, 228, .22); }
+}

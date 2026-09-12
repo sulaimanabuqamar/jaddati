@@ -244,7 +244,7 @@ struct MemoriesView: View {
                         Button { choose(candidate) } label: {
                             Text(candidate.title)
                                 .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(isOn ? Theme.Palette.ivory : Theme.Palette.forest)
+                                .foregroundStyle(isOn ? Theme.Palette.ivory : Theme.Palette.wineInk)
                                 .padding(.horizontal, 14)
                                 .frame(minHeight: 40)
                                 .background(

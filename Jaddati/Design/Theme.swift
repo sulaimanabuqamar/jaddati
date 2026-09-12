@@ -13,32 +13,38 @@ enum Theme {
     /// of anything. Sage always means a real recording of the person; wine
     /// always means audio the machine made.
     enum Palette {
-        static let paper       = Color(hex: 0xF9F5EF)
-        static let ink         = Color(hex: 0x302725)
-        static let inkSoft     = Color(hex: 0x766861)
-        static let hairline    = Color(hex: 0xE4DCD3)
+        static let paper       = Color.dynamic(light: 0xF9F5EF, dark: 0x14100E)
+        static let ink         = Color.dynamic(light: 0x302725, dark: 0xF2EAE1)
+        static let inkSoft     = Color.dynamic(light: 0x766861, dark: 0xA89B92)
+        static let hairline    = Color.dynamic(light: 0xE4DCD3, dark: 0x332A25)
 
-        static let wine        = Color(hex: 0x592C43)
-        static let wineDeep    = Color(hex: 0x3E2031)
-        static let wineLight   = Color(hex: 0xF0E5EB)
+        /// Wine as a FILL — buttons, the hero card.
+        static let wine        = Color.dynamic(light: 0x592C43, dark: 0x7A3D5B)
+        static let wineDeep    = Color.dynamic(light: 0x3E2031, dark: 0x5E2E46)
+        /// Wine as TEXT or an icon. On near-white paper these are the same
+        /// colour; on a dark ground they cannot be. A wine dark enough to
+        /// carry cream text is 2.4:1 against the dark ground behind it, so
+        /// the foreground is lifted until it measures 5.99:1.
+        static let wineInk     = Color.dynamic(light: 0x592C43, dark: 0xC67A99)
+        static let wineLight   = Color.dynamic(light: 0xF0E5EB, dark: 0x2E1C26)
 
-        static let sage        = Color(hex: 0x426858)
-        static let sageLight   = Color(hex: 0xE8EEE5)
+        static let sage        = Color.dynamic(light: 0x426858, dark: 0x6E9C87)
+        static let sageLight   = Color.dynamic(light: 0xE8EEE5, dark: 0x1C2620)
 
-        static let amber       = Color(hex: 0x775829)
-        static let amberLight  = Color(hex: 0xF5EAD5)
-        static let danger      = Color(hex: 0x963E3B)
+        static let amber       = Color.dynamic(light: 0x775829, dark: 0xC4954E)
+        static let amberLight  = Color.dynamic(light: 0xF5EAD5, dark: 0x2A2113)
+        static let danger      = Color.dynamic(light: 0x963E3B, dark: 0xD9736F)
 
         /// Raised surfaces and recessed fills, derived from paper rather than
         /// invented — the design uses paper with a line, not a second white.
-        static let card        = Color(hex: 0xFEFAF5)
-        static let bar         = Color(hex: 0xF9F6EF)
-        static let sunk        = Color(hex: 0xF1EBE3)
+        static let card        = Color.dynamic(light: 0xFEFAF5, dark: 0x1E1815)
+        static let bar         = Color.dynamic(light: 0xF9F6EF, dark: 0x14100E)
+        static let sunk        = Color.dynamic(light: 0xF1EBE3, dark: 0x241D19)
 
-        static let archWarm    = Color(hex: 0xE9E0D5)
-        static let archSage    = Color(hex: 0xE1E6DD)
-        static let coverGreen  = Color(hex: 0x6C7052)
-        static let coverRust   = Color(hex: 0xA0765E)
+        static let archWarm    = Color.dynamic(light: 0xE9E0D5, dark: 0x3A302A)
+        static let archSage    = Color.dynamic(light: 0xE1E6DD, dark: 0x2A322C)
+        static let coverGreen  = Color.dynamic(light: 0x6C7052, dark: 0x6C7052)
+        static let coverRust   = Color.dynamic(light: 0xA0765E, dark: 0xA0765E)
 
         // Older names the rest of the app still refers to.
         static let ivory       = paper
@@ -92,6 +98,17 @@ enum Theme {
         static let card: CGFloat = 20
         static let control: CGFloat = 15
         static let pill: CGFloat = 999
+    }
+}
+
+extension Color {
+    /// One colour with two values, resolved by the phone's appearance every
+    /// time it is drawn rather than fixed at launch. A plain Color(hex:) is a
+    /// single value and cannot follow the system.
+    static func dynamic(light: UInt32, dark: UInt32) -> Color {
+        Color(UIColor { trait in
+            UIColor(Color(hex: trait.userInterfaceStyle == .dark ? dark : light))
+        })
     }
 }
 
@@ -186,7 +203,7 @@ struct QuietButtonStyle: ButtonStyle {
         var body: some View {
             configuration.label
                 .font(Theme.Font.label)
-                .foregroundStyle(isEnabled ? Theme.Palette.forest
+                .foregroundStyle(isEnabled ? Theme.Palette.wineInk
                                            : Theme.Palette.inkSoft.opacity(0.45))
                 .frame(maxWidth: .infinity, minHeight: 48)
                 .background(
@@ -378,7 +395,7 @@ struct LanguageSwitch: View {
                 } label: {
                     Text(language.endonym)
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(selected ? Theme.Palette.ivory : Theme.Palette.forest)
+                        .foregroundStyle(selected ? Theme.Palette.ivory : Theme.Palette.wineInk)
                         .padding(.horizontal, 14)
                         .frame(minHeight: 34)
                         .background(
@@ -441,7 +458,7 @@ struct ErrorNote: View {
                 if let retry {
                     Button(L("Try again"), action: retry)
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Theme.Palette.forest)
+                        .foregroundStyle(Theme.Palette.wineInk)
                 }
             }
             Spacer(minLength: 0)

@@ -86,7 +86,7 @@ struct CaptureView: View {
                         Spacer()
                         Text(L("Recorded"))
                             .font(Theme.Font.caption)
-                            .foregroundStyle(Theme.Palette.forest)
+                            .foregroundStyle(Theme.Palette.wineInk)
                     }
                 }
                 BidiText(value: words, font: Theme.Font.body)

@@ -105,7 +105,7 @@ struct ConsentGate: View {
                 .font(.system(size: 11, weight: .semibold))
                 .tracking(uiIsArabic ? 0 : 0.6)
                 .textCase(.uppercase)
-                .foregroundStyle(Theme.Palette.wine)
+                .foregroundStyle(Theme.Palette.wineInk)
             Text(detail)
                 .font(Theme.Font.caption)
                 .foregroundStyle(Theme.Palette.inkSoft)
@@ -138,7 +138,7 @@ struct ConsentGate: View {
 
             Button(L("Read the full privacy notice")) { showingDetail = true }
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Theme.Palette.wine)
+                .foregroundStyle(Theme.Palette.wineInk)
                 .frame(minHeight: Theme.Metric.touchTarget, alignment: .leading)
         }
     }
@@ -280,7 +280,7 @@ struct PrivacyScreen: View {
                 .foregroundStyle(Theme.Palette.ink)
             Text(verbatim: "sulaiman.abuqamar@gmail.com")
                 .font(Theme.Font.caption)
-                .foregroundStyle(Theme.Palette.wine)
+                .foregroundStyle(Theme.Palette.wineInk)
                 .textSelection(.enabled)
             Text(verbatim: "sulaimanabuqamar.github.io/jaddati/privacy")
                 .font(Theme.Font.caption)

@@ -177,7 +177,7 @@ struct PersonView: View {
                         Text(L("They are still here? Record them now"))
                             .font(.system(size: 13, weight: .medium))
                     }
-                    .foregroundStyle(Theme.Palette.wine)
+                    .foregroundStyle(Theme.Palette.wineInk)
                     .frame(maxWidth: .infinity, minHeight: Theme.Metric.touchTarget)
                     .contentShape(Rectangle())
                 }
@@ -240,7 +240,7 @@ struct PersonView: View {
             VStack(alignment: .leading, spacing: 5) {
                 Image(systemName: icon)
                     .font(.system(size: 18))
-                    .foregroundStyle(Theme.Palette.wine)
+                    .foregroundStyle(Theme.Palette.wineInk)
                     .overlay(alignment: .topTrailing) {
                         if badge > 0 {
                             Text(Counts.number(badge))
@@ -399,7 +399,7 @@ struct AudioRow: View {
                 } label: {
                     Image(systemName: player.isPlaying(assetId: asset.id) ? "pause.fill" : "play.fill")
                         .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Theme.Palette.wine)
+                        .foregroundStyle(Theme.Palette.wineInk)
                         .frame(width: 36, height: 36)
                         .background(Circle().fill(Theme.Palette.sunk))
                         .overlay(Circle().stroke(Theme.Palette.hairline, lineWidth: 1))

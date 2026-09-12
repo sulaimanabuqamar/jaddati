@@ -40,8 +40,7 @@ struct JaddatiApp: App {
             // this, screens holding their own @State keep the previous
             // direction and half the app faces the wrong way.
             .id(localization.language)
-            .tint(Theme.Palette.forest)
-            .preferredColorScheme(.light)
+            .tint(Theme.Palette.wineInk)
         }
     }
 }

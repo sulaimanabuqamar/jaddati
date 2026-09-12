@@ -144,7 +144,7 @@ struct BooksView: View {
                             HStack {
                                 Button(L("Open book")) { openedBookId = book.id }
                                     .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(Theme.Palette.wine)
+                                    .foregroundStyle(Theme.Palette.wineInk)
                                 Spacer()
                                 // Visible, not hidden behind a long press.
                                 Button { pendingDeletion = book } label: {

@@ -228,7 +228,7 @@ struct AddVoiceView: View {
                         // already-saved recordings and the file picker.
                         Button(L("Change recording")) { discardTempFile() }
                             .font(Theme.Font.caption)
-                            .foregroundStyle(Theme.Palette.forest)
+                            .foregroundStyle(Theme.Palette.wineInk)
                     }
                 } else {
                     if let person {
@@ -255,7 +255,7 @@ struct AddVoiceView: View {
                                         Spacer(minLength: 0)
                                         Text(L("Use"))
                                             .font(.system(size: 12, weight: .semibold))
-                                            .foregroundStyle(Theme.Palette.forest)
+                                            .foregroundStyle(Theme.Palette.wineInk)
                                     }
                                     .contentShape(Rectangle())
                                 }
@@ -271,7 +271,7 @@ struct AddVoiceView: View {
                         HStack(spacing: Theme.Space.s) {
                             Image(systemName: "plus.circle")
                                 .font(.system(size: 20))
-                                .foregroundStyle(Theme.Palette.forest)
+                                .foregroundStyle(Theme.Palette.wineInk)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(L("Choose a file"))
                                     .font(Theme.Font.label)
@@ -322,7 +322,7 @@ struct AddVoiceView: View {
                 HStack(spacing: Theme.Space.s) {
                     Image(systemName: "mic.circle")
                         .font(.system(size: 20))
-                        .foregroundStyle(Theme.Palette.forest)
+                        .foregroundStyle(Theme.Palette.wineInk)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(L("Record now"))
                             .font(Theme.Font.label)
@@ -435,7 +435,7 @@ struct AddVoiceView: View {
         HStack(alignment: .top, spacing: Theme.Space.s) {
             Image(systemName: icon)
                 .font(.system(size: 15))
-                .foregroundStyle(Theme.Palette.wine)
+                .foregroundStyle(Theme.Palette.wineInk)
                 .frame(width: 22)
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
@@ -457,7 +457,7 @@ struct AddVoiceView: View {
                 .foregroundStyle(Theme.Palette.ink)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .tint(Theme.Palette.forest)
+        .tint(Theme.Palette.wineInk)
         .frame(minHeight: 44)
         .accessibilityLabel(words)
     }

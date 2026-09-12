@@ -105,7 +105,7 @@ struct SetupView: View {
                     archiveNote = nil
                 }
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Theme.Palette.wine)
+                .foregroundStyle(Theme.Palette.wineInk)
                 .frame(minHeight: Theme.Metric.touchTarget, alignment: .leading)
             } else {
                 Button(preparingArchive ? L("Preparing…") : L("Give this to the family")) {
@@ -179,7 +179,7 @@ struct SetupView: View {
                 Spacer()
                 Button(L("Add their voice")) { addingVoice = true }
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Theme.Palette.wine)
+                    .foregroundStyle(Theme.Palette.wineInk)
             }
 
             if items.isEmpty {

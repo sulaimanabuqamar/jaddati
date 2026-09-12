@@ -71,7 +71,7 @@ struct YouView: View {
                 Spacer(minLength: 0)
                 Text("جدّتي")
                     .font(Theme.Font.displayMedium(22))
-                    .foregroundStyle(Theme.Palette.wine)
+                    .foregroundStyle(Theme.Palette.wineInk)
                     .environment(\.layoutDirection, .rightToLeft)
             }
             SubText(text: L("A place for a familiar voice."))

@@ -122,7 +122,7 @@ struct LettersView: View {
                             Spacer()
                             Text(L("Ready"))
                                 .font(Theme.Font.caption)
-                                .foregroundStyle(Theme.Palette.forest)
+                                .foregroundStyle(Theme.Palette.wineInk)
                         }
                         Text(L("Sealed on") + " " + Self.dateText(letter.createdAt))
                             .font(Theme.Font.caption)
@@ -250,7 +250,7 @@ struct LettersView: View {
                             .foregroundStyle(Theme.Palette.inkSoft)
                         Button(L("Remove")) { pendingRemoval = letter }
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Theme.Palette.wine)
+                            .foregroundStyle(Theme.Palette.wineInk)
                             .frame(minHeight: Theme.Metric.touchTarget, alignment: .leading)
                     }
                 }

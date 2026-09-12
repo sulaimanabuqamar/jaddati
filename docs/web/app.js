@@ -98,7 +98,7 @@ function consentGate() {
       labelled(L("What they do with it"), why));
 
   const labelled = (title, detail) => h("div", { class: "stack", style: { gap: "2px" } },
-    h("div", { style: { fontSize: "11px", fontWeight: "600", textTransform: "uppercase", letterSpacing: isAr() ? "0" : ".6px", color: "var(--wine)" } }, title),
+    h("div", { style: { fontSize: "11px", fontWeight: "600", textTransform: "uppercase", letterSpacing: isAr() ? "0" : ".6px", color: "var(--wine-ink)" } }, title),
     h("p", { class: "caption", style: { margin: 0 } }, detail));
 
   return h("div", { class: "screen" },
@@ -137,7 +137,7 @@ function consentGate() {
 function openPrivacy(showControls = true) {
   sheet(close => {
     const bullet = words => h("div", { class: "row row--top", style: { gap: "var(--xs)" } },
-      h("span", { style: { width: "4px", height: "4px", borderRadius: "50%", background: "var(--wine)", marginTop: "8px", flex: "none" } }),
+      h("span", { style: { width: "4px", height: "4px", borderRadius: "50%", background: "var(--wine-ink)", marginTop: "8px", flex: "none" } }),
       h("p", { class: "caption", style: { margin: 0 } }, words));
 
     const status = () => {
@@ -474,7 +474,7 @@ function personScreen({ personId }) {
 
   const voiceTag = () => {
     const [words, tint] = placeholder ? [L("Test voice only"), "var(--danger)"]
-      : hasVoice ? [L("Recreated voice ready"), "var(--wine)"]
+      : hasVoice ? [L("Recreated voice ready"), "var(--wine-ink)"]
       : pending ? [L("Voice is being prepared"), "var(--amber)"]
       : [L("No recreated voice yet"), "var(--ink-soft)"];
     return h("span", { class: "voicetag", style: { color: tint, background: "color-mix(in srgb, " + tint + " 10%, transparent)" } }, words.toUpperCase());
@@ -489,7 +489,9 @@ function personScreen({ personId }) {
 
   return h("div", { class: "screen" },
     appBar(person.name, { onBack: pop, trailing:
-      h("button", { class: "iconbtn", onClick: () => push(setupScreen, { personId: person.id }),
+      // The class is the stable handle: the label is translated, so anything
+      // keying on "Setup" finds nothing the moment the app is in Arabic.
+      h("button", { class: "iconbtn setup-btn", onClick: () => push(setupScreen, { personId: person.id }),
                     "aria-label": L("Setup") }, icon("gear")) }),
     h("div", { class: "scroll" },
       photoInput,

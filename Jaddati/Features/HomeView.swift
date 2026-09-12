@@ -86,7 +86,7 @@ struct HomeView: View {
                 Spacer(minLength: Theme.Space.s)
                 Text("جدّتي")
                     .font(Theme.Font.display(28))
-                    .foregroundStyle(Theme.Palette.wine)
+                    .foregroundStyle(Theme.Palette.wineInk)
                     .environment(\.layoutDirection, .rightToLeft)
             }
             SubText(text: L("A place for a familiar voice."))
@@ -163,7 +163,7 @@ struct HomeView: View {
                 Text(L("Bring someone from another phone"))
             }
             .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(Theme.Palette.wine)
+            .foregroundStyle(Theme.Palette.wineInk)
             .frame(maxWidth: .infinity, minHeight: Theme.Metric.buttonHeight)
             .background(
                 RoundedRectangle(cornerRadius: Theme.Metric.buttonRadius, style: .continuous)
@@ -197,7 +197,7 @@ struct HomeView: View {
                 Text(L("Add someone"))
             }
             .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(Theme.Palette.wine)
+            .foregroundStyle(Theme.Palette.wineInk)
             .frame(maxWidth: .infinity, minHeight: Theme.Metric.buttonHeight)
             .background(
                 RoundedRectangle(cornerRadius: Theme.Metric.buttonRadius, style: .continuous)

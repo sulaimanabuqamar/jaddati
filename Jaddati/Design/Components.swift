@@ -143,7 +143,7 @@ struct TabRail: View {
                         Text(tab.title)
                             .font(.system(size: 10, weight: on ? .semibold : .regular))
                     }
-                    .foregroundStyle(on ? Theme.Palette.wine : Theme.Palette.inkSoft)
+                    .foregroundStyle(on ? Theme.Palette.wineInk : Theme.Palette.inkSoft)
                     .frame(maxWidth: .infinity, minHeight: Theme.Metric.touchTarget)
                     .contentShape(Rectangle())
                 }
@@ -290,7 +290,7 @@ struct FeatureRow: View {
         HStack(spacing: 16) {
             Image(systemName: icon)
                 .font(.system(size: 17))
-                .foregroundStyle(emphasised ? Color(hex: 0xF9EFE6) : Theme.Palette.wine)
+                .foregroundStyle(emphasised ? Color(hex: 0xF9EFE6) : Theme.Palette.wineInk)
                 .frame(width: 44, height: 44)
                 .background(
                     Circle().fill(emphasised

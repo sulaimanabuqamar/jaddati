@@ -60,7 +60,7 @@ struct PlayerView: View {
                 if let note = asset.provenance, !note.isEmpty {
                     Text(note)
                         .font(Theme.Font.caption)
-                        .foregroundStyle(Theme.Palette.wine)
+                        .foregroundStyle(Theme.Palette.wineInk)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -168,7 +168,7 @@ struct PlayerView: View {
                 } label: {
                     Text(rate == 1.0 ? L("Normal") : String(format: "%.2g\u{00D7}", rate))
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(selected ? Theme.Palette.ivory : Theme.Palette.forest)
+                        .foregroundStyle(selected ? Theme.Palette.ivory : Theme.Palette.wineInk)
                         .padding(.horizontal, 14)
                         .frame(minHeight: 38)
                         .background(
@@ -213,7 +213,7 @@ struct PlayerView: View {
                 Image(systemName: (back ? "gobackward." : "goforward.")
                                 + String(Int(abs(seconds))))
                     .font(.system(size: 22, weight: .regular))
-                    .foregroundStyle(Theme.Palette.wine)
+                    .foregroundStyle(Theme.Palette.wineInk)
                     .frame(width: Theme.Metric.touchTarget,
                            height: Theme.Metric.touchTarget)
                     .contentShape(Rectangle())
