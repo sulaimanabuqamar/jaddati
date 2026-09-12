@@ -107,6 +107,14 @@ struct Person: Identifiable, Codable, Equatable, Hashable {
     /// before this existed still decodes.
     var tuning: VoiceTuning? = nil
 
+    /// This person arrived in a family archive, so the voice at the service is
+    /// shared with every other phone holding that archive. Removing this copy
+    /// must NOT delete it there: whoever tidied up first would destroy it for
+    /// the whole family, including the phone that recorded and paid for it,
+    /// and the rest would keep reporting "voice ready" until a generation
+    /// failed. Optional for the usual decoding reason.
+    var voiceIsShared: Bool? = nil
+
     var voiceTuning: VoiceTuning { tuning ?? .natural }
 
     /// Ready to speak. Deliberately stricter than "a voice id exists": a voice

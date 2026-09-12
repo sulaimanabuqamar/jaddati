@@ -199,6 +199,19 @@ struct CreateView: View {
             .buttonStyle(QuietButtonStyle())
         }
 
+        // The same affordance for memories, which nothing else in the app
+        // offered. "Ask about them" draws ONLY on these, so with no way to
+        // write one down that feature could only ever refuse — and its refusal
+        // pointed the reader at this screen.
+        if intent == .storyFromMemories, let person, !trimmed.isEmpty,
+           !library.memories(for: person).contains(where: { $0.text == trimmed }) {
+            Button(L("Keep this as a memory")) {
+                library.add(FamilyNote(personId: person.id, text: trimmed))
+                text = ""
+            }
+            .buttonStyle(QuietButtonStyle())
+        }
+
         if let reason = disabledReason {
             Text(reason)
                 .font(Theme.Font.caption)

@@ -23,6 +23,10 @@ struct LettersView: View {
     @State private var errorText: String?
     @State private var generated: AudioAsset?
     @State private var pendingRemoval: Letter?
+    /// Letters with a generation in flight. `working` alone is not enough:
+    /// a @State write is not visible to a second tap that lands in the same
+    /// run loop pass, and the second generation would be billed.
+    @State private var opening: Set<UUID> = []
 
     private var person: Person? { library.people.first { $0.id == personId } }
     private var trimmed: String { draft.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -123,7 +127,7 @@ struct LettersView: View {
                         Text(L("Sealed on") + " " + Self.dateText(letter.createdAt))
                             .font(Theme.Font.caption)
                             .foregroundStyle(Theme.Palette.inkSoft)
-                        Button(working ? L("Opening…") : L("Open it")) {
+                        Button(opening.contains(letter.id) ? L("Opening…") : L("Open it")) {
                             Task { await open(letter) }
                         }
                         .buttonStyle(PrimaryButtonStyle())
@@ -247,7 +251,9 @@ struct LettersView: View {
     // MARK: Opening
 
     private func open(_ letter: Letter) async {
-        guard let person, let voiceId = person.voiceId, !working else { return }
+        guard let person, let voiceId = person.voiceId else { return }
+        guard !working, !opening.contains(letter.id), !letter.isOpened else { return }
+        opening.insert(letter.id)
         working = true
         errorText = nil
 
@@ -271,6 +277,7 @@ struct LettersView: View {
                                            isSaved: true,
                                            fileExtension: CreateView.audioExtension(for: data))
             working = false
+            opening.remove(letter.id)
             if let asset {
                 var opened = letter
                 opened.openedAt = Date()
@@ -282,9 +289,11 @@ struct LettersView: View {
             }
         } catch is ConsentMissing {
             working = false
+            opening.remove(letter.id)
             errorText = AppConfig.unavailableMessage
         } catch {
             working = false
+            opening.remove(letter.id)
             errorText = error.localizedDescription
         }
     }

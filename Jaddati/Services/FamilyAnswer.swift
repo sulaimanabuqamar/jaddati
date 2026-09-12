@@ -45,9 +45,19 @@ struct FamilyAnswerService {
         guard !material.isEmpty else { throw NotInNotes() }
 
         let answer = try await chat(system: Self.systemPrompt(notes: material),
-                                    user: String(question.prefix(300)),
+                                    // The compose box offers 600 and the clip
+                                    // records all 600 as "You asked:", so
+                                    // cutting to 300 half-asked the question
+                                    // and filed the answer against wording the
+                                    // model never saw.
+                                    user: String(question.prefix(600)),
                                     maxTokens: 160, temperature: 0.2)
-        if answer.uppercased().contains(Self.notInNotesToken) { throw NotInNotes() }
+        // Letters only: models routinely normalise the underscores out of a
+        // token they were shown inline in prose, and "NOT IN NOTES" returned as
+        // an answer would be billed, captioned "From your family's notes" and
+        // read aloud in her voice. The refusal is the feature.
+        let bare = answer.uppercased().filter { $0.isLetter }
+        if bare.contains("NOTINNOTES") { throw NotInNotes() }
         return answer
     }
 

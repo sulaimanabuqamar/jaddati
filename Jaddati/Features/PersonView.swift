@@ -507,7 +507,9 @@ struct PersonView: View {
     private func remove(_ person: Person) async {
         deleteProblem = nil
 
-        guard let voiceId = person.voiceId else {
+        // A voice that arrived in a family archive belongs to everyone holding
+        // that archive. Removing this copy must not reach the service.
+        guard let voiceId = person.voiceId, person.voiceIsShared != true else {
             library.delete(person)
             // Without this the screen stays up with `person` gone, showing an
             // empty state under an app bar, and the only way out is an edge
@@ -555,9 +557,11 @@ struct PersonView: View {
             } message: {
                 Text(L("This removes their profile, original recordings, saved clips and imported books from Jaddati.")
                      + "\n\n"
-                     + (person.voiceId == nil
-                        ? L("Nothing was ever sent to the voice service for this person.")
-                        : L("The voice built for them is deleted from the voice service first. If that fails, nothing here is removed, so you can try again.")))
+                     + (person.voiceIsShared == true
+                        ? L("This person came from another family member's phone, so the voice is shared. It is left alone at the voice service — removing it here would take it from everyone who has them.")
+                        : person.voiceId == nil
+                          ? L("Nothing was ever sent to the voice service for this person.")
+                          : L("The voice built for them is deleted from the voice service first. If that fails, nothing here is removed, so you can try again.")))
             }
             .disabled(isDeleting)
 

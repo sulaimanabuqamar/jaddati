@@ -26,9 +26,13 @@ enum Archive {
         var jaddati: Int
         var exportedAt: Date
         var person: PersonCard
-        var notes: [NoteCard]
-        var letters: [LetterCard]
-        var recordings: [RecordingCard]
+        // Optional so a file written by an older or newer build — or one that
+        // simply had none of something — still opens. A whole archive refused
+        // because it carries no letters is a family told their grandmother
+        // could not be read.
+        var notes: [NoteCard]?
+        var letters: [LetterCard]?
+        var recordings: [RecordingCard]?
     }
 
     /// Deliberately NOT the app's own types. Local ids must not travel — two
@@ -185,22 +189,23 @@ enum Archive {
         person.voiceRequiresVerification = card.voiceRequiresVerification
         person.consentConfirmedAt = card.consentConfirmedAt
         person.tuning = card.tuning
+        person.voiceIsShared = true
         library.add(person)
 
-        for note in payload.notes {
+        for note in payload.notes ?? [] {
             var arrived = FamilyNote(personId: person.id, text: note.text)
             arrived.addedBy = note.addedBy
             arrived.createdAt = note.createdAt
             arrived.kind = note.kind
             library.add(arrived)
         }
-        for letter in payload.letters {
+        for letter in payload.letters ?? [] {
             library.addLetter(for: person, text: letter.text,
                               occasion: letter.occasion, deliverAt: letter.deliverAt)
         }
 
         var restored = 0
-        for recording in payload.recordings {
+        for recording in payload.recordings ?? [] {
             guard let bytes = Data(base64Encoded: recording.data) else { continue }
             // One unreadable recording must not cost the family the other nine.
             if library.storeAudio(data: bytes,
@@ -217,8 +222,8 @@ enum Archive {
         }
 
         return ImportResult(person: person,
-                            notes: payload.notes.count,
-                            letters: payload.letters.count,
+                            notes: (payload.notes ?? []).count,
+                            letters: (payload.letters ?? []).count,
                             restored: restored)
     }
 }
