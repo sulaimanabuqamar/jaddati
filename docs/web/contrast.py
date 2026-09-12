@@ -10,7 +10,8 @@ UI component boundaries.
 """
 import re, sys, pathlib
 
-css = pathlib.Path("app.css").read_text()
+# Beside this file, so it runs from anywhere rather than only from docs/web.
+css = (pathlib.Path(__file__).resolve().parent / "app.css").read_text()
 
 def block(after, until=None):
     i = css.index(after)
