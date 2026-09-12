@@ -8,7 +8,7 @@ import {
   store, Consent, ConsentMissing, Config, Voice, Companion, VoiceError, CompanionError,
   Intent, INTENTS, ContentProvenance, TUNING, sameTuning, presetName,
   AFFIRMATIONS, STORIES, makeBook, ImportError, isDemoVoice, uuid, blobURL,
-  STOCK_VOICE_URL, STOCK_LLM_URL, Archive, ArchiveError,
+  STOCK_VOICE_URL, STOCK_LLM_URL, Archive, ArchiveError, Cloud, CloudError,
 } from "./core.js";
 import {
   h, clear, bidi, icon, appBar, globeButton, headline, eyebrow, sectionLabel,
@@ -501,6 +501,8 @@ function youScreen() {
       row("key", L("Voice service"), L("Leave as it is unless you run a relay of your own."),
         openSettings),
 
+      cloudSection(),
+
       h("div", { class: "quiet-divider" }),
       h("div", { class: "stack", style: { gap: "6px" } },
         h("div", { class: "row between", style: { alignItems: "baseline" } },
@@ -509,6 +511,81 @@ function youScreen() {
         subtext(L("A place for a familiar voice.")),
         h("div", { class: "row gap-s", style: { marginTop: "8px" } }, icon("seal"),
           h("span", { class: "small" }, L("Original and recreated. Always distinct."))))));
+}
+
+
+/// Backing your own people up to your own Drive.
+///
+/// Hidden entirely until the relay has a client id: an unfinished setup must
+/// not put a dead button in front of anyone.
+///
+/// The sentence about this NOT being how you share matters more than it
+/// looks. "Sign in with Google" next to "give this to the family" reads like
+/// the same thing, and someone who believes their sister can now see the
+/// archive will not find out they were wrong until they need it.
+function cloudSection() {
+  // Asked the first time someone opens You, not at every cold start. Whether
+  // Google is configured matters only on this screen, and making every launch
+  // pay for a network round trip — one that fails loudly with no connection —
+  // to answer a question most people never ask is the wrong trade.
+  if (Cloud.isUnknown) {
+    Cloud.configured().then(known => { if (known) render(); });
+    return null;
+  }
+  if (!Cloud.isConfigured) return null;
+
+  const note = h("div", {});
+  const busy = h("div", {});
+
+  const run = (label, work) => h("button", {
+    class: "btn-quiet",
+    onClick: async e => {
+      const b = e.currentTarget;
+      b.disabled = true; clear(note); clear(busy);
+      busy.append(h("div", { class: "row gap-s mt-xs" }, h("span", { class: "spinner" }),
+        h("span", { class: "caption" }, L("Working…"))));
+      try {
+        note.append(h("p", { class: "caption sage-text", style: { margin: 0 } }, await work()));
+      } catch (err) {
+        note.append(errorNote(err instanceof CloudError ? err.message
+          : L("That did not work. Try again.")));
+      } finally { b.disabled = false; clear(busy); }
+    },
+  }, label);
+
+  const signedIn = Cloud.isSignedIn;
+
+  return h("div", { class: "stack", style: { gap: "8px" } },
+    h("div", { class: "quiet-divider" }),
+    sectionLabel(L("Backup")),
+    h("p", { class: "caption", style: { margin: "8px 0 0" } },
+      L("Keep a copy of the people you hold here in your own Google Drive, so a lost phone is not a lost voice.")),
+    h("p", { class: "small", style: { margin: 0 } },
+      L("This is not how you give someone to the family — that is the code on their Setup screen. A backup goes to your Drive and nobody else's.")),
+
+    signedIn
+      ? h("div", { class: "stack", style: { gap: "8px" } },
+          h("div", { class: "row gap-s" }, icon("check"),
+            h("span", { class: "caption" }, Cloud.email || L("Signed in"))),
+          run(L("Back up now"), async () => {
+            const { sent, skipped } = await Cloud.backUp();
+            return skipped
+              ? L("Backed up.") + " " + L("Some were too large and were left out.")
+              : L("Backed up.") + " " + Counts.number(sent);
+          }),
+          run(L("Bring everything back"), async () => {
+            const { brought } = await Cloud.restore();
+            render();
+            return L("Brought back.") + " " + Counts.number(brought);
+          }),
+          h("button", { class: "small", style: { textDecoration: "underline", minHeight: "var(--touch)" },
+            onClick: () => { Cloud.signOut(); render(); } }, L("Sign out of Google")))
+      : h("button", { class: "btn-quiet", onClick: async () => {
+          try { await Cloud.beginSignIn(); }
+          catch (err) { clear(note); note.append(errorNote(err.message)); }
+        } }, L("Sign in with Google")),
+
+    busy, note);
 }
 
 // ── one person ──────────────────────────────────────────────────────────
@@ -770,7 +847,21 @@ setRenderer(paintRoot);
 
 export { openAddPerson, openSettings, openPrivacy, unavailableNote, demoBanner, downscale };
 
-store.init().then(render).catch(() => render());
+// Startup, in the order the screen needs it.
+//
+// completeSignIn runs before the first paint because Google sends the browser
+// back to this page with ?code= in the address bar, and a used code left in
+// the URL gets spent a second time on the next refresh.
+store.init()
+  .then(async () => {
+    // Before the first paint, because Google sends the browser back here with
+    // ?code= in the address bar and a used code left in the URL gets spent a
+    // second time on the next refresh.
+    try { await Cloud.completeSignIn(); }
+    catch (e) { console.warn("sign-in did not complete", e); }
+  })
+  .catch(() => {})
+  .finally(render);
 
 // ── one voice, the whole family ─────────────────────────────────────────
 // The voice lives at the voice service, not on this phone, so handing another

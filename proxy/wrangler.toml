@@ -33,6 +33,16 @@ VOICE_TTL_MINUTES = "10"
 
 LLM_BASE_URL = "https://api.groq.com/openai/v1"
 
+# Optional Google sign-in. Leave the id empty and the app never offers it —
+# /google/status answers "not configured" and the row stays hidden, so an
+# unfinished setup cannot put a dead button in front of anyone.
+#
+# The id is public by design (it goes in the URL the browser opens). The
+# SECRET is not, and is set the same way as the others:
+#   npx wrangler secret put GOOGLE_CLIENT_SECRET
+GOOGLE_CLIENT_ID = ""
+
+
 # Secrets are NOT set here — they would end up in git. Set them with:
 #   npx wrangler secret put ELEVENLABS_API_KEY
 #   npx wrangler secret put LLM_API_KEY

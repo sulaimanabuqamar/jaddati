@@ -1267,6 +1267,246 @@ export class ArchiveError extends Error {
   constructor(message) { super(message); this.name = "ArchiveError"; }
 }
 
+
+// ── signing in with Google ──────────────────────────────────────────────
+// Optional, off by default, and it does exactly one thing: keep a copy of
+// your own people in your own Drive so a lost phone is not a lost voice.
+//
+// It is NOT how you give someone to the family. Your sister's Drive is a
+// different account and cannot see yours — the code handoff is for that. The
+// two get confused constantly, so the screen says which is which.
+//
+// The folder asked for is Drive's appDataFolder: private to this app,
+// invisible in the person's own Drive, and no access to a single file they
+// did not put there through us.
+
+const K_CLOUD_TOKENS = "jaddati.cloud.tokens";
+const K_CLOUD_PKCE = "jaddati.cloud.pkce";
+const K_CLOUD_ON = "jaddati.cloud.enabled";
+
+const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
+const DRIVE_FILES = "https://www.googleapis.com/drive/v3/files";
+const DRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3/files";
+const CLOUD_SCOPES = "openid email https://www.googleapis.com/auth/drive.appdata";
+
+const b64url = bytes => btoa(String.fromCharCode(...new Uint8Array(bytes)))
+  .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+export class CloudError extends Error {
+  constructor(message) { super(message); this.name = "CloudError"; }
+}
+
+export const Cloud = {
+  /** Whether the relay has been given a client id. No id, no sign-in offered:
+   *  a dead button is worse than no button. */
+  _configured: null,
+  _clientId: "",
+  /// Synchronous, for rendering. Null until the relay has been asked, which
+  /// happens once at startup — so before the answer is in, nothing is shown
+  /// rather than a button that might turn out to be dead.
+  get isConfigured() { return this._configured === true; },
+  get isUnknown() { return this._configured === null; },
+  async configured() {
+    if (this._configured !== null) return this._configured;
+    try {
+      const r = await fetch(RELAY_URL + "/google/status", {
+        method: "POST", headers: voiceHeaders({ "content-type": "application/json" }),
+        body: "{}",
+      });
+      const j = r.ok ? await r.json() : null;
+      this._configured = !!(j && j.configured && j.clientId);
+      this._clientId = j ? j.clientId : "";
+    } catch { this._configured = false; }
+    return this._configured;
+  },
+
+  get tokens() {
+    try { return JSON.parse(prefs.get(K_CLOUD_TOKENS) || "null"); } catch { return null; }
+  },
+  set tokens(v) {
+    if (v) prefs.set(K_CLOUD_TOKENS, JSON.stringify(v));
+    else prefs.remove(K_CLOUD_TOKENS);
+  },
+  get isSignedIn() { return !!(this.tokens && this.tokens.refresh_token); },
+  get email() { return (this.tokens && this.tokens.email) || ""; },
+
+  get enabled() { return prefs.get(K_CLOUD_ON) === "1" && this.isSignedIn; },
+  set enabled(on) { prefs.set(K_CLOUD_ON, on ? "1" : "0"); },
+
+  get redirectURI() { return location.origin + location.pathname; },
+
+  /// A full-page redirect, not a popup. Popups are blocked by default in
+  /// mobile Safari, which is the browser this has to work in.
+  async beginSignIn() {
+    if (!(await this.configured())) throw new CloudError(L("Signing in is not set up on this build."));
+    const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+    const state = b64url(crypto.getRandomValues(new Uint8Array(16)));
+    prefs.set(K_CLOUD_PKCE, JSON.stringify({ verifier, state }));
+
+    const url = new URL(GOOGLE_AUTH_URL);
+    url.search = new URLSearchParams({
+      client_id: this._clientId,
+      redirect_uri: this.redirectURI,
+      response_type: "code",
+      scope: CLOUD_SCOPES,
+      code_challenge: b64url(digest),
+      code_challenge_method: "S256",
+      state,
+      // Without these two Google hands back no refresh token on a repeat
+      // sign-in, and the backup silently stops working an hour later.
+      access_type: "offline",
+      prompt: "consent",
+    }).toString();
+    location.assign(url.toString());
+  },
+
+  /// Called on load. Returns true when it consumed a redirect, so the caller
+  /// knows to re-render rather than guess.
+  async completeSignIn() {
+    const params = new URLSearchParams(location.search);
+    const code = params.get("code");
+    if (!code) return false;
+
+    let pkce = null;
+    try { pkce = JSON.parse(prefs.get(K_CLOUD_PKCE) || "null"); } catch { /* below */ }
+    prefs.remove(K_CLOUD_PKCE);
+    // Always clear the address bar, whatever happens next: leaving a used
+    // authorisation code in the URL means a refresh tries to spend it twice.
+    history.replaceState(null, "", this.redirectURI);
+
+    if (!pkce || params.get("state") !== pkce.state) {
+      throw new CloudError(L("That sign-in could not be completed. Try again."));
+    }
+
+    const r = await fetch(RELAY_URL + "/google/exchange", {
+      method: "POST", headers: voiceHeaders({ "content-type": "application/json" }),
+      body: JSON.stringify({ code, redirect_uri: this.redirectURI, code_verifier: pkce.verifier }),
+    });
+    if (!r.ok) throw new CloudError(L("That sign-in could not be completed. Try again."));
+    const t = await r.json();
+    this.tokens = {
+      refresh_token: t.refresh_token,
+      access_token: t.access_token,
+      expires_at: Date.now() + (t.expires_in || 3600) * 1000,
+      email: emailFromIdToken(t.id_token),
+    };
+    return true;
+  },
+
+  signOut() {
+    this.tokens = null;
+    this.enabled = false;
+  },
+
+  async accessToken() {
+    const t = this.tokens;
+    if (!t) throw new CloudError(L("Sign in to Google first."));
+    if (t.access_token && Date.now() < t.expires_at - 60000) return t.access_token;
+
+    const r = await fetch(RELAY_URL + "/google/refresh", {
+      method: "POST", headers: voiceHeaders({ "content-type": "application/json" }),
+      body: JSON.stringify({ refresh_token: t.refresh_token }),
+    });
+    if (!r.ok) {
+      // A refused refresh means access was revoked in the Google account. Say
+      // so by signing out rather than retrying forever against a dead token.
+      this.signOut();
+      throw new CloudError(L("Google access has ended. Sign in again."));
+    }
+    const fresh = await r.json();
+    this.tokens = { ...t, access_token: fresh.access_token,
+                    expires_at: Date.now() + (fresh.expires_in || 3600) * 1000 };
+    return fresh.access_token;
+  },
+
+  // ── the backup itself ─────────────────────────────────────────────────
+  // One file per person, and the contents are exactly the archive the code
+  // handoff sends. Not a second format: a backup that cannot be read by the
+  // thing that restores archives is a backup nobody has ever tested.
+
+  async _drive(path, init = {}) {
+    const token = await this.accessToken();
+    const r = await fetch(path, {
+      ...init,
+      headers: { authorization: "Bearer " + token, ...(init.headers || {}) },
+    });
+    if (!r.ok) throw new CloudError(L("Google Drive refused that. Try again."));
+    return r;
+  },
+
+  /** What is already up there, by the name we gave it. */
+  async _existing() {
+    const url = DRIVE_FILES + "?spaces=appDataFolder&fields=files(id,name)&pageSize=200";
+    const r = await this._drive(url);
+    const out = new Map();
+    for (const f of (await r.json()).files || []) out.set(f.name, f.id);
+    return out;
+  },
+
+  nameFor: personId => "person-" + personId + ".jaddati.json",
+
+  /// Upload every person. Returns how many went up and how many were skipped
+  /// because they were too big, because a silent partial backup is the kind
+  /// that is discovered to be partial at the worst possible moment.
+  async backUp(onProgress) {
+    const existing = await this._existing();
+    let sent = 0, skipped = 0;
+
+    for (const person of store.people) {
+      const { file } = await Archive.export(person.id);
+      const body = JSON.stringify(file);
+      if (new TextEncoder().encode(body).length > 24 * 1024 * 1024) { skipped++; continue; }
+
+      const name = this.nameFor(person.id);
+      const id = existing.get(name);
+      const metadata = id ? { name } : { name, parents: ["appDataFolder"] };
+      const boundary = "jaddati" + Math.random().toString(36).slice(2);
+      const multipart =
+        `--${boundary}\r\ncontent-type: application/json; charset=UTF-8\r\n\r\n` +
+        JSON.stringify(metadata) +
+        `\r\n--${boundary}\r\ncontent-type: application/json\r\n\r\n` +
+        body + `\r\n--${boundary}--`;
+
+      await this._drive(
+        DRIVE_UPLOAD + (id ? "/" + id : "") + "?uploadType=multipart&fields=id",
+        { method: id ? "PATCH" : "POST",
+          headers: { "content-type": `multipart/related; boundary=${boundary}` },
+          body: multipart });
+      sent++;
+      if (onProgress) onProgress(sent, store.people.length);
+    }
+    return { sent, skipped };
+  },
+
+  /// Bring back whatever is up there. Each file goes through Archive.import,
+  /// so a restored person arrives by the identical path a person from a code
+  /// arrives by — same validation, same refusals, same fresh local ids.
+  async restore() {
+    const existing = await this._existing();
+    let brought = 0, failed = 0;
+    for (const [name, id] of existing) {
+      if (!name.startsWith("person-")) continue;
+      try {
+        const r = await this._drive(DRIVE_FILES + "/" + id + "?alt=media");
+        await Archive.import(await r.text());
+        brought++;
+      } catch { failed++; }
+    }
+    return { brought, failed };
+  },
+};
+
+/** The address, read out of the id token without verifying it. That is fine
+ *  for a label — it came straight from the relay's own exchange — and it is
+ *  never used to decide anything. */
+function emailFromIdToken(idToken) {
+  try {
+    const body = String(idToken || "").split(".")[1];
+    return JSON.parse(atob(body.replace(/-/g, "+").replace(/_/g, "/"))).email || "";
+  } catch { return ""; }
+}
+
 export const Archive = {
   /**
    * Everything one person is, as a single object ready to be written to a file.

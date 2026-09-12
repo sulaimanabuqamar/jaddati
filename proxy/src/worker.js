@@ -274,6 +274,80 @@ function withCors(response) {
 }
 
 
+
+// ── signing in with Google ──────────────────────────────────────────────
+// Optional, and off unless the app is configured for it. The point is a
+// backup of your own recordings to your own Drive — NOT a way to share with
+// family. Your sister's Drive is a different account and cannot see yours;
+// that is what the code handoff above is for.
+//
+// The exchange happens here rather than in the browser because Google wants a
+// client secret for a web client even with PKCE, and a secret in core.js is
+// not a secret — core.js is served to everyone who opens the page.
+//
+// The scope asked for is drive.appdata: a private folder that belongs to this
+// app, invisible in the person's own Drive, and no access whatsoever to any
+// file they did not put there through us. Asking for anything wider to store
+// our own backup would be helping ourselves to their documents.
+
+const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+
+function googleConfigured(env) {
+  return !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
+}
+
+async function googleExchange(request, env) {
+  if (!googleConfigured(env)) return json(501, "google sign-in is not configured");
+  let asked;
+  try { asked = await request.json(); } catch { return json(400, "no code"); }
+
+  const form = new URLSearchParams({
+    client_id: env.GOOGLE_CLIENT_ID,
+    client_secret: env.GOOGLE_CLIENT_SECRET,
+    grant_type: "authorization_code",
+    code: String(asked.code || ""),
+    redirect_uri: String(asked.redirect_uri || ""),
+    code_verifier: String(asked.code_verifier || ""),
+  });
+
+  const r = await fetch(GOOGLE_TOKEN_URL, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: form,
+  });
+  const body = await r.text();
+  // Passed through as-is. Rewriting Google's refusal into our own words would
+  // hide which of a dozen setup mistakes it actually was.
+  return new Response(body, { status: r.status, headers: { "content-type": "application/json" } });
+}
+
+async function googleRefresh(request, env) {
+  if (!googleConfigured(env)) return json(501, "google sign-in is not configured");
+  let asked;
+  try { asked = await request.json(); } catch { return json(400, "no token"); }
+
+  const form = new URLSearchParams({
+    client_id: env.GOOGLE_CLIENT_ID,
+    client_secret: env.GOOGLE_CLIENT_SECRET,
+    grant_type: "refresh_token",
+    refresh_token: String(asked.refresh_token || ""),
+  });
+  const r = await fetch(GOOGLE_TOKEN_URL, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: form,
+  });
+  return new Response(await r.text(), { status: r.status, headers: { "content-type": "application/json" } });
+}
+
+/** So the app can tell whether to offer sign-in at all. */
+function googleStatus(env) {
+  return new Response(JSON.stringify({
+    configured: googleConfigured(env),
+    clientId: env.GOOGLE_CLIENT_ID || "",
+  }), { status: 200, headers: { "content-type": "application/json" } });
+}
+
 // ── handing someone to the family ───────────────────────────────────────
 // The archive used to leave as a file you had to find, attach and send, and
 // arrive as a file the other person had to find again. For a family that is
@@ -371,6 +445,10 @@ async function route(request, env) {
     const voiceId = url.pathname.slice("/v1/voices/".length);
     return voiceId ? deleteVoice(request, env, voiceId) : json(400, "no voice id");
   }
+
+  if (url.pathname === "/google/status") return googleStatus(env);
+  if (url.pathname === "/google/exchange") return googleExchange(request, env);
+  if (url.pathname === "/google/refresh") return googleRefresh(request, env);
 
   if (url.pathname === "/archive") return putArchive(request, env);
   if (url.pathname === "/archive/fetch") return takeArchive(request, env);
