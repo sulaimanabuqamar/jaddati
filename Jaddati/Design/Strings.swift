@@ -57,6 +57,7 @@ let arabicStrings: [String: String] = [
     // that offers one action instead of seven rows.
     "Letters": "رسائل",
     "Dark mode": "الوضع الداكن",
+    "Voices made here are removed automatically about every ten minutes, so that everyone seeing the demonstration gets a turn. The recording you add stays on this device.": "تُحذف الأصوات المُنشأة هنا تلقائيًا كل عشر دقائق تقريبًا، ليحصل كل من يشاهد العرض على دوره. أما التسجيل الذي تضيفه فيبقى على هذا الجهاز.",
     "Change the language?": "تغيير اللغة؟",
     "Everything changes, including what is on screen now.": "يتغيّر كل شيء، بما في ذلك ما يظهر على الشاشة الآن.",
     "Arabic lays the whole app out right to left.": "العربية تعرض التطبيق كاملًا من اليمين إلى اليسار.",

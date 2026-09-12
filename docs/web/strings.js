@@ -556,7 +556,7 @@ export const AR = {
  "Voice service is not connected.": "خدمة الصوت غير متصلة.",
  "Voice service not connected": "خدمة الصوت غير متصلة",
  "Voice unavailable": "الصوت غير متاح",
- "Voices made here are removed automatically about every ten minutes, so that everyone seeing the demonstration gets a turn. The recording you add stays on this device.": "تُحذف الأصوات المُنشأة هنا تلقائيًا كل عشر دقائق تقريبًا، حتى ينال كل من يشاهد العرض دوره. أما التسجيل الذي تضيفه فيبقى على هذا الجهاز.",
+ "Voices made here are removed automatically about every ten minutes, so that everyone seeing the demonstration gets a turn. The recording you add stays on this device.": "تُحذف الأصوات المُنشأة هنا تلقائيًا كل عشر دقائق تقريبًا، ليحصل كل من يشاهد العرض على دوره. أما التسجيل الذي تضيفه فيبقى على هذا الجهاز.",
  "Voices, carefully kept.": "أصوات نحفظها بعناية.",
  "Waiting for you": "بانتظارك",
  "We could not read this file. Try another supported text file.": "تعذّرت قراءة هذا الملف. جرّب ملفًا نصيًا آخر بصيغة مدعومة.",

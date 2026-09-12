@@ -133,9 +133,27 @@ export function appBar(title, { onBack = null, trailing = null } = {}) {
   );
 }
 
+/// The name of the language you would be switching TO, in that language.
+export const otherLanguageName = () => (isAr() ? "English" : "العربية");
+
+/// The globe asks first.
+///
+/// It sits in the corner of nearly every screen, it is one tap, and it
+/// changes the whole interface including the direction it is laid out in.
+/// Doing that to someone who brushed it while reaching for the back arrow is
+/// the definition of too sudden. Choosing a language from the list in You is
+/// different — going there is already the deliberate act — so that one does
+/// not ask again.
 export function globeButton() {
   return h("button", {
-    class: "iconbtn", onClick: () => { toggleLang(); window.dispatchEvent(new Event("jaddati:lang")); },
+    class: "iconbtn",
+    onClick: () => confirmDialog({
+      title: L("Change the language?"),
+      message: L("Everything changes, including what is on screen now."),
+      confirm: otherLanguageName(),
+      destructive: false,
+      onConfirm: () => { toggleLang(); window.dispatchEvent(new Event("jaddati:lang")); },
+    }),
     "aria-label": L("Language"),
   }, h("span", { class: "globe" }, icon("globe")));
 }

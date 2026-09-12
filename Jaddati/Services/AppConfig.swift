@@ -70,7 +70,10 @@ enum AppConfig {
     /// exists to make plain. The data still reaches ElevenLabs and Groq, and
     /// the consent gate has to say so.
     static let relayURL = "https://jaddati-proxy.sulaimanabuqamar.workers.dev"
-    private static var usesRelayVoice: Bool { voiceBaseURL == relayURL }
+    /// Internal, not private: the person screen warns about the ten-minute
+    /// sweep, and only the shared relay sweeps. A phone using its own key
+    /// keeps its voices and must not be told otherwise.
+    static var usesRelayVoice: Bool { voiceBaseURL == relayURL }
     private static var usesRelayText: Bool { llmBaseURL == relayURL }
 
     /// Named in the disclosure. Derived, because a build pointed at a relay is

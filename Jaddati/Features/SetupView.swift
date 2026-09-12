@@ -43,6 +43,22 @@ struct SetupView: View {
                         capture(person)
                         handoff(person)
                         originals(person)
+
+                        // The web has had this all along. The phone lost it
+                        // when the person screen was rebuilt: the comment
+                        // there says it moved here, and it never did, so for
+                        // several commits there was no way to remove a photo
+                        // on the phone at all.
+                        if library.photoURL(for: person) != nil {
+                            Button(L("Remove photo")) { library.removePhoto(for: person) }
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.Palette.inkSoft)
+                                .underline()
+                                .frame(minHeight: Theme.Metric.touchTarget,
+                                       alignment: .leading)
+                                .padding(.top, 6)
+                        }
+
                         deleteRow(person)
                     }
                     .padding(.horizontal, Theme.Metric.screenPadding)

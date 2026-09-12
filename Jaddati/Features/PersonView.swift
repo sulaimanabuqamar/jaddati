@@ -45,6 +45,21 @@ struct PersonView: View {
 
                         primaryAction(person)
 
+                        // The sweep is announced when the voice is CREATED,
+                        // which is the wrong moment: ten minutes later you are
+                        // back on this screen wondering where she went. It
+                        // belongs where the disappearance is noticed. Only on
+                        // the shared relay — a phone using its own key keeps
+                        // its voices.
+                        if person.hasVoice && AppConfig.usesRelayVoice && !AppConfig.isUsingMock {
+                            Text(L("Voices made here are removed automatically about every ten minutes, so that everyone seeing the demonstration gets a turn. The recording you add stays on this device."))
+                                .font(Theme.Font.caption)
+                                .foregroundStyle(Theme.Palette.amber)
+                                .multilineTextAlignment(.center)
+                                .frame(maxWidth: .infinity)
+                                .padding(.top, 14)
+                        }
+
                         // No voice means nothing to put in them, and an empty
                         // room you have to open to discover is empty is the
                         // kind of thing that made this screen tiring.

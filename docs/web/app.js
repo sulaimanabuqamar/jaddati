@@ -418,6 +418,44 @@ function allLettersScreen() {
     h("div", { class: "scroll" }, body));
 }
 
+/// Language as its own screen, reached from You.
+///
+/// A row that silently flipped the language the instant it was touched gave
+/// no sense of what the choice even was. A list shows both, marks the one in
+/// use, and makes the change a thing you pick rather than a thing that
+/// happens to you. No confirmation here — coming to this screen IS the
+/// deliberate act; the globe in the corner is the one that has to ask.
+function languageScreen() {
+  const current = isAr() ? "ar" : "en";
+
+  const row = (name, code) => h("button", {
+    class: "feature-row",
+    "aria-current": code === current ? "true" : null,
+    onClick: () => {
+      if (code === current) return;
+      setLang(code);
+      window.dispatchEvent(new Event("jaddati:lang"));
+    },
+  },
+    h("span", { class: "grow stack", style: { gap: "3px", textAlign: "start" } },
+      h("span", { class: "feature-row__title" }, name)),
+    code === current ? icon("check") : null);
+
+  return h("div", { class: "screen" },
+    // No globe here: it would be a second, quieter control for the one thing
+    // this screen exists to do.
+    appBar(L("Language"), { onBack: pop, trailing: h("div", { class: "iconbtn" }) }),
+    h("div", { class: "scroll" },
+      // No section label: the bar already says Language, and saying it twice
+      // on a screen with two rows on it is noise.
+      h("div", { class: "mt-16" }),
+      row("English", "en"),
+      h("div", { class: "divider" }),
+      row("العربية", "ar"),
+      h("div", { class: "mt-16" },
+        subtext(L("Arabic lays the whole app out right to left.")))));
+}
+
 // ── you ─────────────────────────────────────────────────────────────────
 // Everything that is about the app rather than about a person. There was no
 // settings screen at all before: the key lived behind an unlabelled icon on
@@ -440,7 +478,13 @@ function youScreen() {
 
       h("div", { class: "mt-16" }, sectionLabel(L("This app"))),
       row("globe", L("Language"), isAr() ? "العربية" : "English",
-        () => { toggleLang(); window.dispatchEvent(new Event("jaddati:lang")); }),
+        () => push(languageScreen, {})),
+      h("div", { class: "divider" }),
+
+      row(Consent.allowsNetwork ? "unlock" : "lock", L("Privacy and data"),
+        Consent.allowsNetwork ? L("Two services outside this phone are in use.")
+                              : L("Everything is being kept on this phone."),
+        () => openPrivacy(true)),
       h("div", { class: "divider" }),
 
       // A switch, not a row that opens something: there are two states and
@@ -453,11 +497,6 @@ function youScreen() {
         h("span", { class: "grow stack", style: { gap: "3px" } },
           h("span", { class: "feature-row__title" }, L("Dark mode")),
           h("span", { class: "caption" }, L("The app opens light. This keeps it dark.")))),
-      h("div", { class: "divider" }),
-      row(Consent.allowsNetwork ? "unlock" : "lock", L("Privacy and data"),
-        Consent.allowsNetwork ? L("Two services outside this phone are in use.")
-                              : L("Everything is being kept on this phone."),
-        () => openPrivacy(true)),
       h("div", { class: "divider" }),
       row("key", L("Voice service"), L("Leave as it is unless you run a relay of your own."),
         openSettings),
@@ -524,6 +563,15 @@ function personScreen({ personId }) {
       !Config.isConfigured ? h("div", { class: "mt-21" }, unavailableNote()) : null,
 
       primaryAction(person, { hasVoice, placeholder, pending }),
+
+      // The sweep is announced when the voice is CREATED, which is the wrong
+      // moment: ten minutes later you are back on this screen wondering where
+      // she went. It belongs where the disappearance is noticed. Only on the
+      // shared relay — a phone using its own key keeps its voices.
+      hasVoice && Config.usesRelayVoice && !Config.isDemo
+        ? h("p", { class: "caption amber-text", style: { margin: "14px 0 0", textAlign: "center" } },
+            L("Voices made here are removed automatically about every ten minutes, so that everyone seeing the demonstration gets a turn. The recording you add stays on this device."))
+        : null,
 
       hasVoice ? personCards(person) : null));
 }
