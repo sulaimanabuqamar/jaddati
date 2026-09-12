@@ -12,6 +12,7 @@ final class Library: ObservableObject {
     @Published private(set) var people: [Person] = []
     @Published private(set) var assets: [AudioAsset] = []
     @Published private(set) var notes: [FamilyNote] = []
+    @Published private(set) var letters: [Letter] = []
     @Published private(set) var books: [Book] = []
 
     /// Set when loading or saving fails, so the UI can say so rather than
@@ -207,6 +208,38 @@ final class Library: ObservableObject {
             .sorted { $0.createdAt < $1.createdAt }
     }
 
+    // MARK: Words that arrive later
+
+    @discardableResult
+    func addLetter(for person: Person, text: String, occasion: String, deliverAt: Date) -> Letter {
+        let letter = Letter(personId: person.id, text: text,
+                            occasion: occasion, deliverAt: deliverAt)
+        letters.append(letter)
+        save()
+        return letter
+    }
+
+    func update(_ letter: Letter) {
+        guard let i = letters.firstIndex(where: { $0.id == letter.id }) else { return }
+        letters[i] = letter
+        save()
+    }
+
+    func removeLetter(_ id: UUID) {
+        letters.removeAll { $0.id == id }
+        save()
+    }
+
+    /// Soonest first, so what is closest to arriving reads first.
+    func letters(for person: Person) -> [Letter] {
+        self.letters.filter { $0.personId == person.id }
+            .sorted { $0.deliverAt < $1.deliverAt }
+    }
+
+    func dueLetters(for person: Person) -> [Letter] { self.letters(for: person).filter(\.isDue) }
+    func sealedLetters(for person: Person) -> [Letter] { self.letters(for: person).filter(\.isSealed) }
+    func openedLetters(for person: Person) -> [Letter] { self.letters(for: person).filter(\.isOpened) }
+
     /// Kept clips produced by one experience, newest first.
     func savedAssets(for person: Person, intent: Intent) -> [AudioAsset] {
         savedAssets(for: person, intents: [intent])
@@ -334,6 +367,7 @@ final class Library: ObservableObject {
         assets.removeAll { $0.personId == person.id }
         notes.removeAll { $0.personId == person.id }
         books.removeAll { $0.personId == person.id }
+        letters.removeAll { $0.personId == person.id }
         people.removeAll { $0.id == person.id }
         save()
     }
@@ -346,6 +380,8 @@ final class Library: ObservableObject {
         var notes: [FamilyNote]
         /// Optional so an index written before books existed still decodes.
         var books: [Book]? = nil
+        /// Same reason: absent in every library written before sealed letters.
+        var letters: [Letter]? = nil
     }
 
     private func load() {
@@ -359,6 +395,7 @@ final class Library: ObservableObject {
             assets = index.assets
             notes = index.notes
             books = index.books ?? []
+            letters = index.letters ?? []
         } catch {
             // A corrupt index must not wedge the app on launch, and must not be
             // overwritten by the next save. Move it aside first, so the data is
@@ -394,7 +431,7 @@ final class Library: ObservableObject {
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             encoder.dateEncodingStrategy = .iso8601
             let data = try encoder.encode(
-                Index(people: people, assets: assets, notes: notes, books: books))
+                Index(people: people, assets: assets, notes: notes, books: books, letters: letters))
             try data.write(to: indexURL, options: .atomic)
             storageError = nil
             return true

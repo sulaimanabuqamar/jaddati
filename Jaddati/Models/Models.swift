@@ -267,6 +267,50 @@ struct Book: Identifiable, Codable, Equatable, Hashable {
     }
 }
 
+/// Words sealed now, to be heard on a day that has not come.
+///
+/// The audio is NOT stored here and is not made until the letter is opened.
+/// Generating in advance would spend the allowance on something nobody may ever
+/// hear, and would fix a voice that might still be improved before the day.
+struct Letter: Identifiable, Codable, Equatable {
+    var id: UUID = UUID()
+    var personId: UUID
+    var text: String
+    /// Free text — "a birthday", "her graduation". Shown while sealed; the
+    /// words themselves are not.
+    var occasion: String = ""
+    var deliverAt: Date
+    var createdAt: Date = Date()
+    /// Set the moment it is opened, so the same words cannot be paid for twice.
+    var openedAt: Date? = nil
+    var assetId: UUID? = nil
+
+    var isOpened: Bool { openedAt != nil }
+    var isDue: Bool { !isOpened && deliverAt <= Date() }
+    var isSealed: Bool { !isOpened && deliverAt > Date() }
+
+    /// Field by field, like everything else in this file: an absent key must
+    /// not take the whole library down with it.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id        = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        personId  = try c.decode(UUID.self, forKey: .personId)
+        text      = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
+        occasion  = try c.decodeIfPresent(String.self, forKey: .occasion) ?? ""
+        deliverAt = try c.decodeIfPresent(Date.self, forKey: .deliverAt) ?? Date()
+        createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        openedAt  = try c.decodeIfPresent(Date.self, forKey: .openedAt)
+        assetId   = try c.decodeIfPresent(UUID.self, forKey: .assetId)
+    }
+
+    init(personId: UUID, text: String, occasion: String = "", deliverAt: Date) {
+        self.personId = personId
+        self.text = text
+        self.occasion = occasion
+        self.deliverAt = deliverAt
+    }
+}
+
 /// A memory the family supplies in their own words. Used to ground a retelling.
 /// Kept separate from anything the model invents — a story built from these is
 /// labelled as a family account, a story without them is labelled fiction.

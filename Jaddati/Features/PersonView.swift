@@ -332,6 +332,22 @@ struct PersonView: View {
                     Theme.Palette.hairline.frame(height: 1)
                 }
             }
+
+            // Letters sit with the experiences but are not one of them: they
+            // carry a date, so they do not fit the compose screen's shape. A
+            // letter whose day has come announces itself here, because a sealed
+            // letter nobody is told about is a letter that never arrives.
+            Theme.Palette.hairline.frame(height: 1)
+            NavigationLink {
+                LettersView(personId: person.id)
+            } label: {
+                FeatureRow(icon: library.dueLetters(for: person).isEmpty ? "lock" : "lock.open",
+                           title: L("Words that arrive later"),
+                           subtitle: library.dueLetters(for: person).isEmpty
+                               ? L("Sealed now, heard on a day you choose")
+                               : L("Waiting for you"))
+            }
+            .buttonStyle(.plain)
         }
         .padding(.top, 22)
     }
