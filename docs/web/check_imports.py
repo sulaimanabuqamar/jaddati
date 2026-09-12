@@ -35,10 +35,12 @@ def exports(path):
 cache = {}
 for path in sorted(WEB.glob("*.js")):
     src = path.read_text(encoding="utf-8")
-    for block, target in re.findall(r"import\s*\{([^}]*)\}\s*from\s*[\"'](\./[\w.]+)[\"']", src):
-        dep = (WEB / target.lstrip("./")).resolve()
+    for block, target in re.findall(r"import\s*\{([^}]*)\}\s*from\s*[\"'](\./[\w.?=]+)[\"']", src):
+        # The URL carries a cache-busting version; the file on disk does not.
+        bare = target.split("?")[0]
+        dep = (WEB / bare.lstrip("./")).resolve()
         if not dep.exists():
-            problems.append(f"{path.name}: imports from {target}, which does not exist here")
+            problems.append(f"{path.name}: imports from {bare}, which does not exist here")
             continue
         if dep not in cache:
             cache[dep] = exports(dep)
@@ -48,7 +50,7 @@ for path in sorted(WEB.glob("*.js")):
                 continue
             wanted = piece.split(" as ")[0].strip()
             if wanted and wanted not in cache[dep]:
-                problems.append(f"{path.name}: imports {wanted!r} from {target}, "
+                problems.append(f"{path.name}: imports {wanted!r} from {bare}, "
                                 f"which does not export it")
 
 for p in problems:

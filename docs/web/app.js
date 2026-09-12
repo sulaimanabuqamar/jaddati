@@ -3,25 +3,25 @@
 // and Saved and Books are scoped to one person because a pile of clips with no
 // name on it is not an archive.
 
-import { L, isAr, isArabicText, dirOf, Counts, state as lang, setLang, toggleLang } from "./strings.js";
+import { L, isAr, isArabicText, dirOf, Counts, state as lang, setLang, toggleLang } from "./strings.js?v=b66be76375";
 import {
   store, Consent, ConsentMissing, Config, Voice, Companion, VoiceError, CompanionError,
   Intent, INTENTS, ContentProvenance, TUNING, sameTuning, presetName,
   AFFIRMATIONS, STORIES, makeBook, ImportError, isDemoVoice, uuid, blobURL,
   STOCK_VOICE_URL, STOCK_LLM_URL, Archive, ArchiveError, Cloud, CloudError,
-} from "./core.js";
+} from "./core.js?v=b66be76375";
 import {
   h, clear, bidi, icon, appBar, globeButton, headline, eyebrow, sectionLabel,
   subtext, caption, panel, panelS, errorNote, emptyHint, avatar, breadcrumb,
   sourceBadge, contentBadge, badgesFor, audioRow, player, confirmDialog, sheet,
   toast, Recorder, durationOf, demoDuration, track, unmountAll,
-} from "./ui.js";
-import { nav, remember, setRenderer, render, push, pop, popTo, goTab } from "./nav.js";
-import { appearance } from "./prefs.js";
+} from "./ui.js?v=b66be76375";
+import { nav, remember, setRenderer, render, push, pop, popTo, goTab } from "./nav.js?v=b66be76375";
+import { appearance } from "./prefs.js?v=b66be76375";
 import {
   createScreen, booksScreen, readerScreen, memoriesScreen, playerScreen, openAddVoice,
   personHasVoice, lettersScreen, captureScreen,
-} from "./screens.js";
+} from "./screens.js?v=b66be76375";
 
 const root = document.getElementById("app");
 

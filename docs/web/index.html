@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" dir="ltr">
+<html lang="en" dir="ltr" data-v="b66be76375">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -43,9 +43,9 @@
 </noscript>
 
 <script type="module">
-  import { setLang, state } from "./strings.js";
+  import { setLang, state } from "./strings.js?v=b66be76375";
   setLang(state.lang);                       // paint the right direction before anything renders
-  import("./app.js").catch(err => {
+  import("./app.js?v=b66be76375").catch(err => {
     document.getElementById("app").innerHTML =
       '<div class="noscript"><h1 class="headline">Jaddati</h1>' +
       '<p class="subtext">This browser could not start the app. It needs a current version of Safari, Chrome, Firefox or Edge.</p>' +

@@ -5,8 +5,8 @@
 // is where those live — IndexedDB for the audio blobs, because a browser has no
 // application-support directory, and localStorage for the index.
 
-import { L, Counts, isArabicText, state as lang } from "./strings.js";
-import { prefs } from "./prefs.js";
+import { L, Counts, isArabicText, state as lang } from "./strings.js?v=b66be76375";
+import { prefs } from "./prefs.js?v=b66be76375";
 
 export const uuid = () =>
   (crypto.randomUUID ? crypto.randomUUID()

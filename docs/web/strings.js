@@ -5,7 +5,7 @@
 // This table is generated from Jaddati/Design/Strings.swift — do not hand-edit.
 // Regenerate with docs/web/build-strings.py after changing the app's strings.
 
-import { prefs } from "./prefs.js";
+import { prefs } from "./prefs.js?v=b66be76375";
 
 export const AR = {
  "A bedtime story": "قصة قبل النوم",
