@@ -57,6 +57,9 @@ let arabicStrings: [String: String] = [
     // that offers one action instead of seven rows.
     "Letters": "رسائل",
     "Dark mode": "الوضع الداكن",
+    "Change the language?": "تغيير اللغة؟",
+    "Everything changes, including what is on screen now.": "يتغيّر كل شيء، بما في ذلك ما يظهر على الشاشة الآن.",
+    "Arabic lays the whole app out right to left.": "العربية تعرض التطبيق كاملًا من اليمين إلى اليسار.",
     "The app opens light. This keeps it dark.": "يفتح التطبيق فاتحًا. هذا يبقيه داكنًا.",
     "You": "أنت",
     "This app": "هذا التطبيق",

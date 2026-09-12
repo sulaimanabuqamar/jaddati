@@ -26,10 +26,25 @@ struct YouView: View {
                     SectionLabel(text: L("This app"))
                         .padding(.top, 20)
 
-                    row(icon: "globe",
-                        title: L("Language"),
-                        note: localization.language.endonym) {
-                        localization.toggle()
+                    // A screen of its own, not a row that flips the language
+                    // the instant it is touched.
+                    NavigationLink {
+                        LanguageView()
+                    } label: {
+                        FeatureRow(icon: "globe",
+                                   title: L("Language"),
+                                   subtitle: localization.language.endonym)
+                    }
+                    .buttonStyle(.plain)
+
+                    Theme.Palette.hairline.frame(height: 1)
+
+                    row(icon: consent.allowsNetwork ? "lock.open" : "lock",
+                        title: L("Privacy and data"),
+                        note: consent.allowsNetwork
+                            ? L("Two services outside this phone are in use.")
+                            : L("Everything is being kept on this phone.")) {
+                        showingPrivacy = true
                     }
 
                     Theme.Palette.hairline.frame(height: 1)
@@ -52,16 +67,6 @@ struct YouView: View {
                     .tint(Theme.Palette.wine)
                     .padding(.vertical, 10)
                     .frame(minHeight: Theme.Metric.touchTarget)
-
-                    Theme.Palette.hairline.frame(height: 1)
-
-                    row(icon: consent.allowsNetwork ? "lock.open" : "lock",
-                        title: L("Privacy and data"),
-                        note: consent.allowsNetwork
-                            ? L("Two services outside this phone are in use.")
-                            : L("Everything is being kept on this phone.")) {
-                        showingPrivacy = true
-                    }
 
                     QuietDivider()
 

@@ -89,15 +89,28 @@ struct AppBar: View {
 /// One tap, both directions. The globe sits on every screen because the design
 /// puts it there — a language you can only change from a settings screen is a
 /// language the app does not really speak.
+/// The globe asks first.
+///
+/// It sits in the corner of nearly every screen, it is one tap, and it changes
+/// the whole interface including the direction it is laid out in. Doing that
+/// to someone who brushed it reaching for the back arrow is the definition of
+/// too sudden. Choosing from the list in You is different — going there is
+/// already the deliberate act — so that one does not ask again.
 struct GlobeButton: View {
     /// The drawn circle, which is what the eye aligns to — not the tap box.
     static let diameter: CGFloat = 36
 
     @ObservedObject private var localization = Localization.shared
+    @State private var asking = false
+
+    /// The language you would be switching TO, written in that language.
+    private var other: String {
+        localization.language == .arabic ? "English" : "العربية"
+    }
 
     var body: some View {
         Button {
-            localization.toggle()
+            asking = true
         } label: {
             Image(systemName: "globe")
                 .font(.system(size: 16, weight: .regular))
@@ -108,6 +121,14 @@ struct GlobeButton: View {
         }
         .accessibilityLabel(L("Language"))
         .accessibilityValue(localization.language.endonym)
+        .confirmationDialog(L("Change the language?"),
+                            isPresented: $asking,
+                            titleVisibility: .visible) {
+            Button(other) { localization.toggle() }
+            Button(L("Cancel"), role: .cancel) { }
+        } message: {
+            Text(L("Everything changes, including what is on screen now."))
+        }
     }
 }
 
