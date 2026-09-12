@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 @main
 struct JaddatiApp: App {
@@ -15,6 +16,16 @@ struct JaddatiApp: App {
 
     /// Shared with YouView by key. "light" unless the user turns it on.
     @AppStorage(Appearance.key) private var appearance: String = Appearance.light
+
+    private func applyWindowAppearance() {
+        let style: UIUserInterfaceStyle = appearance == Appearance.dark ? .dark : .light
+        for scene in UIApplication.shared.connectedScenes {
+            guard let windowScene = scene as? UIWindowScene else { continue }
+            for window in windowScene.windows {
+                window.overrideUserInterfaceStyle = style
+            }
+        }
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -42,13 +53,33 @@ struct JaddatiApp: App {
             // Rebuild the tree outright when the language changes. Without
             // this, screens holding their own @State keep the previous
             // direction and half the app faces the wrong way.
-            .id(localization.language)
+            //
+            // The appearance is part of the identity for the same reason. A
+            // Color built from a dynamic UIColor can be held by SwiftUI after
+            // it has been resolved once, and a half-repainted screen is worse
+            // than no toggle at all.
+            .id("\(localization.language)-\(appearance)")
             .tint(Theme.Palette.wineInk)
             // Dark is a switch in You, not the system's decision. The app
             // opens light because warm paper is the design, so an unset
             // preference means light — hence the explicit scheme rather than
             // leaving it to follow the phone.
-            .preferredColorScheme(appearance == "dark" ? .dark : .light)
+            .preferredColorScheme(appearance == Appearance.dark ? .dark : .light)
+            // And this, which is the part that actually mattered.
+            //
+            // preferredColorScheme sets SwiftUI's ENVIRONMENT. Every colour in
+            // the palette is a dynamic UIColor, and those resolve against
+            // UITraitCollection.current — the WINDOW's appearance. Inside the
+            // safe area SwiftUI keeps the two in step; for anything that
+            // escapes it, notably the tab rail's ground and the status bar,
+            // it does not. The result was one half of the screen asking the
+            // environment and the other half asking the phone, on a screen
+            // where both grounds are the same token.
+            //
+            // Setting the window's own style leaves one answer for every path
+            // to find.
+            .onAppear { applyWindowAppearance() }
+            .onChange(of: appearance) { _, _ in applyWindowAppearance() }
         }
     }
 }
