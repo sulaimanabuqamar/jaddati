@@ -46,6 +46,25 @@ enum Theme {
         static let coverGreen  = Color.dynamic(light: 0x6C7052, dark: 0x6C7052)
         static let coverRust   = Color.dynamic(light: 0xA0765E, dark: 0xA0765E)
 
+        /// Written inline all over the app until dark mode arrived, where a
+        /// hardcoded colour cannot follow the appearance. The person cards
+        /// were filled with card2 by hand — so in dark they stayed cream
+        /// while the names on them went near-white and vanished.
+        static let card2       = Color.dynamic(light: 0xFFFAF4, dark: 0x231C18)
+        static let chevron     = Color.dynamic(light: 0x958578, dark: 0x6B5E55)
+        static let artFill     = Color.dynamic(light: 0xE9DDCE, dark: 0x2A221D)
+        static let artEdge     = Color.dynamic(light: 0xD8C5B1, dark: 0x3D332C)
+
+        /// Cream is the text ON wine, and wine is wine in both appearances,
+        /// so these two do not change — but they are tokens now so nobody has
+        /// to work out which inline hex was deliberate.
+        static let cream       = Color.dynamic(light: 0xF9EFE6, dark: 0xF9EFE6)
+        static let cream2      = Color.dynamic(light: 0xF8EFE4, dark: 0xF8EFE4)
+        static let coverInk    = Color.dynamic(light: 0xF4EBDB, dark: 0xF4EBDB)
+        /// The drop under a book on the shelf. Ink-brown on paper; on a
+        /// dark shelf a brown shadow is invisible, so it goes to black.
+        static let bookShadow  = Color.dynamic(light: 0x493B28, dark: 0x000000)
+
         // Older names the rest of the app still refers to.
         static let ivory       = paper
         static let ivorySunk   = sunk
@@ -171,7 +190,7 @@ struct PrimaryButtonStyle: ButtonStyle {
         var body: some View {
             configuration.label
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Color(hex: 0xF9EFE6))
+                .foregroundStyle(Theme.Palette.cream)
                 .frame(maxWidth: .infinity, minHeight: Theme.Metric.buttonHeight)
                 .background(
                     RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)

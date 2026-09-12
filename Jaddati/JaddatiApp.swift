@@ -13,6 +13,9 @@ struct JaddatiApp: App {
         _ = AppConfig.deviceId
     }
 
+    /// Shared with YouView by key. "light" unless the user turns it on.
+    @AppStorage(Appearance.key) private var appearance: String = Appearance.light
+
     var body: some Scene {
         WindowGroup {
             Group {
@@ -41,6 +44,19 @@ struct JaddatiApp: App {
             // direction and half the app faces the wrong way.
             .id(localization.language)
             .tint(Theme.Palette.wineInk)
+            // Dark is a switch in You, not the system's decision. The app
+            // opens light because warm paper is the design, so an unset
+            // preference means light — hence the explicit scheme rather than
+            // leaving it to follow the phone.
+            .preferredColorScheme(appearance == "dark" ? .dark : .light)
         }
     }
+}
+
+/// One place for the appearance choice, so the switch and the scheme that
+/// reads it cannot drift apart over a string literal.
+enum Appearance {
+    static let key   = "jaddati.appearance"
+    static let light = "light"
+    static let dark  = "dark"
 }

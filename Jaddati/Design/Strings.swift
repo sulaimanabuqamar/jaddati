@@ -56,6 +56,8 @@ let arabicStrings: [String: String] = [
     // The rebuilt navigation: People, Letters and You, and a person screen
     // that offers one action instead of seven rows.
     "Letters": "رسائل",
+    "Dark mode": "الوضع الداكن",
+    "The app opens light. This keeps it dark.": "يفتح التطبيق فاتحًا. هذا يبقيه داكنًا.",
     "You": "أنت",
     "This app": "هذا التطبيق",
     "Setup": "الإعداد",

@@ -99,18 +99,18 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 0) {
                 Image(systemName: "circle.dotted.circle")
                     .font(.system(size: 19))
-                    .foregroundStyle(Color(hex: 0xF8EFE4).opacity(0.85))
+                    .foregroundStyle(Theme.Palette.cream2.opacity(0.85))
                     .padding(.bottom, 26)
 
                 Text(L("The recordings you have. The words you choose."))
                     .font(Theme.Font.display(28))
                     .tracking(-0.5)
                     .lineSpacing(2)
-                    .foregroundStyle(Color(hex: 0xF8EFE4))
+                    .foregroundStyle(Theme.Palette.cream2)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: 260, alignment: .leading)
 
-                Color(hex: 0xF8EFE4).opacity(0.18)
+                Theme.Palette.cream2.opacity(0.18)
                     .frame(height: 1)
                     .padding(.vertical, 16)
 
@@ -121,7 +121,7 @@ struct HomeView: View {
                         .font(.system(size: 11))
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .foregroundStyle(Color(hex: 0xF8EFE4).opacity(0.8))
+                .foregroundStyle(Theme.Palette.cream2.opacity(0.8))
             }
         }
         .padding(.top, 21)
@@ -272,12 +272,12 @@ struct PersonCard: View {
 
             Image(systemName: "chevron.right")
                 .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(Color(hex: 0x958578))
+                .foregroundStyle(Theme.Palette.chevron)
         }
         .padding(16)
         .background(
             RoundedRectangle(cornerRadius: Theme.Metric.cardRadius, style: .continuous)
-                .fill(Color(hex: 0xFFFAF4))
+                .fill(Theme.Palette.card2)
         )
         .overlay(
             RoundedRectangle(cornerRadius: Theme.Metric.cardRadius, style: .continuous)
@@ -379,7 +379,7 @@ struct Field: View {
                 .frame(minHeight: 50)
                 .background(
                     RoundedRectangle(cornerRadius: Theme.Metric.buttonRadius, style: .continuous)
-                        .fill(Color(hex: 0xFFFAF4))
+                        .fill(Theme.Palette.card2)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: Theme.Metric.buttonRadius, style: .continuous)

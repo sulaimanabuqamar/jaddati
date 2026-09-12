@@ -19,14 +19,19 @@ def css_block(start, end=None):
     return {k: v.strip().lower() for k, v in re.findall(r"(--[\w-]+):\s*([^;]+);", css[i:j])}
 
 light = css_block(":root {", ":root[dir=")
-dark  = {**light, **css_block("@media (prefers-color-scheme: dark) {", "\n}")}
+dark  = {**light, **css_block(':root[data-theme="dark"] {', "\n}")}
 
 PAIRS = {"paper":"--paper","ink":"--ink","inkSoft":"--ink-soft","hairline":"--hairline",
          "wine":"--wine","wineDeep":"--wine-deep","wineInk":"--wine-ink","wineLight":"--wine-light",
          "sage":"--sage","sageLight":"--sage-light","amber":"--amber","amberLight":"--amber-light",
          "danger":"--danger","card":"--card","bar":"--bar","sunk":"--sunk",
          "archWarm":"--arch-warm","archSage":"--arch-sage",
-         "coverGreen":"--cover-green","coverRust":"--cover-rust"}
+         "coverGreen":"--cover-green","coverRust":"--cover-rust",
+         # The ones that were inline in Swift until the person cards stayed
+         # cream in dark mode and the names on them disappeared.
+         "card2":"--card-2","chevron":"--chevron",
+         "artFill":"--art-fill","artEdge":"--art-edge",
+         "cream":"--cream","cream2":"--cream-2"}
 
 bad = 0
 for name, var in PAIRS.items():

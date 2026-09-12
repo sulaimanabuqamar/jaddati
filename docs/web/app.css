@@ -3,7 +3,7 @@
    this has to be the same app, not one that resembles it. */
 
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 
   --paper:      #F9F5EF;
   --ink:        #302725;
@@ -649,68 +649,67 @@ details[open] > summary::after { transform: rotate(90deg); }
 .chip:active:not(.chip--on) { border-color: var(--hairline); }
 
 /* ── dark ─────────────────────────────────────────────────────────────── */
-/* The app forced light before this. On a phone set to dark that reads as a
-   web page in a wrapper rather than an app.
+/* Turned on in You, not inherited from the system. The app opens light —
+   warm paper is the design — so an unset preference means light and there is
+   deliberately no prefers-color-scheme query anywhere in this file.
 
-   Not a generic dark theme: the ground stays WARM, because the whole design
-   is paper and wine and a cold neutral grey would throw that away. Three of
-   the accents are lifted, because #592C43 wine, #775829 amber and #426858
-   sage were chosen to sit on near-white and are close to illegible on a dark
-   ground — same hue, enough lightness to read. */
+   Not a generic dark theme either: the ground stays WARM, because a cold
+   neutral grey throws the whole paper-and-wine idea away. Wine, amber and
+   sage are lifted, since all three were chosen to sit on near-white and are
+   close to illegible on a dark ground. */
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper:      #14100E;
-    --ink:        #F2EAE1;
-    --ink-soft:   #A89B92;
-    --hairline:   #332A25;
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper:      #14100E;
+  --ink:        #F2EAE1;
+  --ink-soft:   #A89B92;
+  --hairline:   #332A25;
 
-    --wine:       #7A3D5B;
-    /* Lifted until it clears 4.5:1 on the dark ground — measured,
-       not picked by eye. The fill above cannot double as this. */
-    --wine-ink:   #C67A99;
-    --wine-deep:  #5E2E46;
-    --wine-light: #2E1C26;
+  --wine:       #7A3D5B;
+  /* Lifted until it clears 4.5:1 on the dark ground — measured,
+     not picked by eye. The fill above cannot double as this. */
+  --wine-ink:   #C67A99;
+  --wine-deep:  #5E2E46;
+  --wine-light: #2E1C26;
 
-    --sage:       #6E9C87;
-    --sage-light: #1C2620;
+  --sage:       #6E9C87;
+  --sage-light: #1C2620;
 
-    --amber:      #C4954E;
-    --amber-light:#2A2113;
-    --danger:     #D9736F;
+  --amber:      #C4954E;
+  --amber-light:#2A2113;
+  --danger:     #D9736F;
 
-    --card:       #1E1815;
-    --bar:        #14100E;
-    --sunk:       #241D19;
+  --card:       #1E1815;
+  --bar:        #14100E;
+  --sunk:       #241D19;
 
-    --arch-warm:  #3A302A;
-    --arch-sage:  #2A322C;
+  --arch-warm:  #3A302A;
+  --arch-sage:  #2A322C;
 
-    --chevron:    #6B5E55;
-    --card-2:     #231C18;
+  --chevron:    #6B5E55;
+  --card-2:     #231C18;
 
-    /* The initial sits ON the arch, which is now dark — the old ink-on-warm
-       would have been dark on dark. */
-    --avatar-ink:    rgba(242,234,225,.82);
-    --art-fill:      #2A221D;
-    --art-edge:      #3D332C;
-    --art-line:      rgba(219,158,188,.28);
-    --art-dot:       rgba(219,158,188,.62);
-    --art-glow:      rgba(0,0,0,.45);
-    --disabled-fill: rgba(255,255,255,.10);
-    /* Was a near-white wash. On a dark ground a disabled button was the
-       brightest thing on the screen. */
-    --disabled-sunk: rgba(255,255,255,.05);
-    --disabled-ink:  rgba(242,234,225,.32);
-    --danger-wash:   rgba(217,115,111,.14);
-    /* A 35% scrim over dark barely separates the sheet from the page. */
-    --scrim:         rgba(0,0,0,.6);
-    --gutter:        #0B0908;
-    --lift:          rgba(0,0,0,.55);
-    --book-shadow:   rgba(0,0,0,.4);
-  }
-
-  /* The rule inside the wine hero card is a light wash over a mid tone; on
-     the darker wine it disappears. */
-  .hero__rule { background: rgba(248, 239, 228, .22); }
+  /* The initial sits ON the arch, which is now dark — the old ink-on-warm
+     would have been dark on dark. */
+  --avatar-ink:    rgba(242,234,225,.82);
+  --art-fill:      #2A221D;
+  --art-edge:      #3D332C;
+  --art-line:      rgba(219,158,188,.28);
+  --art-dot:       rgba(219,158,188,.62);
+  --art-glow:      rgba(0,0,0,.45);
+  --disabled-fill: rgba(255,255,255,.10);
+  /* Was a near-white wash. On a dark ground a disabled button was the
+     brightest thing on the screen. */
+  --disabled-sunk: rgba(255,255,255,.05);
+  --disabled-ink:  rgba(242,234,225,.32);
+  --danger-wash:   rgba(217,115,111,.14);
+  /* A 35% scrim over dark barely separates the sheet from the page. */
+  --scrim:         rgba(0,0,0,.6);
+  --gutter:        #0B0908;
+  --lift:          rgba(0,0,0,.55);
+  --book-shadow:   rgba(0,0,0,.4);
 }
+
+/* The rule inside the wine hero card is a light wash over a mid tone; on the
+   darker wine it disappears. */
+:root[data-theme="dark"] .hero__rule { background: rgba(248, 239, 228, .22); }

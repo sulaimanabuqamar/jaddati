@@ -17,6 +17,7 @@ import {
   toast, Recorder, durationOf, demoDuration, track, unmountAll,
 } from "./ui.js";
 import { nav, remember, setRenderer, render, push, pop, popTo, goTab } from "./nav.js";
+import { appearance } from "./prefs.js";
 import {
   createScreen, booksScreen, readerScreen, memoriesScreen, playerScreen, openAddVoice,
   personHasVoice, lettersScreen, captureScreen,
@@ -440,6 +441,18 @@ function youScreen() {
       h("div", { class: "mt-16" }, sectionLabel(L("This app"))),
       row("globe", L("Language"), isAr() ? "العربية" : "English",
         () => { toggleLang(); window.dispatchEvent(new Event("jaddati:lang")); }),
+      h("div", { class: "divider" }),
+
+      // A switch, not a row that opens something: there are two states and
+      // the control should BE the answer rather than lead to it.
+      h("label", { class: "switch", style: { paddingBlock: "10px" } },
+        h("input", {
+          type: "checkbox", checked: appearance.isDark,
+          onChange: e => { appearance.set(e.target.checked); render(); },
+        }),
+        h("span", { class: "grow stack", style: { gap: "3px" } },
+          h("span", { class: "feature-row__title" }, L("Dark mode")),
+          h("span", { class: "caption" }, L("The app opens light. This keeps it dark.")))),
       h("div", { class: "divider" }),
       row(Consent.allowsNetwork ? "unlock" : "lock", L("Privacy and data"),
         Consent.allowsNetwork ? L("Two services outside this phone are in use.")

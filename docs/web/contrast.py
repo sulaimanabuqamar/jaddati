@@ -19,7 +19,7 @@ def block(after, until=None):
     return dict(re.findall(r"(--[\w-]+):\s*([^;]+);", css[i:j]))
 
 light = block(":root {", ":root[dir=")
-dark  = {**light, **block("@media (prefers-color-scheme: dark) {", "\n}")}
+dark  = {**light, **block(':root[data-theme="dark"] {', "\n}")}
 
 def rgb(v):
     v = v.strip()

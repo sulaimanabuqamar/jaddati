@@ -10,6 +10,7 @@ struct YouView: View {
     @EnvironmentObject private var consent: Consent
     @ObservedObject private var localization = Localization.shared
 
+    @AppStorage(Appearance.key) private var appearance: String = Appearance.light
     @State private var showingPrivacy = false
 
     var body: some View {
@@ -30,6 +31,27 @@ struct YouView: View {
                         note: localization.language.endonym) {
                         localization.toggle()
                     }
+
+                    Theme.Palette.hairline.frame(height: 1)
+
+                    // A switch, not a row that opens something: there are two
+                    // states and the control should BE the answer.
+                    Toggle(isOn: Binding(
+                        get: { appearance == Appearance.dark },
+                        set: { appearance = $0 ? Appearance.dark : Appearance.light })
+                    ) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(L("Dark mode"))
+                                .font(Theme.Font.label)
+                                .foregroundStyle(Theme.Palette.ink)
+                            Text(L("The app opens light. This keeps it dark."))
+                                .font(Theme.Font.caption)
+                                .foregroundStyle(Theme.Palette.inkSoft)
+                        }
+                    }
+                    .tint(Theme.Palette.wine)
+                    .padding(.vertical, 10)
+                    .frame(minHeight: Theme.Metric.touchTarget)
 
                     Theme.Palette.hairline.frame(height: 1)
 

@@ -443,7 +443,7 @@ struct AudioRow: View {
                     Button(action: onOpen) {
                         Image(systemName: "chevron.right")
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Color(hex: 0x958578))
+                            .foregroundStyle(Theme.Palette.chevron)
                             .frame(width: 44, height: 44)      // full touch target
                             .contentShape(Rectangle())
                     }

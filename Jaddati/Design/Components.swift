@@ -290,7 +290,7 @@ struct FeatureRow: View {
         HStack(spacing: 16) {
             Image(systemName: icon)
                 .font(.system(size: 17))
-                .foregroundStyle(emphasised ? Color(hex: 0xF9EFE6) : Theme.Palette.wineInk)
+                .foregroundStyle(emphasised ? Theme.Palette.cream : Theme.Palette.wineInk)
                 .frame(width: 44, height: 44)
                 .background(
                     Circle().fill(emphasised
@@ -301,12 +301,12 @@ struct FeatureRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                     .font(Theme.Font.display(emphasised ? 24 : 17))
-                    .foregroundStyle(emphasised ? Color(hex: 0xF9EFE6) : Theme.Palette.ink)
+                    .foregroundStyle(emphasised ? Theme.Palette.cream : Theme.Palette.ink)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(subtitle)
                     .font(.system(size: 13))
                     .foregroundStyle(emphasised
-                                     ? Color(hex: 0xF9EFE6).opacity(0.82)
+                                     ? Theme.Palette.cream.opacity(0.82)
                                      : Theme.Palette.inkSoft)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -316,8 +316,8 @@ struct FeatureRow: View {
             Image(systemName: "chevron.right")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(emphasised
-                                 ? Color(hex: 0xF9EFE6).opacity(0.7)
-                                 : Color(hex: 0x958578))
+                                 ? Theme.Palette.cream.opacity(0.7)
+                                 : Theme.Palette.chevron)
         }
         .padding(emphasised ? 20 : 0)
         .padding(.vertical, emphasised ? 0 : 14)
@@ -356,7 +356,7 @@ struct BookCover: View {
                 .font(.system(size: 6, weight: .semibold))
                 .tracking(1.1)
         }
-        .foregroundStyle(Color(hex: 0xF4EBDB))
+        .foregroundStyle(Theme.Palette.coverInk)
         .padding(.vertical, 11)
         .padding(.leading, 15)
         .padding(.trailing, 10)
@@ -365,7 +365,7 @@ struct BookCover: View {
             tint.overlay(Color.black.opacity(0.13).frame(width: 5), alignment: .leading)
         )
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-        .shadow(color: Color(hex: 0x493B28).opacity(0.13), radius: 3, x: 3, y: 4)
+        .shadow(color: Theme.Palette.bookShadow.opacity(0.13), radius: 3, x: 3, y: 4)
         .accessibilityHidden(true)
     }
 }
@@ -387,10 +387,10 @@ struct PlayerArt: View {
         }
         .frame(width: 116, height: 139)
         .background(
-            ArchShape(baseCorner: 25).fill(Color(hex: 0xE9DDCE))
+            ArchShape(baseCorner: 25).fill(Theme.Palette.artFill)
         )
         .overlay(
-            ArchShape(baseCorner: 25).stroke(Color(hex: 0xD8C5B1), lineWidth: 1)
+            ArchShape(baseCorner: 25).stroke(Theme.Palette.artEdge, lineWidth: 1)
         )
         .accessibilityHidden(true)
     }
