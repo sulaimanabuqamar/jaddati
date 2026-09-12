@@ -375,23 +375,6 @@ struct PersonView: View {
             }
         }
     }
-
-    /// Off the main thread: this reads every original recording, base64s it and
-    /// writes the result, which on a real archive is seconds of work. Run inline
-    /// it froze the UI and SwiftUI coalesced the state away, so "Preparing…"
-    /// never appeared at all.
-    @MainActor
-
-
-    /// Delete at the provider first, then here.
-    ///
-    /// The order is the whole point. The voice id lives only in this app's
-    /// index, so removing the person first would leave a clone of a real
-    /// person's voice sitting on someone else's server with nothing left that
-    /// knows its name. If the provider call fails we stop and say so, and the
-    /// person is still here to try again with.
-    @MainActor
-
 }
 
 /// One playable item, used in every list. It always carries its own labels:

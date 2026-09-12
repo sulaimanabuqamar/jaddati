@@ -124,6 +124,15 @@ struct SetupView: View {
         .padding(.top, 18)
     }
 
+    /// Off the main thread: this reads every original recording, base64s it and
+    /// writes the result, which on a real archive is seconds of work. Run inline
+    /// it froze the UI and SwiftUI coalesced the state away, so "Preparing…"
+    /// never appeared at all.
+    ///
+    /// @MainActor is load-bearing, not decoration: SE-0338 means a nonisolated
+    /// async method does NOT inherit its caller's actor, so every @State write
+    /// below would land off the main thread without it.
+    @MainActor
     private func prepareArchive(for person: Person) async {
         preparingArchive = true
         archiveNote = nil
@@ -183,6 +192,14 @@ struct SetupView: View {
         }
     }
 
+    /// Delete at the provider first, then here.
+    ///
+    /// The order is the whole point. The voice id lives only in this app's
+    /// index, so removing the person first would leave a clone of a real
+    /// person's voice sitting on someone else's server with nothing left that
+    /// knows its name. If the provider call fails we stop and say so, and the
+    /// person is still here to try again with.
+    @MainActor
     private func remove(_ person: Person) async {
         deleteProblem = nil
 
