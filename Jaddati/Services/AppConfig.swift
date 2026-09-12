@@ -27,6 +27,31 @@ enum AppConfig {
         return value == "PASTE_YOUR_KEY_HERE" ? "" : value
     }
 
+    /// The iOS OAuth client for signing in with Google. Public by design — it
+    /// travels in the URL the browser opens — and empty unless someone has set
+    /// it up, in which case the app never offers sign-in at all.
+    ///
+    /// An iOS client, deliberately, NOT the web one: Google issues iOS clients
+    /// without a secret and requires PKCE instead, so the phone can complete
+    /// the exchange itself. The web half has to borrow the relay for that,
+    /// because a web client needs a secret and core.js is served to everyone.
+    static var googleClientId: String {
+        let value = (secrets["GOOGLE_IOS_CLIENT_ID"] as? String) ?? ""
+        return value.hasPrefix("PASTE") ? "" : value
+    }
+
+    static var googleConfigured: Bool { !googleClientId.isEmpty }
+
+    /// Google's iOS clients call back on the client id reversed. The session
+    /// intercepts this itself, so it needs no URL type in Info.plist — which
+    /// matters, because this project generates its Info.plist and cannot
+    /// declare one.
+    static var googleRedirectScheme: String {
+        googleClientId.split(separator: ".").reversed().joined(separator: ".")
+    }
+
+    static var googleRedirectURI: String { googleRedirectScheme + ":/oauth2redirect" }
+
     /// Where voice calls go.
     ///
     /// Unset, the app talks to ElevenLabs directly with a real key — which is

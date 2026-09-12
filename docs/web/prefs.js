@@ -66,3 +66,28 @@ export const prefs = {
     try { localStorage.removeItem(key); } catch {}
   },
 };
+
+// ── appearance ──────────────────────────────────────────────────────────
+// A choice the user makes, not the system's. The app opens light — that is
+// the design, warm paper — and dark is something you turn on, so there is no
+// prefers-color-scheme query anywhere: an unset preference means light.
+
+const K_APPEARANCE = "jaddati.appearance";
+
+export const appearance = {
+  get isDark() { return prefs.get(K_APPEARANCE) === "dark"; },
+  set(dark) {
+    prefs.set(K_APPEARANCE, dark ? "dark" : "light");
+    appearance.apply();
+  },
+  toggle() { appearance.set(!appearance.isDark); },
+  /// Applied from this module rather than from a screen, so it is on the
+  /// document before the first paint instead of one frame after it.
+  apply() {
+    const root = document.documentElement;
+    if (appearance.isDark) root.setAttribute("data-theme", "dark");
+    else root.removeAttribute("data-theme");
+  },
+};
+
+appearance.apply();
