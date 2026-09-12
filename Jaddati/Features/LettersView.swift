@@ -39,7 +39,7 @@ struct LettersView: View {
     }
 
     private var canSeal: Bool {
-        !trimmed.isEmpty && trimmed.count <= limit && !working
+        !trimmed.isEmpty && trimmed.count <= limit && !working && !library.loadFailed
     }
 
     var body: some View {
@@ -65,7 +65,7 @@ struct LettersView: View {
                         ErrorNote(message: errorText)
                     }
 
-                    if let person, !library.dueLetters(for: person).isEmpty {
+                    if let person, !openable(for: person).isEmpty {
                         waiting(for: person)
                     }
 
@@ -112,7 +112,7 @@ struct LettersView: View {
     private func waiting(for person: Person) -> some View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
             SectionLabel(text: L("Waiting for you"))
-            ForEach(library.dueLetters(for: person)) { letter in
+            ForEach(openable(for: person)) { letter in
                 Panel {
                     VStack(alignment: .leading, spacing: Theme.Space.s) {
                         HStack {
@@ -131,10 +131,31 @@ struct LettersView: View {
                             Task { await open(letter) }
                         }
                         .buttonStyle(PrimaryButtonStyle())
-                        .disabled(working || person.hasVoice != true || !AppConfig.isConfigured)
+                        // loadFailed means save() is guaranteed to fail, so the
+                        // clip would be billed and then thrown away. CreateView
+                        // has always guarded on this; this screen did not.
+                        .disabled(working || person.hasVoice != true
+                                  || !AppConfig.isConfigured || library.loadFailed)
                     }
                 }
             }
+        }
+    }
+
+    /// Due, plus any letter whose clip no longer exists.
+    ///
+    /// Opening marked the letter and handed the clip to the player, where
+    /// Discard deletes it. The letter was then in neither list: no Open button,
+    /// no Remove button, and the opened list showed only an occasion and a
+    /// date. The words were gone from the product entirely while the row still
+    /// sat there naming the birthday they were written for.
+    private func openable(for person: Person) -> [Letter] {
+        library.letters(for: person).filter { letter in
+            if letter.isDue { return true }
+            guard letter.isOpened, letter.deliverAt <= Date() else { return false }
+            guard let id = letter.assetId,
+                  let asset = library.assets.first(where: { $0.id == id }) else { return true }
+            return !library.fileExists(for: asset)
         }
     }
 
@@ -191,6 +212,7 @@ struct LettersView: View {
         }
     }
 
+    @MainActor
     private func seal() {
         guard let person, canSeal else { return }
         // Noon rather than midnight: a letter dated for a birthday should
@@ -240,16 +262,29 @@ struct LettersView: View {
         VStack(alignment: .leading, spacing: Theme.Space.xs) {
             SectionLabel(text: L("Already opened"))
             ForEach(library.openedLetters(for: person)) { letter in
-                Text((letter.occasion.isEmpty ? L("Sealed words") : letter.occasion)
-                     + " · " + Self.dateText(letter.deliverAt))
-                    .font(Theme.Font.caption)
-                    .foregroundStyle(Theme.Palette.inkSoft)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text((letter.occasion.isEmpty ? L("Sealed words") : letter.occasion)
+                         + " · " + Self.dateText(letter.deliverAt))
+                        .font(Theme.Font.caption)
+                        .foregroundStyle(Theme.Palette.inkSoft)
+                    // The words themselves, once the day has passed. Before it,
+                    // nothing shows them; after it, they must not be reachable
+                    // only through a clip that can be discarded.
+                    BidiText(value: letter.text, font: Theme.Font.body)
+                }
             }
         }
     }
 
     // MARK: Opening
 
+    /// Marked @MainActor deliberately. A nonisolated async method does not
+    /// inherit the caller's actor under Swift 5, so every @State write below —
+    /// including `generated`, which drives navigation — was happening off the
+    /// main thread. It also meant the `opening` guard could not hold: two taps
+    /// could both read it before either wrote, and the second generation was
+    /// billed.
+    @MainActor
     private func open(_ letter: Letter) async {
         guard let person, let voiceId = person.voiceId else { return }
         guard !working, !opening.contains(letter.id), !letter.isOpened else { return }

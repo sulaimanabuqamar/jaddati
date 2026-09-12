@@ -128,6 +128,8 @@ let arabicStrings: [String: String] = [
     "Clips already created are not included. They can be made again on the other phone.": "لا تُضمَّن المقاطع التي أُنشئت من قبل. ويمكن إنشاؤها مجددًا على الجهاز الآخر.",
     "Preparing…": "جارٍ التحضير…",
     "Ready to send.": "جاهز للإرسال.",
+    "Some recordings could not be read from this phone and were left out.": "تعذّرت قراءة بعض التسجيلات من هذا الجهاز فلم تُضمَّن.",
+    "Make it again, with the latest": "أنشئه من جديد بأحدث ما لديك",
     "Ready to send. No original recordings were included.": "جاهز للإرسال. لم تُضمَّن أي تسجيلات أصلية.",
     "Sent without some recordings — the file would have been too large.": "أُرسل دون بعض التسجيلات — كان حجم الملف سيصبح كبيرًا جدًا.",
     "Brought in": "أُحضر",

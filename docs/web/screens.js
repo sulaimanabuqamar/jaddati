@@ -1123,7 +1123,7 @@ export function lettersScreen({ personId }) {
 
   const due = store.dueLetters(personId);
   const sealed = store.sealedLetters(personId);
-  const opened = store.lettersFor(personId).filter(l => l.openedAt);
+  const opened = store.openedLetters(personId);
 
   const dueCard = letter => panel(h("div", { class: "stack gap-s" },
     h("div", { class: "row between" },
@@ -1185,8 +1185,9 @@ export function lettersScreen({ personId }) {
 
       opened.length ? h("div", { class: "stack gap-s" },
         sectionLabel(L("Already opened")),
-        opened.map(l => h("div", { class: "caption" },
-          (l.occasion || L("Sealed words")) + " · " + dateLine(l.deliverAt)))) : null,
+        opened.map(l => h("div", { class: "stack", style: { gap: "2px" } },
+          h("div", { class: "caption" }, (l.occasion || L("Sealed words")) + " · " + dateLine(l.deliverAt)),
+          bidi(l.text)))) : null,
 
       !due.length && !sealed.length && !opened.length
         ? emptyHint("lock", L("Nothing sealed yet"), L("Write something for a day that has not come.")) : null,

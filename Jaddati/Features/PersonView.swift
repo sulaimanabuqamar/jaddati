@@ -386,9 +386,19 @@ struct PersonView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(QuietButtonStyle())
+                // Seal a letter or add a memory after making the file and the
+                // family would receive the version from before it. Making a new
+                // one has to stay reachable.
+                Button(L("Make it again, with the latest")) {
+                    exported = nil
+                    archiveNote = nil
+                }
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.Palette.wine)
+                .frame(minHeight: Theme.Metric.touchTarget, alignment: .leading)
             } else {
                 Button(preparingArchive ? L("Preparing…") : L("Give this to the family")) {
-                    prepareArchive(for: person)
+                    Task { await prepareArchive(for: person) }
                 }
                 .buttonStyle(QuietButtonStyle())
                 .disabled(preparingArchive)
@@ -403,16 +413,26 @@ struct PersonView: View {
         .padding(.top, 18)
     }
 
-    private func prepareArchive(for person: Person) {
+    /// Off the main thread: this reads every original recording, base64s it and
+    /// writes the result, which on a real archive is seconds of work. Run inline
+    /// it froze the UI and SwiftUI coalesced the state away, so "Preparing…"
+    /// never appeared at all.
+    @MainActor
+    private func prepareArchive(for person: Person) async {
         preparingArchive = true
         archiveNote = nil
+        let snapshot = person
         do {
-            let result = try Archive.export(person: person, library: library)
+            let result = try await Task.detached(priority: .userInitiated) { [library] in
+                try Archive.export(person: snapshot, library: library)
+            }.value
             exported = result.url
-            archiveNote = result.leftBehind > 0
-                ? L("Sent without some recordings — the file would have been too large.")
-                : result.carried > 0 ? L("Ready to send.")
-                : L("Ready to send. No original recordings were included.")
+            archiveNote = result.unreadable > 0
+                ? L("Some recordings could not be read from this phone and were left out.")
+                : result.tooLarge > 0
+                  ? L("Sent without some recordings — the file would have been too large.")
+                  : result.carried > 0 ? L("Ready to send.")
+                    : L("Ready to send. No original recordings were included.")
         } catch {
             archiveNote = error.localizedDescription
         }

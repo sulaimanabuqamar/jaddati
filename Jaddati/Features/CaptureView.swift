@@ -32,7 +32,12 @@ struct CaptureView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            AppBar(title: L("Recorded before it is needed"))
+            // No globe here. Switching language re-ids the whole tree, which
+            // tears this screen down and cancels an in-progress recording — the
+            // same way it once destroyed a clip on the player screen. A
+            // five-minute story of someone still alive is not something to lose
+            // to a mistap.
+            AppBar(title: L("Recorded before it is needed"), trailing: AnyView(EmptyView()))
 
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Space.m) {
@@ -96,21 +101,35 @@ struct CaptureView: View {
         }
     }
 
+    /// @MainActor for the same reason as LettersView.open, and more urgently:
+    /// recorder.start/stop mutate @Published on VoiceRecorder and its meter, and
+    /// AVAudioSession.setActive is not safe to call off the main thread.
+    @MainActor
     private func toggle(_ prompt: CapturePrompt) async {
         problem = nil
 
         if recordingId == prompt.id {
             recordingId = nil
-            guard let result = recorder.stop(), let person else { return }
+            guard let result = recorder.stop() else { return }
+            guard let person else {
+                try? FileManager.default.removeItem(at: result.url)
+                return
+            }
             guard result.capturedSound else {
                 problem = L("That recording came out silent. Nothing reached the microphone — check nothing is covering it and try again.")
                 try? FileManager.default.removeItem(at: result.url)
                 return
             }
-            let data = (try? Data(contentsOf: result.url)) ?? Data()
-            try? FileManager.default.removeItem(at: result.url)
-            guard !data.isEmpty else { return }
-            _ = library.storeAudio(data: data,
+            // Read BEFORE deleting, and say so when either step fails. This
+            // used to collapse an unreadable file into empty Data and return
+            // without a word, leaving a card that looked untouched and a take
+            // that could not be made again.
+            guard let data = try? Data(contentsOf: result.url), !data.isEmpty else {
+                problem = L("That recording could not be read from this phone. Try importing it again.")
+                try? FileManager.default.removeItem(at: result.url)
+                return
+            }
+            let stored = library.storeAudio(data: data,
                                    for: person,
                                    source: .original,
                                    text: uiIsArabic ? prompt.arabic : prompt.english,
@@ -122,6 +141,11 @@ struct CaptureView: View {
                                    isSaved: true,
                                    promptId: prompt.id,
                                    fileExtension: "m4a")
+            try? FileManager.default.removeItem(at: result.url)
+            if stored == nil {
+                problem = library.storageError
+                    ?? L("The audio arrived but could not be saved to this phone.")
+            }
             return
         }
 

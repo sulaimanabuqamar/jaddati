@@ -420,11 +420,22 @@ class Store extends EventTarget {
       .sort((a, b) => new Date(a.deliverAt) - new Date(b.deliverAt));
   }
 
-  /** Sealed, and the day has come. Unopened only — an opened letter is a clip. */
+  /**
+   * Sealed, and the day has come — plus any letter whose clip no longer exists.
+   *
+   * Opening marks the letter and hands the clip to the player, where Discard
+   * deletes it. Without the second half of this test the letter then sat in
+   * neither list: no way to open it, no way to remove it, and the words
+   * unreachable from anywhere in the app.
+   */
   dueLetters(personId) {
     const now = Date.now();
-    return this.lettersFor(personId)
-      .filter(l => !l.openedAt && new Date(l.deliverAt).getTime() <= now);
+    return this.lettersFor(personId).filter(l => {
+      if (new Date(l.deliverAt).getTime() > now) return false;
+      if (!l.openedAt) return true;
+      const asset = l.assetId ? this.assets.find(a => a.id === l.assetId) : null;
+      return !asset || !this.fileExists(asset);
+    });
   }
 
   /** Sealed, still waiting. */
@@ -432,6 +443,15 @@ class Store extends EventTarget {
     const now = Date.now();
     return this.lettersFor(personId)
       .filter(l => !l.openedAt && new Date(l.deliverAt).getTime() > now);
+  }
+
+  /** Opened, and the clip still exists. */
+  openedLetters(personId) {
+    return this.lettersFor(personId).filter(l => {
+      if (!l.openedAt) return false;
+      const asset = l.assetId ? this.assets.find(a => a.id === l.assetId) : null;
+      return !!asset && this.fileExists(asset);
+    });
   }
 
   /** Across everyone, for the badge on the home screen. */
@@ -966,8 +986,15 @@ async function chat(system, user, { maxTokens = 200, temperature = 0.3 } = {}) {
   if (r.status === 429) throw new CompanionError(L("The question service is busy right now. Wait a few seconds and ask again."));
   if (!r.ok) throw new CompanionError(L("The question service reported a problem.") + ` (${r.status})`);
   const j = await r.json().catch(() => null);
-  const content = j?.choices?.[0]?.message?.content;
+  const choice = j?.choices?.[0];
+  const content = choice?.message?.content;
   if (!content) throw new CompanionError(L("The question service replied in a shape the app did not understand."));
+  // Cut off at the token ceiling: half a sentence, which would otherwise be
+  // billed at the voice service and stored as the clip. Arabic tokenises
+  // poorly enough to reach the ceiling in ordinary use.
+  if (choice?.finish_reason === "length") {
+    throw new CompanionError(L("The answer came back unfinished. Try again, or shorten what you wrote."));
+  }
   const cleaned = tidyAnswer(content);
   if (!cleaned) throw new CompanionError(L("No answer came back. Try asking it a different way."));
   return cleaned;
@@ -975,6 +1002,24 @@ async function chat(system, user, { maxTokens = 200, temperature = 0.3 } = {}) {
 
 /** The sentinel the grounded answer returns when the notes do not cover it. */
 const NOT_IN_NOTES = "NOT_IN_NOTES";
+
+/**
+ * A refusal the model wrote in its own words rather than as the token.
+ *
+ * Deliberately narrow: short AND containing one of these. A long answer that
+ * happens to mention "لا أعرف" in passing is a real answer.
+ */
+function readsAsRefusal(answer) {
+  const t = (answer || "").trim();
+  if (t.length > 120) return false;
+  const lowered = t.toLowerCase();
+  return [
+    "لا أعرف", "لا اعرف", "غير مذكور", "غير موجود", "لا يوجد",
+    "ليس في الملاحظات", "لا تذكر الملاحظات", "لم يُذكر", "لم يذكر",
+    "i don't know", "i do not know", "not in the notes", "not mentioned",
+    "no information", "the notes do not",
+  ].some(p => lowered.includes(p));
+}
 
 export class NotInNotesError extends Error {
   constructor() {
@@ -1018,6 +1063,8 @@ export const FamilyAnswer = {
       "",
       "Rules, all of them:",
       `- If the notes do not contain the answer, reply with exactly ${NOT_IN_NOTES} and nothing else.`,
+      "  Write that token in Latin letters even when answering in Arabic — it is a signal to the app,",
+      "  not to a reader, and it is the ONLY case where you do not answer in the question's language.",
       "- Never guess, never generalise from what is typical, never fill a gap.",
       "- Do not speak as the person. Do not say 'I'. Do not claim to remember anything.",
       "- One or two short sentences. It will be read out loud, so write words that sound natural spoken.",
@@ -1040,6 +1087,10 @@ export const FamilyAnswer = {
     if (answer.toUpperCase().replace(/[^A-Z]/g, "").includes("NOTINNOTES")) {
       throw new NotInNotesError();
     }
+    // A model told to answer in the question's language will sometimes refuse
+    // in Arabic regardless, and a scan for a Latin token cannot see that. So
+    // the shape is checked too — a refusal is short and says it does not know.
+    if (readsAsRefusal(answer)) throw new NotInNotesError();
     return answer;
   },
 };
@@ -1074,7 +1125,10 @@ export const Translator = {
          "Use plain, warm, spoken English — the way it would be said aloud to a child, not written formally.",
          "Return only the translation. No explanation, no quotation marks."].join("\n");
 
-    return chat(system, source.slice(0, 900), { maxTokens: 400, temperature: 0.2 });
+    // Roughly proportional to what it was given, with a floor so a short line
+    // is never clipped and a ceiling so nothing runs away.
+    const budget = Math.max(400, Math.min(1200, source.length));
+    return chat(system, source.slice(0, 900), { maxTokens: budget, temperature: 0.2 });
   },
 };
 

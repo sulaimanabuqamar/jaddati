@@ -18,7 +18,13 @@ enum Archive {
 
     /// Above this the recordings are left behind rather than making a file too
     /// large to share. Sized to clear a WhatsApp document send with room over.
+    ///
+    /// Measured against the ENCODED size. Base64 is four bytes out for every
+    /// three in, so budgeting raw bytes against this produced a file a third
+    /// larger than the number it was checked against — and held both the string
+    /// and the encoded Data in memory at once while doing it.
     static let maxBytes = 60 * 1024 * 1024
+    private static let base64Overhead = 4.0 / 3.0
 
     // MARK: The file
 
@@ -77,7 +83,8 @@ enum Archive {
     struct ExportResult {
         let url: URL
         let carried: Int
-        let leftBehind: Int
+        let tooLarge: Int
+        let unreadable: Int
     }
 
     enum Failure: LocalizedError {
@@ -102,13 +109,17 @@ enum Archive {
     /// safe on the other phone when they are not.
     static func export(person: Person, library: Library) throws -> ExportResult {
         var recordings: [RecordingCard] = []
-        var carried = 0, leftBehind = 0
+        // Two different reasons, kept apart: a file that would not fit is the
+        // user's cue to send fewer, a file that would not READ is their cue to
+        // go and look. Reporting both as "too large" sent people the wrong way.
+        var carried = 0, tooLarge = 0, unreadable = 0
 
         for asset in library.assets(for: person, source: .original) {
             let url = library.url(for: asset)
-            guard let data = try? Data(contentsOf: url) else { leftBehind += 1; continue }
-            guard carried + data.count <= maxBytes else { leftBehind += 1; continue }
-            carried += data.count
+            guard let data = try? Data(contentsOf: url) else { unreadable += 1; continue }
+            let encoded = Int(Double(data.count) * base64Overhead)
+            guard carried + encoded <= maxBytes else { tooLarge += 1; continue }
+            carried += encoded
             recordings.append(RecordingCard(
                 text: asset.text,
                 durationSeconds: asset.durationSeconds,
@@ -143,12 +154,17 @@ enum Archive {
         encoder.dateEncodingStrategy = .iso8601
         let data = try encoder.encode(payload)
 
-        let safeName = person.name.isEmpty ? "jaddati" : person.name
+        // A name is not a filename: a slash in it makes the write throw.
+        let stripped = person.name.components(separatedBy: CharacterSet(charactersIn: "/\\:?%*|\"<>"))
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let safeName = stripped.isEmpty ? "jaddati" : stripped
         let file = FileManager.default.temporaryDirectory
             .appendingPathComponent("\(safeName).jaddati.json")
         try data.write(to: file, options: .atomic)
 
-        return ExportResult(url: file, carried: recordings.count, leftBehind: leftBehind)
+        return ExportResult(url: file, carried: recordings.count,
+                            tooLarge: tooLarge, unreadable: unreadable)
     }
 
     // MARK: In
@@ -200,8 +216,14 @@ enum Archive {
             library.add(arrived)
         }
         for letter in payload.letters ?? [] {
-            library.addLetter(for: person, text: letter.text,
-                              occasion: letter.occasion, deliverAt: letter.deliverAt)
+            // Constructed here rather than through addLetter, which stamps
+            // createdAt with "now". A letter that crossed to a second phone was
+            // claiming it had been sealed on the day it arrived — a date then
+            // baked permanently into the clip's provenance.
+            var arrived = Letter(personId: person.id, text: letter.text,
+                                 occasion: letter.occasion, deliverAt: letter.deliverAt)
+            arrived.createdAt = letter.createdAt
+            library.add(arrived)
         }
 
         var restored = 0
@@ -215,8 +237,7 @@ enum Archive {
                                   duration: recording.durationSeconds,
                                   isSaved: true,
                                   promptId: recording.promptId,
-                                  fileExtension: recording.fileExtension.isEmpty
-                                      ? "m4a" : recording.fileExtension) != nil {
+                                  fileExtension: Self.safeExtension(recording.fileExtension)) != nil {
                 restored += 1
             }
         }
@@ -225,5 +246,13 @@ enum Archive {
                             notes: (payload.notes ?? []).count,
                             letters: (payload.letters ?? []).count,
                             restored: restored)
+    }
+
+    /// An extension out of an untrusted file is interpolated into a filename.
+    /// Only the handful the app itself writes are allowed through.
+    static func safeExtension(_ raw: String) -> String {
+        let allowed: Set<String> = ["m4a", "mp3", "wav", "webm", "caf", "aac"]
+        let lowered = raw.lowercased()
+        return allowed.contains(lowered) ? lowered : "m4a"
     }
 }

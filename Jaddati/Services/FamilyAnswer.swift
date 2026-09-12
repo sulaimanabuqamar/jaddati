@@ -56,9 +56,32 @@ struct FamilyAnswerService {
         // token they were shown inline in prose, and "NOT IN NOTES" returned as
         // an answer would be billed, captioned "From your family's notes" and
         // read aloud in her voice. The refusal is the feature.
+        // Latin letters only, by instruction above — but a model told to answer
+        // in the question's language will sometimes refuse in Arabic anyway, and
+        // a scan for a Latin token cannot see that. So the shape of the reply is
+        // checked too: a refusal is short and says it does not know, and a real
+        // answer drawn from notes is neither.
         let bare = answer.uppercased().filter { $0.isLetter }
         if bare.contains("NOTINNOTES") { throw NotInNotes() }
+        if Self.readsAsRefusal(answer) { throw NotInNotes() }
         return answer
+    }
+
+    /// A refusal the model wrote in its own words rather than as the token.
+    ///
+    /// Deliberately narrow: it must be short AND contain one of these. A long
+    /// answer that happens to mention "لا أعرف" in passing is a real answer.
+    static func readsAsRefusal(_ answer: String) -> Bool {
+        let trimmed = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count <= 120 else { return false }
+        let phrases = [
+            "لا أعرف", "لا اعرف", "غير مذكور", "غير موجود", "لا يوجد",
+            "ليس في الملاحظات", "لا تذكر الملاحظات", "لم يُذكر", "لم يذكر",
+            "i don't know", "i do not know", "not in the notes", "not mentioned",
+            "no information", "the notes do not",
+        ]
+        let lowered = trimmed.lowercased()
+        return phrases.contains { lowered.contains($0) }
     }
 
     static func systemPrompt(notes: [String]) -> String {
@@ -71,7 +94,10 @@ struct FamilyAnswerService {
 
         Rules, all of them:
         - If the notes do not contain the answer, reply with exactly \
-        \(notInNotesToken) and nothing else.
+        \(notInNotesToken) and nothing else. Write that token in Latin letters \
+        even when answering in Arabic — it is a signal to the app, not to a \
+        reader, and it is the ONLY case where you do not answer in the \
+        question's language.
         - Never guess, never generalise from what is typical, never fill a gap.
         - Do not speak as the person. Do not say "I". Do not claim to remember anything.
         - One or two short sentences. It will be read out loud, so write words that \
@@ -134,8 +160,11 @@ struct TranslatorService {
             translation. No explanation, no quotation marks.
             """
         }
+        // Roughly a token per two characters, doubled for Arabic's poorer
+        // tokenisation, with a floor so a short line is never clipped.
+        let budget = max(400, min(1200, source.count))
         return try await chat(system: system, user: String(source.prefix(900)),
-                              maxTokens: 400, temperature: 0.2)
+                              maxTokens: budget, temperature: 0.2)
     }
 }
 
@@ -202,8 +231,16 @@ extension ChatCalling {
         }
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let choices = root["choices"] as? [[String: Any]],
-              let message = choices.first?["message"] as? [String: Any],
+              let first = choices.first,
+              let message = first["message"] as? [String: Any],
               let content = message["content"] as? String else {
+            throw CompanionError.badResponse
+        }
+        // A reply cut off at the token ceiling is half a sentence. Left
+        // unchecked it went straight to the voice service, was billed, and was
+        // stored as the clip — Arabic tokenises poorly enough that a long
+        // translation reaches the ceiling in ordinary use.
+        if (first["finish_reason"] as? String) == "length" {
             throw CompanionError.badResponse
         }
 
