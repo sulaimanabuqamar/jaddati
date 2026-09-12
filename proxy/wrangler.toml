@@ -4,8 +4,12 @@ compatibility_date = "2026-09-01"
 
 # Slots come back on their own. Without this the account fills once and
 # stays full, and the demo cannot create a voice.
+#
+# Every ten minutes, not nightly: during a demonstration the account has to
+# clear itself between people, and a voice left behind by the last visitor is
+# a slot the next one cannot have.
 [triggers]
-crons = ["0 3 * * *"]
+crons = ["*/10 * * * *"]
 
 [vars]
 # How many characters of speech one device may spend in a calendar month.
@@ -18,8 +22,14 @@ CREDITS_PER_DEVICE = "1000"
 # number of slots the plan actually has, so the demo always has room.
 MAX_VOICES = "6"
 
-# How long a shared voice lives before the nightly sweep removes it.
-VOICE_TTL_DAYS = "7"
+# How long a shared voice lives before the sweep removes it, in minutes.
+#
+# The sweep runs every ten minutes and removes anything already older than
+# this, so a voice gets between ten and twenty minutes — never less than ten,
+# which is what stops it vanishing from under someone mid-demonstration.
+# The app says so on the screen where a voice is made; if this number changes,
+# that sentence has to change with it.
+VOICE_TTL_MINUTES = "10"
 
 LLM_BASE_URL = "https://api.groq.com/openai/v1"
 

@@ -67,6 +67,15 @@ const num = (value, fallback) => {
   return Number.isFinite(n) ? n : fallback;
 };
 
+/**
+ * How long a shared voice lives, in seconds.
+ *
+ * Measured in minutes rather than days because during a demonstration the
+ * account has to clear itself between people. KV refuses anything under a
+ * minute, so that is the floor whatever the setting says.
+ */
+const voiceTTL = env => Math.max(60, num(env.VOICE_TTL_MINUTES, 10) * 60);
+
 // ---------------------------------------------------------------- routes
 
 /**
@@ -105,12 +114,18 @@ async function createVoice(request, env) {
   try {
     const voiceId = JSON.parse(body).voice_id;
     if (voiceId) {
-      const ttl = num(env.VOICE_TTL_DAYS, 7) * 86400;
-      await env.JADDATI.put(`voice:${device}`, voiceId, { expirationTtl: ttl });
+      const ttl = voiceTTL(env);
+      // The device's lock outlives the voice on purpose, and the sweep lifts it
+      // the moment the voice is actually gone. Expiring the lock first would
+      // let one person hold two voices at once; expiring it later, with no
+      // sweep to lift it, would tell them they still have a voice that has
+      // already been deleted. The TTLs here are only the safety net for a
+      // sweep that never runs.
+      await env.JADDATI.put(`voice:${device}`, voiceId, { expirationTtl: ttl * 2 });
       await env.JADDATI.put(
         `v:${voiceId}`,
         JSON.stringify({ device, created: Date.now() }),
-        { expirationTtl: ttl + 86400 }
+        { expirationTtl: ttl * 3 }
       );
       await env.JADDATI.put("voices:live", String(live + 1));
     }
@@ -310,16 +325,19 @@ export default {
    * Without this the account fills up once and stays full.
    */
   async scheduled(event, env) {
-    const ttl = num(env.VOICE_TTL_DAYS, 7) * 86400 * 1000;
-    const cutoff = Date.now() - ttl;
+    const cutoff = Date.now() - voiceTTL(env) * 1000;
     const listing = await env.JADDATI.list({ prefix: "v:" });
     let live = num(await env.JADDATI.get("voices:live"), 0);
 
     for (const entry of listing.keys) {
       const record = await env.JADDATI.get(entry.name);
       if (!record) continue;
-      let created = 0;
-      try { created = JSON.parse(record).created || 0; } catch { continue; }
+      let created = 0, owner = "";
+      try {
+        const parsed = JSON.parse(record);
+        created = parsed.created || 0;
+        owner = parsed.device || "";
+      } catch { continue; }
       if (created > cutoff) continue;
 
       const voiceId = entry.name.slice(2);
@@ -330,6 +348,9 @@ export default {
       // 404 means it is already gone, which is the outcome we wanted anyway.
       if (gone.ok || gone.status === 404) {
         await env.JADDATI.delete(entry.name);
+        // Lift the owner's lock in the same breath. Without this they are told
+        // they already have a voice, for the ten minutes after it was removed.
+        if (owner) await env.JADDATI.delete(`voice:${owner}`);
         live = Math.max(live - 1, 0);
       }
     }
