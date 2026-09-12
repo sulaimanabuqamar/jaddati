@@ -219,6 +219,14 @@ final class Library: ObservableObject {
         return letter
     }
 
+    /// Appends a letter exactly as handed over, keeping the createdAt it
+    /// arrived with. `addLetter` stamps "now", which is right for one being
+    /// sealed here and wrong for one that crossed from another phone.
+    func add(_ letter: Letter) {
+        letters.append(letter)
+        save()
+    }
+
     func update(_ letter: Letter) {
         guard let i = letters.firstIndex(where: { $0.id == letter.id }) else { return }
         letters[i] = letter
