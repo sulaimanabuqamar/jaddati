@@ -5,8 +5,8 @@
 // is where those live — IndexedDB for the audio blobs, because a browser has no
 // application-support directory, and localStorage for the index.
 
-import { L, Counts, isArabicText, state as lang } from "./strings.js?v=b9e6cc14ce";
-import { prefs } from "./prefs.js?v=b9e6cc14ce";
+import { L, Counts, isArabicText, state as lang } from "./strings.js?v=bb08ca101e";
+import { prefs } from "./prefs.js?v=bb08ca101e";
 
 export const uuid = () =>
   (crypto.randomUUID ? crypto.randomUUID()
@@ -992,6 +992,13 @@ function voiceMessage(status, detail) {
       return L("This month's allowance for making new speech has been used up.");
     }
     return L("The voice service is busy right now. Wait a few seconds and try again.");
+  }
+  // The relay answers 503 when the allowance across EVERYONE is spent. Without
+  // a branch it fell to the generic tail, which appends the raw English detail
+  // and a status code to an otherwise Arabic screen — and this is the wall most
+  // likely to be hit on a busy day.
+  if (status === 503) {
+    return L("The shared allowance for new speech is used up for this month. Saved memories still play.");
   }
   if (status === 422) return L("The voice service would not accept that recording.") + (detail ? " " + detail : "");
   return L("The voice service reported a problem.") + ` (${status})` + (detail ? " " + detail : "");

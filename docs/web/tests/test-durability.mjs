@@ -450,6 +450,65 @@ const browser = await pw.chromium.launch({ executablePath: '/opt/pw-browsers/chr
   await ctx.close();
 }
 
+// ── and the person is actually told ─────────────────────────────────────
+// The assertion above proves the STORE is right. It does not prove anyone
+// finds out, and for a while nobody did: a failed save repaints the whole
+// tree, so a message written into the screen was destroyed before it could be
+// read. That is why these go to a toast, which hangs off document.body and
+// survives the repaint. Without this assertion the silent version passes.
+{
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const page = await start(ctx);
+
+  await go.people(page);
+  await page.click('text=Add someone'); await page.waitForTimeout(300);
+  await page.fill('.sheet input >> nth=0', 'Teta');
+  await page.click('.sheet button:has-text("Add person")'); await page.waitForTimeout(700);
+
+  // The three doors on the person screen — Saved, Books, Letters — only open
+  // once she has a voice, so give her one.
+  await page.evaluate(() => {
+    const key = 'jaddati.library';
+    const db = JSON.parse(localStorage.getItem(key) || '{}');
+    db.people[0].voiceId = 'voice-for-the-test';
+    localStorage.setItem(key, JSON.stringify(db));
+  });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(700);
+  await go.people(page); await page.waitForTimeout(400);
+  await page.click('.person-card, .bigcard').catch(() => {});
+  await page.waitForTimeout(600);
+  await page.click('.bigcard:has-text("Letters"), .feature-row:has-text("Letters")').catch(() => {});
+  await page.waitForTimeout(700);
+
+  const form = await page.locator('.screen textarea').count();
+  if (!form) {
+    log(false, 'could not reach the letter compose form to test the failure path');
+  } else {
+    await page.fill('.screen textarea', 'Words for a day that has not come.');
+    await page.fill('.screen input[type="date"]', '2030-01-01');
+    await page.waitForTimeout(300);
+
+    // nothing can be written from here on
+    await page.evaluate(() => {
+      window.__realSet = Storage.prototype.setItem;
+      Storage.prototype.setItem = function () { throw new DOMException('full', 'QuotaExceededError'); };
+    });
+    await page.click('.screen button:has-text("Seal")').catch(() => {});
+    await page.waitForTimeout(700);
+
+    const toastText = await page.locator('.toast').innerText().catch(() => '');
+    await page.evaluate(() => { if (window.__realSet) Storage.prototype.setItem = window.__realSet; });
+
+    log(!!toastText, 'a letter that could not be saved says so somewhere the repaint cannot erase',
+        toastText.slice(0, 60));
+    const draft = await page.locator('.screen textarea').inputValue().catch(() => '');
+    log(draft.includes('Words for a day'),
+        'and the words stay in the box, because they are the only copy', draft.slice(0, 40));
+  }
+  await ctx.close();
+}
+
 await browser.close();
 console.log(problems.length ? `\n${problems.length} PROBLEM(S)` : '\nall OK');
 process.exit(problems.length ? 1 : 0);

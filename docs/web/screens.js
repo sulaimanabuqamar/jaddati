@@ -1,20 +1,20 @@
 // Compose, shelf, reader, archive, player — and the one screen the whole
 // product rests on, where a voice is created.
 
-import { L, isAr, isArabicText, dirOf, Counts } from "./strings.js?v=b9e6cc14ce";
+import { L, isAr, isArabicText, dirOf, Counts } from "./strings.js?v=bb08ca101e";
 import {
   store, Consent, ConsentMissing, Config, Voice, Companion,
   Intent, INTENTS, TUNING, sameTuning, presetName,
   AFFIRMATIONS, STORIES, makeBook, ImportError, isDemoVoice, blobURL, DEMO_PREFIX,
   FamilyAnswer, Translator, NotInNotesError, CAPTURE_PROMPTS,
-} from "./core.js?v=b9e6cc14ce";
+} from "./core.js?v=bb08ca101e";
 import {
   h, clear, bidi, icon, appBar, headline, eyebrow, sectionLabel, subtext,
   panel, panelS, errorNote, emptyHint, avatar, breadcrumb, sourceBadge,
   contentBadge, badgesFor, audioRow, player, confirmDialog, sheet, toast,
   Recorder, durationOf, demoDuration, track,
-} from "./ui.js?v=b9e6cc14ce";
-import { nav, push, pop, popTo, render, replace } from "./nav.js?v=b9e6cc14ce";
+} from "./ui.js?v=bb08ca101e";
+import { nav, push, pop, popTo, render, replace } from "./nav.js?v=bb08ca101e";
 
 const trimmedOf = s => (s || "").trim();
 
@@ -362,7 +362,7 @@ export function createScreen({ personId, intent }) {
       generating = false;
       if (!sameTuning(p.tuning || TUNING.natural, tuning)) store.updatePerson({ ...p, tuning });
       if (asset) push(playerScreen, { assetId: asset.id });
-      else { sync(); errorSlot.append(errorNote(L("The audio arrived but could not be saved to this phone."))); }
+      else { sync(); toast(L("The audio arrived but could not be saved to this phone.")); }
     } catch (e) {
       generating = false; sync();
       const consent = e instanceof ConsentMissing;
@@ -932,9 +932,11 @@ export function playerScreen({ assetId }) {
     // hiding the warning that says the clip is about to be removed, is how
     // someone loses the one clip they went out of their way to keep.
     if (!store.updateAsset({ ...asset, isSaved: true })) {
-      keepBtn.textContent = L("Could not keep this clip");
-      warning.textContent = L("This phone would not save it. Free some space and try again.");
-      warning.classList.remove("hidden");
+      // Said in a toast, not in this screen. A failed save repaints the whole
+      // tree — that is how the store tells everyone the state changed — so
+      // anything written into the screen here is thrown away before it is ever
+      // seen. Toasts hang off document.body and survive it.
+      toast(L("This phone would not save it. Free some space and try again."));
       return;
     }
     kept = true; keepBtn.textContent = L("Clip saved"); keepBtn.disabled = true;
@@ -1095,8 +1097,9 @@ export function lettersScreen({ personId }) {
     });
     if (!sealed) {
       // The draft is deliberately left in the box: it is the only copy.
-      clear(errorSlot);
-      errorSlot.append(errorNote(store.storageError || L("Changes could not be saved.")));
+      // Toasted rather than written into the screen, which the repaint that
+      // follows a failed save would have wiped before anyone read it.
+      toast(store.storageError || L("Changes could not be saved."));
       return;
     }
     area.value = ""; occasion.value = "";
@@ -1131,7 +1134,7 @@ export function lettersScreen({ personId }) {
         push(playerScreen, { assetId: asset.id });
       } else {
         sync();
-        errorSlot.append(errorNote(L("The audio arrived but could not be saved to this phone.")));
+        toast(L("The audio arrived but could not be saved to this phone."));
       }
     } catch (e) {
       working = false; opening.delete(letter.id); sync();
@@ -1318,7 +1321,9 @@ export function captureScreen({ personId }) {
         duration: out.seconds, isSaved: true, promptId: prompt.id, fileExtension: "webm",
       });
       if (saved) { answered.add(prompt.id); sync(); }
-      else errorSlot.append(errorNote(L("The audio arrived but could not be saved to this phone.")));
+      // The recording has already been deleted by the rollback at this point.
+      // Telling them in the screen tree means not telling them at all.
+      else toast(L("That recording could not be saved to this phone, so it was not kept. Free some space and try again."));
       return;
     }
 
