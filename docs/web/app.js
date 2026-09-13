@@ -3,25 +3,25 @@
 // and Saved and Books are scoped to one person because a pile of clips with no
 // name on it is not an archive.
 
-import { L, isAr, isArabicText, dirOf, Counts, state as lang, setLang, toggleLang } from "./strings.js?v=49b6266d78";
+import { L, isAr, isArabicText, dirOf, Counts, state as lang, setLang, toggleLang } from "./strings.js?v=b9e6cc14ce";
 import {
   store, Consent, ConsentMissing, Config, Voice, Companion, VoiceError, CompanionError,
   Intent, INTENTS, ContentProvenance, TUNING, sameTuning, presetName,
   AFFIRMATIONS, STORIES, makeBook, ImportError, isDemoVoice, uuid, blobURL,
   STOCK_VOICE_URL, STOCK_LLM_URL, Archive, ArchiveError, Cloud, CloudError,
-} from "./core.js?v=49b6266d78";
+} from "./core.js?v=b9e6cc14ce";
 import {
   h, clear, bidi, icon, appBar, globeButton, headline, eyebrow, sectionLabel,
   subtext, caption, panel, panelS, errorNote, emptyHint, avatar, breadcrumb,
   sourceBadge, contentBadge, badgesFor, audioRow, player, confirmDialog, sheet,
   toast, Recorder, durationOf, demoDuration, track, unmountAll,
-} from "./ui.js?v=49b6266d78";
-import { nav, remember, setRenderer, render, push, pop, popTo, goTab } from "./nav.js?v=49b6266d78";
-import { appearance } from "./prefs.js?v=49b6266d78";
+} from "./ui.js?v=b9e6cc14ce";
+import { nav, remember, setRenderer, render, push, pop, popTo, goTab } from "./nav.js?v=b9e6cc14ce";
+import { appearance } from "./prefs.js?v=b9e6cc14ce";
 import {
   createScreen, booksScreen, readerScreen, memoriesScreen, playerScreen, openAddVoice,
   personHasVoice, lettersScreen, captureScreen,
-} from "./screens.js?v=49b6266d78";
+} from "./screens.js?v=b9e6cc14ce";
 
 const root = document.getElementById("app");
 
@@ -554,16 +554,28 @@ function cloudSection() {
     class: "btn-quiet",
     onClick: async e => {
       const b = e.currentTarget;
-      b.disabled = true; clear(note); clear(busy);
+      // Raised first and cleared in a finally that covers everything after it.
+      // Set outside the try, a throw while building the spinner would strand
+      // the flag and leave the app unable to repaint for the rest of the
+      // session.
       setCloudBusy(true);
-      busy.append(h("div", { class: "row gap-s mt-xs" }, h("span", { class: "spinner" }),
-        h("span", { class: "caption" }, L("Working…"))));
       try {
+        b.disabled = true; clear(note); clear(busy);
+        busy.append(h("div", { class: "row gap-s mt-xs" }, h("span", { class: "spinner" }),
+          h("span", { class: "caption" }, L("Working…"))));
         note.append(h("p", { class: "caption sage-text", style: { margin: 0 } }, await work()));
       } catch (err) {
         note.append(errorNote(err instanceof CloudError ? err.message
           : L("That did not work. Try again.")));
-      } finally { setCloudBusy(false); b.disabled = false; clear(busy); }
+      } finally {
+        setCloudBusy(false);
+        b.disabled = false;
+        clear(busy);
+      }
+      // Deliberately NOT a render() here. Repainting would rebuild this whole
+      // section and throw away the note the result was just written into —
+      // which is the bug the restore path already had once. The result is
+      // toasted as well, so it survives whatever repaints later.
     },
   }, label);
 
@@ -586,11 +598,19 @@ function cloudSection() {
           // all, because it is the sentence someone remembers when they go
           // looking a year later and find nothing.
           run(L("Back up now"), async () => {
-            const { sent, skipped, atRisk } = await Cloud.backUp();
-            const lines = [L("Backed up.") + " " + Counts.number(sent)];
+            const { sent, skipped, atRisk, failed } = await Cloud.backUp();
+            // "Backed up. 0" over a run where every single upload was refused
+            // is the sentence someone remembers a year later. `failed` is a
+            // counter like the others and has to be said out loud like them.
+            const lines = sent > 0
+              ? [L("Backed up.") + " " + Counts.number(sent)]
+              : [L("Nothing was backed up.")];
             if (skipped) lines.push(L("Some were too large and were left out."));
             if (atRisk) lines.push(L("Some recordings could not be read, so those people were left as they were rather than overwritten."));
-            return lines.join(" ");
+            if (failed) lines.push(L("Some could not be sent to Drive. Try again in a moment."));
+            const said = lines.join(" ");
+            toast(said);
+            return said;
           }),
           run(L("Bring everything back"), async () => {
             const { brought, failed, already } = await Cloud.restore();

@@ -216,7 +216,9 @@ async function speak(request, env, voiceId) {
   try { text = String(JSON.parse(raw).text || ""); } catch { return json(400, "malformed request"); }
   if (!text) return json(400, "no text to speak");
 
-  const allowance = num(env.CREDITS_PER_DEVICE, 500);
+  // The fallback has to be at least one full generation, or an unset variable
+  // refuses a visitor their first sentence and tells them the month is spent.
+  const allowance = num(env.CREDITS_PER_DEVICE, 2500);
   const key = `used:${device}:${period()}`;
   const spent = num(await env.JADDATI.get(key), 0);
 
@@ -236,7 +238,10 @@ async function speak(request, env, voiceId) {
   const monthCap = num(env.CREDITS_PER_MONTH, 100000);
   const monthSpent = num(await env.JADDATI.get(monthKey), 0);
   if (monthSpent + text.length > monthCap) {
-    return json(429, "credit allowance used for this month across all devices");
+    // Worded so the client does NOT map it to the per-device "this month's
+    // allowance is used up" line: that reads as personal, and the person
+    // reading it has spent nothing. This is the account, not them.
+    return json(503, "the shared allowance for this month is used up");
   }
 
   const url = new URL(request.url);
@@ -259,9 +264,13 @@ async function speak(request, env, voiceId) {
     await env.JADDATI.put(key, String(spent + text.length), { expirationTtl: 70 * 86400 });
     // Re-read rather than reuse `monthSpent`: the check happened before the
     // upstream call, and on a busy minute several requests will have been in
-    // flight since. Still lossy under real concurrency, but it drifts DOWN
-    // rather than up, which is the safe direction for a ceiling that exists to
-    // stop the account being drained.
+    // flight since.
+    //
+    // Still lossy under real concurrency, and the loss goes the UNSAFE way: an
+    // undercount means the ceiling is reached later than it should be, so more
+    // is spent than the cap allows. It is a backstop against one visitor
+    // draining the month, not an accounting system, and the number to watch is
+    // the one in the ElevenLabs dashboard.
     const now = num(await env.JADDATI.get(monthKey), monthSpent);
     await env.JADDATI.put(monthKey, String(now + text.length), { expirationTtl: 70 * 86400 });
   }
@@ -546,7 +555,6 @@ export default {
   async scheduled(event, env) {
     const cutoff = Date.now() - voiceTTL(env) * 1000;
     const listing = await env.JADDATI.list({ prefix: "v:" });
-    let live = num(await env.JADDATI.get("voices:live"), 0);
 
     for (const entry of listing.keys) {
       const record = await env.JADDATI.get(entry.name);

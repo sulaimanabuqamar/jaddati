@@ -402,6 +402,54 @@ const browser = await pw.chromium.launch({ executablePath: '/opt/pw-browsers/chr
   await ctx.close();
 }
 
+// ── a failed save must not look like a successful one ───────────────────
+// save() called changed() on its FAILURE path, and changed() repaints
+// synchronously — so the screen was rebuilt while the store still held the
+// change the caller was about to roll back. The person saw the clip kept, the
+// letter sealed, the recording made; the caller's error note was then appended
+// to nodes that no longer existed. Every "roll back and report" path in the app
+// was reporting into a detached tree, including the ones written to fix exactly
+// this.
+{
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const page = await start(ctx);
+
+  await go.people(page);
+  await page.click('text=Add someone'); await page.waitForTimeout(300);
+  await page.fill('.sheet input >> nth=0', 'Teta');
+  await page.click('.sheet button:has-text("Add person")'); await page.waitForTimeout(600);
+
+  const out = await page.evaluate(async () => {
+    const core = await import('./core.js?v=' + (document.documentElement.dataset.v || ''));
+    const person = core.store.people[0];
+    const blob = new Blob([new Uint8Array([9, 9, 9])], { type: 'audio/mpeg' });
+    const asset = await core.store.storeAudio(blob, {
+      personId: person.id, source: 'generated', text: 'hello', duration: 1, isSaved: false,
+    });
+
+    // From here on, nothing can reach durable storage.
+    const realSet = Storage.prototype.setItem;
+    Storage.prototype.setItem = function () { throw new DOMException('full', 'QuotaExceededError'); };
+    let reported, stillSaved, errorSurfaced;
+    try {
+      reported = core.store.updateAsset({ ...asset, isSaved: true });
+      // the store must match what is on disk, which is the old value
+      stillSaved = core.store.assets.find(a => a.id === asset.id)?.isSaved === true;
+      errorSurfaced = !!core.store.storageError;
+    } finally {
+      Storage.prototype.setItem = realSet;
+    }
+    return { reported, stillSaved, errorSurfaced };
+  });
+
+  log(out.reported === false, 'a save that could not be written reports false', String(out.reported));
+  log(out.stillSaved === false,
+      'and the store is rolled back rather than left holding a change that is not on disk',
+      String(out.stillSaved));
+  log(out.errorSurfaced, 'and the storage error is recorded so something can say so');
+  await ctx.close();
+}
+
 await browser.close();
 console.log(problems.length ? `\n${problems.length} PROBLEM(S)` : '\nall OK');
 process.exit(problems.length ? 1 : 0);

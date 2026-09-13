@@ -5,8 +5,8 @@
 // is where those live — IndexedDB for the audio blobs, because a browser has no
 // application-support directory, and localStorage for the index.
 
-import { L, Counts, isArabicText, state as lang } from "./strings.js?v=49b6266d78";
-import { prefs } from "./prefs.js?v=49b6266d78";
+import { L, Counts, isArabicText, state as lang } from "./strings.js?v=b9e6cc14ce";
+import { prefs } from "./prefs.js?v=b9e6cc14ce";
 
 export const uuid = () =>
   (crypto.randomUUID ? crypto.randomUUID()
@@ -208,15 +208,35 @@ async function fetchWithTimeout(input, init = {}, ms = REQUEST_TIMEOUT_MS) {
   if (init.signal || typeof AbortController === "undefined") return globalThis.fetch(input, init);
   const control = new AbortController();
   const timer = setTimeout(() => control.abort(), ms);
+  let response;
   try {
-    return await globalThis.fetch(input, { ...init, signal: control.signal });
+    response = await globalThis.fetch(input, { ...init, signal: control.signal });
   } catch (e) {
+    clearTimeout(timer);
     // An abort we caused reads as a timeout, not as "something went wrong".
     if (e && e.name === "AbortError") throw new TimedOut();
     throw e;
-  } finally {
-    clearTimeout(timer);
   }
+
+  // fetch() resolves as soon as the HEADERS arrive. Clearing the deadline here
+  // meant a server that answered 200 and then stalled the body — the captive
+  // portal this exists for — was never aborted at all, and "Creating audio…"
+  // still turned for ever. The deadline stays armed until the body has
+  // actually been read.
+  const stop = () => clearTimeout(timer);
+  for (const method of ["json", "text", "blob", "arrayBuffer", "formData"]) {
+    const original = response[method];
+    if (typeof original !== "function") continue;
+    response[method] = async (...args) => {
+      try {
+        return await original.apply(response, args);
+      } catch (e) {
+        if (e && e.name === "AbortError") throw new TimedOut();
+        throw e;
+      } finally { stop(); }
+    };
+  }
+  return response;
 }
 
 export class TimedOut extends Error {
@@ -312,6 +332,20 @@ class Store extends EventTarget {
     }
   }
 
+  /**
+   * Write the index. Returns whether it reached durable storage.
+   *
+   * A FAILED save does not announce itself, and that is deliberate.
+   *
+   * `changed()` is synchronous: it rebuilds the whole screen before this
+   * function has even returned. On the failure path that meant the tree was
+   * repainted while the store still held the change the caller was about to
+   * roll back — so the person saw the recording, the clip, the letter, exactly
+   * as if it had worked — and the caller's error note was then appended to
+   * nodes that no longer existed. Every "roll back and report" path in the app
+   * was reporting into the void, including the ones written to fix precisely
+   * this. Callers repaint themselves once they have put the state back.
+   */
   save() {
     if (this.loadFailed) return false;
     try {
@@ -325,7 +359,7 @@ class Store extends EventTarget {
       if (!wrote) {
         this.storageError = L("Changes could not be saved.") + " " +
           L("There is no room left in this browser's storage.");
-        this.changed();
+        this.failed();
         return false;
       }
       this.storageError = null;
@@ -334,10 +368,21 @@ class Store extends EventTarget {
     } catch (e) {
       this.storageError = L("Changes could not be saved.") + " " + (e && e.name === "QuotaExceededError"
         ? L("There is no room left in this browser's storage.") : "");
-      this.changed();
+      this.failed();
       return false;
     }
   }
+
+  /**
+   * Tell the app a save failed — but not until the caller has finished.
+   *
+   * Callers that roll back do so synchronously the moment `save()` returns
+   * false, so a microtask lands after the state is true again. Callers that do
+   * NOT roll back still get their repaint, which is what puts the storage
+   * banner on screen. Repainting inside `save()` did neither: it showed the
+   * change that was about to be undone.
+   */
+  failed() { queueMicrotask(() => this.changed()); }
 
   changed() { this.dispatchEvent(new Event("change")); }
 
@@ -465,6 +510,7 @@ class Store extends EventTarget {
       // Announcing "it will be here on the day" for something that is not on
       // disk is the cruellest possible version of this failing.
       this.letters = this.letters.filter(l => l.id !== letter.id);
+      this.changed();
       return null;
     }
     return letter;
@@ -572,6 +618,7 @@ class Store extends EventTarget {
     if (!this.save()) {
       this.assets = this.assets.filter(a => a.id !== asset.id);
       if (blob) { try { await Blobs.del(name); } catch {} this.present.delete(name); }
+      this.changed();
       return null;
     }
     return asset;
@@ -590,6 +637,7 @@ class Store extends EventTarget {
     this.assets[i] = a;
     if (this.save()) return true;
     this.assets[i] = before;
+    this.changed();
     return false;
   }
 
@@ -626,10 +674,14 @@ class Store extends EventTarget {
 
     // And out of Drive, if there is a copy there. Removing someone from the
     // phone while their whole archive — sealed letters included — sits in a
-    // backup is not what "delete" means to anyone. Best effort: signed out, or
-    // offline, this does nothing and the local deletion still stands.
+    // backup is not what "delete" means to anyone.
+    //
+    // Deliberately NOT awaited. It is a token refresh plus a listing plus a
+    // delete, and awaiting it held the screen on a vanished person for as long
+    // as Drive took to answer — with no spinner, because the caller had already
+    // dismissed its own. The local deletion is done and stands either way.
     const key = person.cloudKey || person.id;
-    try { await Cloud.forget(key); } catch {}
+    Cloud.forget(key).catch(() => {});
   }
 
   /// Where this person's backup lives in Drive.
@@ -919,7 +971,7 @@ function voiceMessage(status, detail) {
   // NORMAL state by the end of a session. Reading it as a rejected key sent
   // people to check a credential that was never the problem.
   if (status === 403 && (detail || "").toLowerCase().includes("not this device")) {
-    return L("That voice has already been removed at the voice service. Nothing is left to delete there.");
+    return L("That voice is no longer this phone's to remove — the voice service has already let it go.");
   }
   if (status === 401 || status === 403) return L("The key was refused by the voice service.");
   if (status === 429) {
@@ -958,7 +1010,13 @@ export const Voice = {
     form.append("files", blob, "sample." + (blob.type.includes("wav") ? "wav" : blob.type.includes("mpeg") ? "mp3" : "m4a"));
     const r = await fetchWithTimeout(`${Config.voiceBaseURL}/v1/voices/add`, {
       method: "POST", headers: voiceHeaders(), body: form,
-    }).catch(() => { throw new VoiceError("offline", L("No internet connection.")); });
+    }).catch(e => {
+      // A timeout is not a missing connection, and telling someone to check
+      // their wifi when the request simply never finished sends them to fix
+      // the wrong thing.
+      if (e instanceof TimedOut) throw e;
+      throw new VoiceError("offline", L("No internet connection."));
+    });
 
     const body = await r.text();
     if (!r.ok) throw new VoiceError("provider", voiceMessage(r.status, detailOf(body)));
@@ -986,7 +1044,13 @@ export const Voice = {
           style: tuning.style, use_speaker_boost: tuning.speakerBoost, speed: tuning.speed,
         },
       }),
-    }).catch(() => { throw new VoiceError("offline", L("No internet connection.")); });
+    }).catch(e => {
+      // A timeout is not a missing connection, and telling someone to check
+      // their wifi when the request simply never finished sends them to fix
+      // the wrong thing.
+      if (e instanceof TimedOut) throw e;
+      throw new VoiceError("offline", L("No internet connection."));
+    });
 
     if (!r.ok) throw new VoiceError("provider", voiceMessage(r.status, detailOf(await r.text())));
     const blob = await r.blob();
@@ -1003,9 +1067,22 @@ export const Voice = {
     if (!Config.elevenKey) throw new VoiceError("notConfigured", L("The key was refused by the voice service."));
     const r = await fetchWithTimeout(`${Config.voiceBaseURL}/v1/voices/${encodeURIComponent(voiceId)}`, {
       method: "DELETE", headers: voiceHeaders(),
-    }).catch(() => { throw new VoiceError("offline", L("No internet connection.")); });
+    }).catch(e => {
+      // A timeout is not a missing connection, and telling someone to check
+      // their wifi when the request simply never finished sends them to fix
+      // the wrong thing.
+      if (e instanceof TimedOut) throw e;
+      throw new VoiceError("offline", L("No internet connection."));
+    });
     if (r.status === 404) return;                 // already gone is the outcome we wanted
-    if (!r.ok) throw new VoiceError("provider", voiceMessage(r.status, detailOf(await r.text())));
+    const said = r.ok ? "" : detailOf(await r.text());
+    // The relay answers 403 "not this device's voice" once its ten-minute sweep
+    // has lifted this phone's lock — which is the NORMAL state by the end of a
+    // session. The caller wanted the voice absent from this phone, and it is;
+    // treating it as a failure stopped the deletion and left the person with an
+    // alarming note about a credential that was never the problem.
+    if (r.status === 403 && said.toLowerCase().includes("not this device")) return;
+    if (!r.ok) throw new VoiceError("provider", voiceMessage(r.status, said));
   },
 };
 
@@ -1077,7 +1154,10 @@ export const Companion = {
         ],
         max_tokens: 160, temperature: 0.6,
       }),
-    }).catch(() => { throw new CompanionError(L("No internet connection.")); });
+    }).catch(e => {
+    if (e instanceof TimedOut) throw e;
+    throw new CompanionError(L("No internet connection."));
+  });
 
     if (r.status === 429) throw new CompanionError(L("The question service is busy right now. Wait a few seconds and ask again."));
     if (!r.ok) throw new CompanionError(L("The question service reported a problem.") + ` (${r.status})`);
@@ -1107,7 +1187,10 @@ async function chat(system, user, { maxTokens = 200, temperature = 0.3 } = {}) {
       messages: [{ role: "system", content: system }, { role: "user", content: user }],
       max_tokens: maxTokens, temperature,
     }),
-  }).catch(() => { throw new CompanionError(L("No internet connection.")); });
+  }).catch(e => {
+    if (e instanceof TimedOut) throw e;
+    throw new CompanionError(L("No internet connection."));
+  });
 
   if (r.status === 429) throw new CompanionError(L("The question service is busy right now. Wait a few seconds and ask again."));
   if (!r.ok) throw new CompanionError(L("The question service reported a problem.") + ` (${r.status})`);
@@ -1636,7 +1719,7 @@ export const Cloud = {
         + "&pageSize=200" + (token ? "&pageToken=" + encodeURIComponent(token) : "");
       const body = await (await this._drive(url)).json();
       for (const f of body.files || []) {
-        if (out.has(f.name)) strays.push(f.id);
+        if (out.has(f.name)) strays.push({ id: f.id, name: f.name });
         else out.set(f.name, f.id);
       }
       token = body.nextPageToken || "";
@@ -1654,6 +1737,8 @@ export const Cloud = {
   async backUp(onProgress) {
     const existing = await this._existing();
     let sent = 0, skipped = 0, atRisk = 0, failed = 0;
+    /** Names this run has successfully written, so strays can be cleared safely. */
+    const wrote = new Set();
 
     for (const person of store.people) {
       // One person who cannot be exported — deleted while this was running, a
@@ -1706,19 +1791,36 @@ export const Cloud = {
             headers: { "content-type": `multipart/related; boundary=${boundary}` },
             body: multipart });
       } catch { failed++; continue; }
+      wrote.add(name);
       sent++;
       if (onProgress) onProgress(sent, store.people.length);
     }
 
     // Duplicate files for one person, left by an older version that could
-    // write twice. Remove them once we have written the good copy, so a later
-    // restore cannot pick a stale one up. Best effort — a failure here costs
-    // nothing that matters.
-    for (const id of existing.strays || []) {
+    // write twice — but ONLY for people this run actually wrote.
+    //
+    // Deleting a stray for someone we skipped removes a copy without having
+    // replaced it, and `_existing` keeps whichever name Drive happened to list
+    // first, which is not necessarily the newest. That could delete the only
+    // complete copy — in exactly the situation the atRisk guard exists to
+    // protect, where the local audio is already gone. Best effort otherwise.
+    for (const { id, name } of existing.strays || []) {
+      if (!wrote.has(name)) continue;
       try { await this._drive(DRIVE_FILES + "/" + id, { method: "DELETE" }); } catch {}
     }
 
     return { sent, skipped, atRisk, failed };
+  },
+
+  /** Undo an import that could not be written down. Memory only — nothing is
+   *  saved, because saving is the thing that just failed. */
+  _forgetLocally(person) {
+    if (!person) return;
+    store.assets = store.assets.filter(a => a.personId !== person.id);
+    store.notes = store.notes.filter(n => n.personId !== person.id);
+    store.letters = store.letters.filter(l => l.personId !== person.id);
+    store.books = store.books.filter(b => b.personId !== person.id);
+    store.people = store.people.filter(p => p.id !== person.id);
   },
 
   /// Remove one person's backup from Drive.
@@ -1755,7 +1857,15 @@ export const Cloud = {
         // `saved` is whether the index write actually reached durable storage.
         // Counting the import as a success without it told people she was back
         // when a reload would show she had never arrived.
-        if (arrived && arrived.saved === false) { failed++; continue; }
+        if (arrived && arrived.saved === false) {
+          // Archive.import has already pushed her into the store. Leaving her
+          // there showed a person on the People tab who is not on disk and
+          // disappears at the next reload — and the message said the file
+          // could not be read, when in fact the phone could not save it.
+          this._forgetLocally(arrived.person);
+          failed++;
+          continue;
+        }
         // Remember where she came from, so backing up again writes over the
         // same file rather than beside it.
         if (arrived && arrived.person) await store.setCloudKey(arrived.person, key);

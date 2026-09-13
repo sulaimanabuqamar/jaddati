@@ -1,8 +1,8 @@
 // The pieces every screen is built from. Ported from Design/Components.swift
 // and Design/Theme.swift so the two versions stay the same app.
 
-import { L, isAr, isArabicText, dirOf, Counts, toggleLang } from "./strings.js?v=49b6266d78";
-import { store, blobURL, ContentProvenance, Config } from "./core.js?v=49b6266d78";
+import { L, isAr, isArabicText, dirOf, Counts, toggleLang } from "./strings.js?v=b9e6cc14ce";
+import { store, blobURL, ContentProvenance, Config } from "./core.js?v=b9e6cc14ce";
 
 // ── DOM ─────────────────────────────────────────────────────────────────
 

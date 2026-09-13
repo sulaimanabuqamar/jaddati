@@ -27,7 +27,12 @@ CREDITS_PER_DEVICE = "2500"
 # And a ceiling across EVERYONE for the month. The per-device meter is keyed on
 # a header the caller writes, so clearing site data mints a new one — it is
 # friction, not a limit. This is the number that protects the bill.
-CREDITS_PER_MONTH = "100000"
+#
+# Note what it costs when it trips: speech stops for EVERY visitor until the
+# calendar month rolls over, and there is no reset except editing the KV key
+# `used:all:<YYYY-MM>` by hand. At 2500 per device that is 200 devices. Check
+# it against the ElevenLabs plan before a busy day rather than after.
+CREDITS_PER_MONTH = "500000"
 
 # Questions and dictation per device per month. Groq is cheap, but the relay
 # token is published in the web build, so without a ceiling it is an open

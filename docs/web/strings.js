@@ -5,7 +5,7 @@
 // This table is generated from Jaddati/Design/Strings.swift — do not hand-edit.
 // Regenerate with docs/web/build-strings.py after changing the app's strings.
 
-import { prefs } from "./prefs.js?v=49b6266d78";
+import { prefs } from "./prefs.js?v=b9e6cc14ce";
 
 export const AR = {
  "A bedtime story": "قصة قبل النوم",
@@ -430,9 +430,13 @@ export const AR = {
  "Could not keep this clip": "تعذّر حفظ هذا المقطع",
  "This phone would not save it. Free some space and try again.": "لم يتمكّن هذا الجهاز من حفظه. أفرغ بعض المساحة وحاول مجددًا.",
  "That took too long. Your words are still here — try again.": "استغرق هذا وقتًا طويلًا. كلماتك ما زالت هنا — حاول مجددًا.",
- "That voice has already been removed at the voice service. Nothing is left to delete there.": "أُزيل هذا الصوت من خدمة الصوت بالفعل. لم يبقَ شيء لحذفه هناك.",
+ "That voice is no longer this phone's to remove — the voice service has already let it go.": "لم يعد هذا الصوت ملكًا لهذا الجهاز كي يحذفه — فقد أزالته خدمة الصوت بالفعل.",
  "Saved memories could not be read and could not be set aside either, so nothing will be written over them. The audio files are still on this phone.": "تعذّرت قراءة الذكريات المحفوظة وتعذّر عزلها أيضًا، فلن يُكتب فوقها شيء. وملفات الصوت ما زالت في هذا الجهاز.",
  "Signing in needs a secure connection (https). This page is not on one.": "يحتاج تسجيل الدخول إلى اتصال آمن (https)، وهذه الصفحة ليست كذلك.",
+ "Nothing was backed up.": "لم يُنسخ أي شيء احتياطيًا.",
+ "Some could not be sent to Drive. Try again in a moment.": "تعذّر إرسال بعضها إلى درايف. حاول بعد قليل.",
+ "Sent without some recordings — they would have made it too large.": "أُرسل دون بعض التسجيلات — كانت ستجعله كبيرًا جدًا.",
+ "No original recordings were included.": "لم تُضمَّن أي تسجيلات أصلية.",
  "Some were already here and were left alone.": "بعضهم كان موجودًا هنا فعلًا فتُرك كما هو.",
  "Some could not be read and were left in Drive.": "تعذّرت قراءة بعضها فبقيت في درايف.",
  "Could not reach Google just now. Try again in a moment.": "تعذّر الوصول إلى جوجل الآن. حاول بعد قليل.",

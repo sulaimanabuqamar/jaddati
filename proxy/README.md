@@ -13,7 +13,7 @@ rotate, and this worker meters what each device spends.
 
 | Rule | Default | Why |
 |---|---|---|
-| Characters of speech per device per month | **1000** | `CREDITS_PER_DEVICE` in `wrangler.toml`. About a book page. Enough to hear the voice, not enough to drain the month. The worker falls back to 500 if the variable is unset. |
+| Characters of speech per device per month | **2500** | `CREDITS_PER_DEVICE` in `wrangler.toml`. Must be at least the app's own 2500-character limit for one generation, or a visitor is refused their first sentence and told the month is spent. There is also `CREDITS_PER_MONTH` across everyone — when THAT trips, speech stops for every visitor until the calendar month rolls, with no reset but editing KV by hand. |
 | Voices per device | 1 | Cloning is the expensive, slot-consuming action. The lock is checked against the provider before it is honoured: if the voice it names is already gone, the lock is dropped rather than stranding the phone that made it. The refusal is worded so the client can tell it apart from the account being full — those have different remedies, and telling someone to go free up an account they do not own is the wrong instruction. |
 | Shared voices alive at once | 6 | Keep it **below** the plan's real slot count so the demo always has room. |
 | Shared voice lifetime | **10 minutes** | Set by `VOICE_TTL_MINUTES` in `wrangler.toml`, swept by a `*/10` cron — so a voice really lives 10–20 minutes depending where in the cycle it was made. Short on purpose: during a demonstration the account has to clear itself between people. A voice built the night before a demo will **not** be there in the morning. Change the variable, not this table, and redeploy. |
