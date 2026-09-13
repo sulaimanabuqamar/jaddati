@@ -126,29 +126,45 @@ final class CloudBackup: NSObject, ObservableObject {
 
     private func present(_ url: URL) async throws -> URL {
         try await withCheckedThrowingContinuation { continuation in
+            // TWO paths can reach this continuation: the session's completion
+            // handler, and the check on start() below. On a failed start both
+            // of them fired, the continuation resumed twice, and Swift traps on
+            // that — the app did not report an error, it died.
+            //
+            // Apple documents start() == false as "did not begin" with no
+            // callback. That is not what happens. So the continuation is
+            // one-shot and whichever path arrives first wins. Everything here
+            // runs on the main thread, so the flag needs no lock.
+            var settled = false
+            func finish(_ result: Result<URL, Error>) {
+                guard !settled else { return }
+                settled = true
+                continuation.resume(with: result)
+            }
+
             let session = ASWebAuthenticationSession(
                 url: url,
                 callbackURLScheme: AppConfig.googleRedirectScheme
             ) { callback, error in
                 if let callback {
-                    continuation.resume(returning: callback)
+                    finish(.success(callback))
                 } else if let error = error as? ASWebAuthenticationSessionError,
                           error.code == .canceledLogin {
                     // Someone closing the sheet is not a failure, and telling
                     // them it was would be the app arguing with them.
-                    continuation.resume(throwing: Failure.cancelled)
+                    finish(.failure(Failure.cancelled))
                 } else {
-                    continuation.resume(throwing: Failure.failed)
+                    finish(.failure(Failure.failed))
                 }
             }
             session.presentationContextProvider = self
             session.prefersEphemeralWebBrowserSession = false
             self.session = session
-            // Returns false when there is nothing to present from. Ignored,
-            // the continuation was never resumed and the caller waited for a
-            // sheet that had not opened — forever, with the spinner turning.
+            // Returns false when there is nothing to present from. Unchecked,
+            // the caller waits for a sheet that never opened, forever, with the
+            // spinner turning.
             if !session.start() {
-                continuation.resume(throwing: Failure.failed)
+                finish(.failure(Failure.failed))
             }
         }
     }
@@ -389,10 +405,18 @@ final class CloudBackup: NSObject, ObservableObject {
 extension CloudBackup: ASWebAuthenticationPresentationContextProviding {
     nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
         MainActor.assumeIsolated {
-            UIApplication.shared.connectedScenes
+            // A fresh ASPresentationAnchor() is an empty window belonging to no
+            // scene, so handing one back guarantees start() fails rather than
+            // presenting anything — which is exactly what happened. Look
+            // harder before giving up: the key window of a foreground scene,
+            // then any window of one, then any window at all.
+            let scenes = UIApplication.shared.connectedScenes
                 .compactMap { $0 as? UIWindowScene }
-                .flatMap(\.windows)
-                .first { $0.isKeyWindow } ?? ASPresentationAnchor()
+            let active = scenes.filter { $0.activationState == .foregroundActive }
+            let windows = (active.isEmpty ? scenes : active).flatMap(\.windows)
+            return windows.first { $0.isKeyWindow }
+                ?? windows.first
+                ?? ASPresentationAnchor()
         }
     }
 }
