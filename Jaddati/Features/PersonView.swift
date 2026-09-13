@@ -52,7 +52,7 @@ struct PersonView: View {
                         // the shared relay — a phone using its own key keeps
                         // its voices.
                         if person.hasVoice && AppConfig.usesRelayVoice && !AppConfig.isUsingMock {
-                            Text(L("Voices made here are removed automatically about every ten minutes, so that everyone seeing the demonstration gets a turn. The recording you add stays on this device."))
+                            Text(L("A voice made here may be cleared to make room when several families are using the demonstration at once. The recording you add stays on this device."))
                                 .font(Theme.Font.caption)
                                 .foregroundStyle(Theme.Palette.amber)
                                 .multilineTextAlignment(.center)

@@ -185,7 +185,8 @@ extension TranslatorService: ChatCalling {}
 
 extension ChatCalling {
     func chat(system: String, user: String,
-              maxTokens: Int, temperature: Double) async throws -> String {
+              maxTokens: Int, temperature: Double,
+              keepLines: Bool = false) async throws -> String {
         guard Consent.networkAllowed else { throw ConsentMissing() }
         guard !apiKey.isEmpty else { throw CompanionError.notConfigured }
         guard let url = URL(string: baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -244,7 +245,7 @@ extension ChatCalling {
             throw CompanionError.badResponse
         }
 
-        let cleaned = LLMClient.tidy(content)
+        let cleaned = LLMClient.tidy(content, keepLines: keepLines)
         guard !cleaned.isEmpty else { throw CompanionError.emptyAnswer }
         return cleaned
     }

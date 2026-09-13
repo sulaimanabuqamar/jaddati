@@ -11,7 +11,7 @@
 // something survived the move rather than simply still being there.
 
 import pw from 'playwright';
-import { go } from './paths.mjs';
+import { go, signedIn } from './paths.mjs';
 
 const URL = 'http://localhost:8899/index.html';
 const problems = [];
@@ -49,6 +49,9 @@ const stub = async page => {
 const ctxA = await browser.newContext({ viewport: { width: 390, height: 844 }, permissions: ['microphone'] });
 const a = await ctxA.newPage();
 await stub(a);
+// Billed to an account now, so the browser that makes the voice has to be
+// signed in — otherwise this suite is only testing the refusal.
+await signedIn(a, 'gives@example.com');
 await a.goto(URL, { waitUntil: 'networkidle' });
 await a.waitForTimeout(500);
 await a.click('text=Allow these three things'); await a.waitForTimeout(400);
@@ -98,6 +101,7 @@ log(!file.person?.id, 'no local id is carried — two phones must not share one'
 const ctxB = await browser.newContext({ viewport: { width: 390, height: 844 }, permissions: ['microphone'] });
 const b = await ctxB.newPage();
 await stub(b);
+await signedIn(b, 'receives@example.com');
 await b.goto(URL, { waitUntil: 'networkidle' });
 await b.waitForTimeout(500);
 await b.click('text=Allow these three things'); await b.waitForTimeout(400);

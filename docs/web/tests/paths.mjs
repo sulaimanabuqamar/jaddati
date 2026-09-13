@@ -6,6 +6,32 @@
 // keeps each suite's ASSERTIONS about behaviour untouched, which is the part
 // that was worth having.
 
+/** A signed-in browser, without Google's consent screen.
+ *
+ *  New audio is billed to an account now, so a suite that creates a voice or
+ *  speaks through the relay has to be signed in or it is only testing the
+ *  refusal. There is no way to click through Google from a test, so the tokens
+ *  are written straight into storage — shaped the way real ones are, because
+ *  the app decides what to send by reading `exp` out of the id token.
+ *
+ *  Call it BEFORE page.goto, so the first render already knows.
+ */
+export async function signedIn(page, email = 'tester@example.com') {
+  await page.addInitScript(address => {
+    const b64 = o => btoa(unescape(encodeURIComponent(JSON.stringify(o))))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const idToken = [
+      b64({ alg: 'RS256' }),
+      b64({ email: address, sub: address.split('@')[0], exp: Math.floor(Date.now() / 1000) + 3600 }),
+      'signature-not-checked-in-the-browser',
+    ].join('.');
+    localStorage.setItem('jaddati.cloud.tokens', JSON.stringify({
+      refresh_token: 'stub-refresh', access_token: 'stub-access',
+      expires_at: Date.now() + 3600e3, email: address, id_token: idToken,
+    }));
+  }, email);
+}
+
 export const go = {
   async people(page) { await page.click('.tabrail button >> nth=0'); await page.waitForTimeout(400); },
   async letters(page) { await page.click('.tabrail button >> nth=1'); await page.waitForTimeout(400); },

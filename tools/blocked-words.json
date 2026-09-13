@@ -1,0 +1,63 @@
+{
+  "_policy": [
+    "The words this app refuses to put in a dead person's mouth.",
+    "",
+    "Two lists, because they are two different problems.",
+    "",
+    "`slurs` are refused always and are not negotiable. A slur is not the",
+    "user's grief, it is a weapon, and the voice being borrowed belongs to",
+    "someone who is not here to object to what it is made to say. This is the",
+    "list that matters.",
+    "",
+    "`profanity` is refused too, because that is what was asked for. But it is",
+    "kept apart deliberately, because the argument for it is much weaker:",
+    "grief is not polite. 'I miss you so fucking much' is a real sentence a",
+    "real person writes to someone they have lost, and an app that refuses it",
+    "has misunderstood what it is for. Set REFUSE_PROFANITY to false to allow",
+    "it without touching the slur list.",
+    "",
+    "Not on the list, on purpose: 'dick'. It is a man's name, and the men",
+    "this app is most often used to speak to were born when it was a common",
+    "one. Refusing 'Uncle Dick sends his love' to block a mild insult is the",
+    "wrong trade in an app about grandparents.",
+    "",
+    "Not on either list, on purpose: died, death, dead, kill, hell, damn,",
+    "suicide, cancer, grave, funeral, blood. Every one of those belongs in a",
+    "sentence someone might honestly want to hear in a voice they have lost,",
+    "and blocking them would be the app deciding how a family is allowed to",
+    "grieve.",
+    "",
+    "Generated into Swift and JavaScript by tools/build-wordlist.py — edit",
+    "this file, never the generated ones."
+  ],
+
+  "slurs": [
+    "nigger", "nigga", "niggers", "faggot", "fag", "faggots", "tranny",
+    "trannies", "kike", "spic", "wetback", "chink", "gook", "coon",
+    "raghead", "towelhead", "sandnigger", "paki", "retard", "retarded",
+    "retards", "mongoloid", "dyke", "shemale", "half-breed",
+    "زنجي", "خول", "كافر_قذر", "متخلف_عقليا"
+  ],
+
+  "sexual": [
+    "porn", "porno", "pornography", "blowjob", "handjob", "creampie",
+    "cunnilingus", "felching", "rimjob", "gangbang", "bukkake", "hentai",
+    "milf", "nudes", "cumshot", "deepthroat", "anal", "dildo", "buttplug",
+    "masturbate", "masturbating", "jerkoff", "fleshlight",
+    "قحبة", "شرموطة", "عاهرة", "نيك", "منيوك", "كس", "زب", "طيز"
+  ],
+
+  "profanity": [
+    "fuck", "fucking", "fucked", "fucker", "motherfucker", "shit", "shitty",
+    "bullshit", "bitch", "bitches", "cunt", "prick", "wanker", "bastard",
+    "asshole", "arsehole", "dickhead", "twat", "slut", "whore", "pussy",
+    "cock",
+    "كسمك", "يلعن", "العنة", "خرا", "زفت", "حيوان_قذر", "ابن_الكلب",
+    "كلب_ابن_كلب", "طز"
+  ],
+
+  "_notes": {
+    "underscores": "An underscore in an entry means a space in the text: multi-word phrases are matched with the space normalised out, so 'ابن الكلب' and 'ابن  الكلب' both match.",
+    "matching": "Entries are matched on whole words after normalisation (lowercasing, stripping Arabic diacritics and tatweel, unifying alef and ya forms, collapsing letters repeated three or more times, and undoing the common digit-for-letter swaps). A substring match would refuse 'Scunthorpe' and 'classic', which is worse than missing a spelling."
+  }
+}

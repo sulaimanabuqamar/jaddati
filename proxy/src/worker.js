@@ -8,24 +8,33 @@
  * slot out of the same account the demo needs.
  *
  * So the keys live here instead. The app authenticates with a token that is
- * ours to rotate, this worker counts what each device spends, and it deletes
- * shared voices after a week so slots come back.
+ * ours to rotate, this worker counts what each ACCOUNT spends, and it hands a
+ * voice slot to whoever needs it next by taking the one nobody is using.
+ *
+ * Speaking and cloning need a Google sign-in. Looking around does not: the
+ * whole archive, every recording already made, both languages and the handoff
+ * all work signed out. The sign-in is asked for at the moment something is
+ * about to be spent, and it is the same sign-in the Drive backup already
+ * uses, not a second account.
  *
  * It deliberately MIMICS both upstream APIs path-for-path. The app's clients
  * were already written against a configurable base URL, so pointing them here
  * is a settings change rather than a rewrite.
  *
- *   POST /v1/voices/add                  -> ElevenLabs, capped per device
- *   POST /v1/text-to-speech/{voiceId}    -> ElevenLabs, billed against the device
+ *   POST /v1/voices/add                  -> ElevenLabs, one voice per account
+ *   POST /v1/text-to-speech/{voiceId}    -> ElevenLabs, billed to the account
  *   POST /chat/completions               -> Groq (questions while reading)
  *   POST /audio/transcriptions           -> Groq (speaking instead of typing)
+ *   POST /admin/accounts                 -> who has signed in (admin token)
  *   GET  /health                         -> plain OK, for checking a deploy
  *
  * One honest limit: the app still has to prove it is the app, so a token still
  * ships in the bundle. The difference from before is that this one is ours to
- * revoke in thirty seconds, and it cannot be used to spend more than one
- * device's allowance.
+ * revoke in thirty seconds, and on its own it can spend nothing at all — the
+ * spending needs a verified Google account behind it.
  */
+
+import { refusal } from "./blocked-words.js";
 
 const ELEVEN = "https://api.elevenlabs.io";
 
@@ -76,16 +85,177 @@ const num = (value, fallback) => {
  */
 const voiceTTL = env => Math.max(60, num(env.VOICE_TTL_MINUTES, 10) * 60);
 
+
+// ── who is asking ───────────────────────────────────────────────────────
+//
+// The device header was never an identity. It is a string the caller writes,
+// so clearing site data mints a new one, and every per-device limit under it
+// was friction rather than a limit. That was fine while the only ceiling that
+// mattered was the global one; it stops being fine the moment the allowance
+// is meant to belong to a person.
+//
+// So speaking and cloning now need a Google account. The app already signs in
+// with Google for the Drive backup, so this is the same sign-in, not a second
+// one — and it is asked for only at the point of generating, never to look
+// around.
+//
+// The token is verified with Google rather than merely decoded. A JWT that is
+// only decoded is a JWT anyone can write. Verified once and then cached
+// against its own expiry, so this costs one upstream call per sign-in rather
+// than one per sentence.
+
+const TOKENINFO = "https://oauth2.googleapis.com/tokeninfo?id_token=";
+
+/** A short, stable key for a token, so the cache is not keyed on the token. */
+async function digest(text) {
+  const bytes = new TextEncoder().encode(text);
+  const hash = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(hash)].slice(0, 16)
+    .map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function audienceAllowed(aud, env) {
+  const allowed = [env.GOOGLE_CLIENT_ID, env.GOOGLE_IOS_CLIENT_ID].filter(Boolean);
+  return allowed.includes(aud);
+}
+
+/**
+ * The account behind this request, or null.
+ *
+ * Null covers every failure the same way on purpose — expired, forged, wrong
+ * audience, Google unreachable. The caller turns all of them into "sign in
+ * again", because there is nothing a person can do differently for any of
+ * them, and naming which one would tell somebody probing the endpoint which
+ * part of their forgery to fix.
+ */
+async function accountFor(request, env) {
+  const token = (request.headers.get("x-jaddati-account") || "").trim();
+  if (!token || token.length > 4096) return null;
+
+  const key = "tok:" + (await digest(token));
+  const cached = await env.JADDATI.get(key);
+  if (cached) {
+    try { return JSON.parse(cached); } catch { /* fall through and re-verify */ }
+  }
+
+  let claims;
+  try {
+    const r = await fetch(TOKENINFO + encodeURIComponent(token));
+    if (!r.ok) return null;
+    claims = await r.json();
+  } catch {
+    return null;
+  }
+
+  if (!claims || !claims.sub) return null;
+  if (!audienceAllowed(claims.aud, env)) return null;
+
+  const expires = num(claims.exp, 0) * 1000;
+  const seconds = Math.floor((expires - Date.now()) / 1000);
+  if (seconds <= 0) return null;
+
+  const account = { sub: String(claims.sub), email: String(claims.email || "") };
+  // Never cached longer than the token is good for, and never under KV's own
+  // one-minute floor.
+  await env.JADDATI.put(key, JSON.stringify(account),
+                        { expirationTtl: Math.max(60, Math.min(seconds, 3600)) });
+  return account;
+}
+
+/**
+ * The roll of who has signed in, for the admin page.
+ *
+ * Deliberately thin: the subject id, the email they signed in with, when they
+ * first and last appeared, and what they have spent. No text, no recordings,
+ * nothing about who they were speaking to. An admin page that can read a
+ * family's words would be a worse thing than the problem it solves.
+ */
+async function noteAccount(env, account, spent) {
+  const key = "acct:" + account.sub;
+  let record = {};
+  try { record = JSON.parse(await env.JADDATI.get(key)) || {}; } catch { record = {}; }
+  const now = Date.now();
+  const next = {
+    sub: account.sub,
+    email: account.email || record.email || "",
+    firstSeen: record.firstSeen || now,
+    lastSeen: now,
+    generations: num(record.generations, 0) + (spent > 0 ? 1 : 0),
+    characters: num(record.characters, 0) + Math.max(spent, 0),
+  };
+  // A year, so the roll survives the demo and a month of afterwards.
+  await env.JADDATI.put(key, JSON.stringify(next), { expirationTtl: 365 * 86400 });
+}
+
 // ---------------------------------------------------------------- routes
+
+
+/**
+ * Hand back the slot that has gone longest without being used.
+ *
+ * This replaces deleting every voice on a ten-minute timer. The timer was
+ * indiscriminate: it took the voice of whoever happened to be mid-sentence
+ * just as readily as one nobody had touched for an hour, and during a
+ * demonstration that is precisely the wrong person. Least-recently-used takes
+ * the one nobody is holding, so the six people actually using the app keep
+ * theirs and a seventh still gets in.
+ *
+ * Returns false if nothing could be freed, and the caller then refuses rather
+ * than guessing.
+ */
+async function evictOldestVoice(env) {
+  const listing = await env.JADDATI.list({ prefix: "v:" });
+  let oldest = null;
+  for (const entry of listing.keys) {
+    let record = null;
+    try { record = JSON.parse(await env.JADDATI.get(entry.name)); } catch { continue; }
+    if (!record) continue;
+    const seen = num(record.lastUsed, num(record.created, 0));
+    if (!oldest || seen < oldest.seen) {
+      oldest = { name: entry.name, seen, account: record.account || "" };
+    }
+  }
+  if (!oldest) return false;
+
+  const voiceId = oldest.name.slice(2);
+  try {
+    const gone = await fetch(`${ELEVEN}/v1/voices/${voiceId}`, {
+      method: "DELETE",
+      headers: { "xi-api-key": env.ELEVENLABS_API_KEY },
+    });
+    // Already gone counts: the slot is free either way.
+    if (!gone.ok && gone.status !== 404) return false;
+  } catch {
+    return false;
+  }
+
+  await env.JADDATI.delete(oldest.name);
+  if (oldest.account) await env.JADDATI.delete(`voice:acct:${oldest.account}`);
+  const live = num(await env.JADDATI.get("voices:live"), 0);
+  await env.JADDATI.put("voices:live", String(Math.max(live - 1, 0)));
+  return true;
+}
+
+/** Touch a voice so eviction knows it is in use. */
+async function touchVoice(env, voiceId) {
+  const key = `v:${voiceId}`;
+  let record = null;
+  try { record = JSON.parse(await env.JADDATI.get(key)); } catch { return; }
+  if (!record) return;
+  record.lastUsed = Date.now();
+  await env.JADDATI.put(key, JSON.stringify(record), { expirationTtl: 30 * 86400 });
+}
 
 /**
  * Creating a voice. This is the call that can break demo day, so it is the
- * strictest: one voice per device, and a hard ceiling across everyone so the
+ * strictest: one voice per ACCOUNT, and a hard ceiling across everyone so the
  * account can never fill up completely.
  */
 async function createVoice(request, env) {
-  const device = deviceId(request);
-  const perDevice = await env.JADDATI.get(`voice:${device}`);
+  const account = await accountFor(request, env);
+  if (!account) return json(401, "sign in to create a voice");
+
+  const perDevice = await env.JADDATI.get(`voice:acct:${account.sub}`);
   if (perDevice) {
     // A lock is only worth honouring while the voice it names still exists.
     // The sweep lifts locks when it runs, but it runs on a timer, and a put
@@ -110,10 +280,10 @@ async function createVoice(request, env) {
       // account being full. Telling someone the account has no room, when in
       // fact their own phone is holding the only slot they are allowed, sends
       // them looking in the wrong place.
-      return json(429, "this device already has a voice");
+      return json(429, "this account already has a voice");
     }
 
-    await env.JADDATI.delete(`voice:${device}`);
+    await env.JADDATI.delete(`voice:acct:${account.sub}`);
     if (await env.JADDATI.get(`v:${perDevice}`)) {
       await env.JADDATI.delete(`v:${perDevice}`);
       const before = num(await env.JADDATI.get("voices:live"), 0);
@@ -122,9 +292,15 @@ async function createVoice(request, env) {
   }
 
   const cap = num(env.MAX_VOICES, 6);
-  const live = num(await env.JADDATI.get("voices:live"), 0);
+  let live = num(await env.JADDATI.get("voices:live"), 0);
   if (live >= cap) {
-    return json(429, "voice limit reached: no slots are free right now");
+    // Make room rather than turning someone away. The person who has not
+    // spoken for longest loses their voice; the six people using the app
+    // right now do not.
+    if (!(await evictOldestVoice(env))) {
+      return json(429, "voice limit reached: no slots are free right now");
+    }
+    live = num(await env.JADDATI.get("voices:live"), 0);
   }
 
   const upstream = await fetch(`${ELEVEN}/v1/voices/add`, {
@@ -144,17 +320,20 @@ async function createVoice(request, env) {
     const voiceId = JSON.parse(body).voice_id;
     if (voiceId) {
       const ttl = voiceTTL(env);
+      const now = Date.now();
       // The device's lock outlives the voice on purpose, and the sweep lifts it
       // the moment the voice is actually gone. Expiring the lock first would
       // let one person hold two voices at once; expiring it later, with no
       // sweep to lift it, would tell them they still have a voice that has
       // already been deleted. The TTLs here are only the safety net for a
       // sweep that never runs.
-      await env.JADDATI.put(`voice:${device}`, voiceId, { expirationTtl: ttl * 2 });
+      // No short expiry any more. A voice lives until somebody else needs the
+      // slot, which is what "it just works" means in a room of six people.
+      await env.JADDATI.put(`voice:acct:${account.sub}`, voiceId, { expirationTtl: 30 * 86400 });
       await env.JADDATI.put(
         `v:${voiceId}`,
-        JSON.stringify({ device, created: Date.now() }),
-        { expirationTtl: ttl * 3 }
+        JSON.stringify({ account: account.sub, created: now, lastUsed: now }),
+        { expirationTtl: 30 * 86400 }
       );
       await env.JADDATI.put("voices:live", String(live + 1));
     }
@@ -176,18 +355,19 @@ async function createVoice(request, env) {
 /**
  * Delete a voice, and give the slot back.
  *
- * Only the device that made a voice may delete it — the per-device key is the
- * proof. Without that check any phone could delete any family's voice, which
- * is a worse failure than not being able to delete at all.
+ * Only the account that made a voice may delete it — the per-account key is
+ * the proof. Without that check any visitor could delete any family's voice,
+ * which is a worse failure than not being able to delete at all.
  *
  * A voice that is already gone counts as success: the caller wanted it absent,
  * and it is. The counter only ever moves on a KV record we actually removed,
  * so a repeated delete cannot drive `voices:live` below the real number.
  */
 async function deleteVoice(request, env, voiceId) {
-  const device = deviceId(request);
-  const owned = await env.JADDATI.get(`voice:${device}`);
-  if (owned !== voiceId) return json(403, "not this device's voice");
+  const account = await accountFor(request, env);
+  if (!account) return json(401, "sign in to remove a voice");
+  const owned = await env.JADDATI.get(`voice:acct:${account.sub}`);
+  if (owned !== voiceId) return json(403, "not this account's voice");
 
   const gone = await fetch(`${ELEVEN}/v1/voices/${voiceId}`, {
     method: "DELETE",
@@ -199,7 +379,7 @@ async function deleteVoice(request, env, voiceId) {
 
   const had = await env.JADDATI.get(`v:${voiceId}`);
   await env.JADDATI.delete(`v:${voiceId}`);
-  await env.JADDATI.delete(`voice:${device}`);
+  await env.JADDATI.delete(`voice:acct:${account.sub}`);
   if (had) {
     const live = num(await env.JADDATI.get("voices:live"), 0);
     await env.JADDATI.put("voices:live", String(Math.max(live - 1, 0)));
@@ -209,20 +389,32 @@ async function deleteVoice(request, env, voiceId) {
 }
 
 async function speak(request, env, voiceId) {
-  const device = deviceId(request);
+  const account = await accountFor(request, env);
+  if (!account) return json(401, "sign in to make new audio");
   const raw = await request.text();
 
   let text = "";
   try { text = String(JSON.parse(raw).text || ""); } catch { return json(400, "malformed request"); }
   if (!text) return json(400, "no text to speak");
 
+  // The clients check the same list before spending anything, and this is why
+  // that is not enough: the web build is readable, the token in it is readable
+  // with it, and a phone can be pointed at this relay by anyone who reads the
+  // repository. A filter that lives only in a client is a suggestion.
+  if (refusal(text)) return json(400, "those words will not be spoken here");
+
   // The fallback has to be at least one full generation, or an unset variable
   // refuses a visitor their first sentence and tells them the month is spent.
-  const allowance = num(env.CREDITS_PER_DEVICE, 2500);
-  const key = `used:${device}:${period()}`;
+  // The break tags are the app's doing, not the person's. They go to the voice
+  // service because that is how a pause is asked for, but taking them out of
+  // somebody's allowance would be charging them for the app's punctuation.
+  const billable = text.replace(/<break\s[^>]*\/?>/gi, "").length;
+
+  const allowance = num(env.CREDITS_PER_ACCOUNT, 1000);
+  const key = `used:acct:${account.sub}:${period()}`;
   const spent = num(await env.JADDATI.get(key), 0);
 
-  if (spent + text.length > allowance) {
+  if (spent + billable > allowance) {
     const left = Math.max(allowance - spent, 0);
     // "credits" in the message is load-bearing: the app reads the wording and
     // shows its own translated "this month's credits are used up" line.
@@ -237,7 +429,7 @@ async function speak(request, env, voiceId) {
   const monthKey = `used:all:${period()}`;
   const monthCap = num(env.CREDITS_PER_MONTH, 100000);
   const monthSpent = num(await env.JADDATI.get(monthKey), 0);
-  if (monthSpent + text.length > monthCap) {
+  if (monthSpent + billable > monthCap) {
     // Worded so the client does NOT map it to the per-device "this month's
     // allowance is used up" line: that reads as personal, and the person
     // reading it has spent nothing. This is the account, not them.
@@ -261,7 +453,11 @@ async function speak(request, env, voiceId) {
   // Charge only for audio that arrived. A failed generation is not billed to
   // the person who asked for it.
   if (upstream.ok) {
-    await env.JADDATI.put(key, String(spent + text.length), { expirationTtl: 70 * 86400 });
+    await env.JADDATI.put(key, String(spent + billable), { expirationTtl: 70 * 86400 });
+    // Eviction takes the voice nobody has used for longest, so a voice being
+    // used has to say so.
+    await touchVoice(env, voiceId);
+    await noteAccount(env, account, billable);
     // Re-read rather than reuse `monthSpent`: the check happened before the
     // upstream call, and on a busy minute several requests will have been in
     // flight since.
@@ -272,7 +468,7 @@ async function speak(request, env, voiceId) {
     // draining the month, not an accounting system, and the number to watch is
     // the one in the ElevenLabs dashboard.
     const now = num(await env.JADDATI.get(monthKey), monthSpent);
-    await env.JADDATI.put(monthKey, String(now + text.length), { expirationTtl: 70 * 86400 });
+    await env.JADDATI.put(monthKey, String(now + billable), { expirationTtl: 70 * 86400 });
   }
 
   return new Response(upstream.body, {
@@ -326,13 +522,13 @@ async function groq(request, env, path) {
  * The origin is left open on purpose. The token the web build sends is readable
  * in the page by anyone who views source, so turning away unknown origins would
  * inconvenience honest visitors without stopping anyone who meant harm. What
- * actually bounds the damage is the metering below: one voice per device, a
+ * actually bounds the damage is the metering below: one voice per account, a
  * hard ceiling across everyone, and a monthly character budget.
  */
 const CORS = {
   "access-control-allow-origin": "*",
-  "access-control-allow-methods": "POST, DELETE, OPTIONS",
-  "access-control-allow-headers": "xi-api-key, authorization, content-type, x-jaddati-device, accept",
+  "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
+  "access-control-allow-headers": "xi-api-key, authorization, content-type, x-jaddati-device, x-jaddati-account, x-jaddati-admin, accept",
   "access-control-max-age": "86400",
 };
 
@@ -494,10 +690,62 @@ async function takeArchive(request, env) {
   return new Response(stored, { status: 200, headers: { "content-type": "application/json" } });
 }
 
+/**
+ * Who has signed in. Behind its own token, which is a secret and not the app
+ * token — the app token ships inside a web page, and a page anyone can read is
+ * not a credential for anything that lists people.
+ *
+ * Returns the roll and the state of the voice slots, and nothing anyone said.
+ */
+async function adminAccounts(request, env) {
+  const given = (request.headers.get("x-jaddati-admin") || "").trim();
+  if (!env.ADMIN_TOKEN || given !== env.ADMIN_TOKEN) return json(401, "unauthorised");
+
+  const allowance = num(env.CREDITS_PER_ACCOUNT, 1000);
+  const listing = await env.JADDATI.list({ prefix: "acct:" });
+  const accounts = [];
+  for (const entry of listing.keys) {
+    try {
+      const record = JSON.parse(await env.JADDATI.get(entry.name));
+      if (!record) continue;
+      // `characters` is everything this account has ever spent; the meter that
+      // actually refuses people is this month's. Standing in a room watching
+      // the queue, the useful number is what is LEFT, so it is worked out here
+      // rather than left to whoever is reading the screen.
+      const used = num(await env.JADDATI.get(`used:acct:${record.sub}:${period()}`), 0);
+      accounts.push({ ...record, usedThisMonth: used, leftThisMonth: Math.max(0, allowance - used) });
+    } catch { /* one unreadable row must not cost the whole roll */ }
+  }
+  accounts.sort((a, b) => num(b.lastSeen, 0) - num(a.lastSeen, 0));
+
+  const voices = await env.JADDATI.list({ prefix: "v:" });
+  const held = [];
+  for (const entry of voices.keys) {
+    try {
+      const record = JSON.parse(await env.JADDATI.get(entry.name));
+      if (record) held.push({ account: record.account || "", lastUsed: num(record.lastUsed, 0) });
+    } catch { /* same */ }
+  }
+
+  return new Response(JSON.stringify({
+    accounts,
+    voices: { held: held.length, cap: num(env.MAX_VOICES, 6), slots: held },
+    creditsPerAccount: allowance,
+    month: period(),
+  }), { status: 200, headers: { "content-type": "application/json" } });
+}
+
 async function route(request, env) {
   const url = new URL(request.url);
 
   if (url.pathname === "/health") return new Response("ok");
+
+  // Before the method gate AND before the app token. Its own credential,
+  // because the app token is readable by anyone who opens the web build; and
+  // above the gate because reading a roll is a GET, and the gate below turns
+  // every GET into a 405 — which it did, silently, to the only caller this
+  // endpoint has. The relay's own suite drove it with POST and never saw it.
+  if (url.pathname === "/admin/accounts") return adminAccounts(request, env);
 
   // DELETE is allowed through for one route: removing a voice. The app has
   // to be able to answer "how do I get this deleted?", and refusing every
@@ -553,19 +801,26 @@ export default {
    * Without this the account fills up once and stays full.
    */
   async scheduled(event, env) {
-    const cutoff = Date.now() - voiceTTL(env) * 1000;
+    // No longer the mechanism — eviction is. This is the collector behind it:
+    // a voice nobody has spoken with for a day is taking a slot that a person
+    // in the room could be using, and its owner is not coming back for it
+    // today. Anything newer is left alone, however many slots are in use,
+    // because taking a voice from someone mid-session was the whole problem
+    // with doing this on a timer.
+    const idleFor = Math.max(voiceTTL(env), 24 * 3600) * 1000;
+    const cutoff = Date.now() - idleFor;
     const listing = await env.JADDATI.list({ prefix: "v:" });
 
     for (const entry of listing.keys) {
       const record = await env.JADDATI.get(entry.name);
       if (!record) continue;
-      let created = 0, owner = "";
+      let seen = 0, owner = "";
       try {
         const parsed = JSON.parse(record);
-        created = parsed.created || 0;
-        owner = parsed.device || "";
+        seen = num(parsed.lastUsed, num(parsed.created, 0));
+        owner = parsed.account || "";
       } catch { continue; }
-      if (created > cutoff) continue;
+      if (seen > cutoff) continue;
 
       const voiceId = entry.name.slice(2);
       // One voice the provider will not talk about must not stop the sweep:
@@ -583,7 +838,7 @@ export default {
         await env.JADDATI.delete(entry.name);
         // Lift the owner's lock in the same breath. Without this they are told
         // they already have a voice, for the ten minutes after it was removed.
-        if (owner) await env.JADDATI.delete(`voice:${owner}`);
+        if (owner) await env.JADDATI.delete(`voice:acct:${owner}`);
       }
     }
 

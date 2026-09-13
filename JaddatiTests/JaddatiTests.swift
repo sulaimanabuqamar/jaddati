@@ -158,6 +158,10 @@ final class JaddatiTests: XCTestCase {
         let cases: [VoiceServiceError] = [
             .notConfigured, .textTooLong(limit: 800), .sampleUnreadable,
             .sampleRejected(""), .voiceUnavailable("invalid id"), .unauthorised, .outOfCredits, .voiceLimitReached,
+            .deviceAlreadyHasVoice, .refused,
+            // Carries its own sentence, so an empty one would ship a blank
+            // error dialog rather than fail anywhere earlier.
+            .signInRequired(L("Sign in with Google to make new audio. The button is in Backup, on the You tab.")),
             .rateLimited, .offline, .timedOut, .provider(status: 500, detail: "x"), .badResponse
         ]
         for error in cases {

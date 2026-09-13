@@ -5,6 +5,7 @@
 // press it, and assert that at no point are they shown a wall of choices.
 
 import pw from 'playwright';
+import { signedIn } from './paths.mjs';
 
 const URL = 'http://localhost:8899/index.html';
 const problems = [];
@@ -43,6 +44,9 @@ await page.route('**/jaddati-proxy.sulaimanabuqamar.workers.dev/**', route => {
 
 const shot = n => page.screenshot({ path: `/home/claude/web/nav-${n}.png` });
 
+// Billed to an account now: without this the app refuses before it reaches
+// the relay, and every assertion below would be testing the refusal.
+await signedIn(page);
 await page.goto(URL, { waitUntil: 'networkidle' });
 await page.waitForTimeout(500);
 await page.click('text=Allow these three things');

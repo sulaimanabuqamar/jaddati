@@ -26,6 +26,30 @@ struct ElevenLabsClient: VoiceService {
         self.base = base
     }
 
+    /// Who is asking, for the three calls the relay charges somebody for.
+    ///
+    /// Hung off the same test as the device header: a build pointed straight at
+    /// ElevenLabs with its own key is spending its own money and owes nobody
+    /// here an account. That is what leaves the demo phone untouched by all of
+    /// this — it carries its own key and never goes through the relay.
+    private func accountToken(_ refusal: String) async throws -> String {
+        guard AppConfig.sendsVoiceDeviceHeader else { return "" }
+        guard let token = await CloudBackup.shared.accountToken() else {
+            throw VoiceServiceError.signInRequired(refusal)
+        }
+        return token
+    }
+
+    private static var signInToGenerate: String {
+        L("Sign in with Google to make new audio. The button is in Backup, on the You tab.")
+    }
+
+    /// Adds it, if there is one to add.
+    private func sign(_ request: inout URLRequest, with account: String) {
+        guard !account.isEmpty else { return }
+        request.setValue(account, forHTTPHeaderField: "X-Jaddati-Account")
+    }
+
     // MARK: Voice creation
 
     func createVoice(name: String, sampleURL: URL) async throws -> CreatedVoice {
@@ -75,6 +99,11 @@ struct ElevenLabsClient: VoiceService {
 
     private func postVoice(name: String, data: Data, filename: String,
                            mime: String, field: String) async throws -> CreatedVoice {
+        // Asked before the recording is packed into a multipart body, so that
+        // somebody who is not signed in hears about it in the second it takes
+        // to check rather than after a megabyte has gone up the wire.
+        let account = try await accountToken(Self.signInToGenerate)
+
         let boundary = "jaddati.\(UUID().uuidString)"
         var request = URLRequest(url: base.appendingPathComponent("v1/voices/add"))
         request.httpMethod = "POST"
@@ -82,6 +111,7 @@ struct ElevenLabsClient: VoiceService {
         if AppConfig.sendsVoiceDeviceHeader {
             request.setValue(AppConfig.deviceId, forHTTPHeaderField: "X-Jaddati-Device")
         }
+        sign(&request, with: account)
         request.setValue("multipart/form-data; boundary=\(boundary)",
                          forHTTPHeaderField: "Content-Type")
 
@@ -117,9 +147,28 @@ struct ElevenLabsClient: VoiceService {
         guard Consent.networkAllowed else { throw ConsentMissing() }
         guard !key.isEmpty else { throw VoiceServiceError.notConfigured }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Refused before anything is spent — no credit, no slot, no upstream
+        // call. The relay checks the same list, because this one is only the
+        // polite half: the web build is readable and the phone can be pointed
+        // anywhere, so a check that lives only in a client is a suggestion.
+        if BlockedWords.refusal(in: trimmed) != nil { throw VoiceServiceError.refused }
+
+        // Measured on what was typed, not on what is sent. The break tags below
+        // are the app's doing and should not eat someone's allowance.
         guard trimmed.count <= AppConfig.maxCharactersPerGeneration else {
             throw VoiceServiceError.textTooLong(limit: AppConfig.maxCharactersPerGeneration)
         }
+
+        // Before the harakat call, not after: that one is a round trip to a
+        // model of its own, and spending it on a sentence about to be refused
+        // for want of a sign-in is a wait that buys nothing.
+        let account = try await accountToken(Self.signInToGenerate)
+
+        // Marks first, then pauses. The other order hands `<break time="0.9s" />`
+        // to a model that has just been told to put a vowel on every letter.
+        let vowelled = await TashkeelService().vowelled(trimmed)
+        let spoken = SpokenText.withParagraphPauses(vowelled)
 
         var components = URLComponents(
             url: base.appendingPathComponent("v1/text-to-speech/\(voiceId)"),
@@ -133,6 +182,7 @@ struct ElevenLabsClient: VoiceService {
         if AppConfig.sendsVoiceDeviceHeader {
             request.setValue(AppConfig.deviceId, forHTTPHeaderField: "X-Jaddati-Device")
         }
+        sign(&request, with: account)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("audio/mpeg", forHTTPHeaderField: "Accept")
         // Both dictionaries are annotated. `data(withJSONObject:)` takes `Any`,
@@ -146,7 +196,7 @@ struct ElevenLabsClient: VoiceService {
             "speed": tuning.speed
         ]
         let payload: [String: Any] = [
-            "text": trimmed,
+            "text": spoken,
             "model_id": modelId,
             "voice_settings": settings
         ]
@@ -172,12 +222,18 @@ struct ElevenLabsClient: VoiceService {
         guard Consent.networkAllowed else { throw ConsentMissing() }
         guard !key.isEmpty else { throw VoiceServiceError.notConfigured }
 
+        // The relay will not take a deletion from nobody either: it has to know
+        // the slot being given up is the one this account is holding.
+        let account = try await accountToken(
+            L("Sign in with Google to take this voice back off the voice service. The button is in Backup, on the You tab."))
+
         var request = URLRequest(url: base.appendingPathComponent("v1/voices/\(voiceId)"))
         request.httpMethod = "DELETE"
         request.setValue(key, forHTTPHeaderField: "xi-api-key")
         if AppConfig.sendsVoiceDeviceHeader {
             request.setValue(AppConfig.deviceId, forHTTPHeaderField: "X-Jaddati-Device")
         }
+        sign(&request, with: account)
 
         let (data, response) = try await perform(request)
         guard let http = response as? HTTPURLResponse else { throw VoiceServiceError.badResponse }
@@ -231,10 +287,17 @@ struct ElevenLabsClient: VoiceService {
             return .outOfCredits
         }
         // Checked before the account-full test on purpose: the relay says this
-        // when the phone itself is holding the slot, and sending someone to go
-        // free up an account they do not own is the wrong instruction.
-        if lowered.contains("this device already has a voice") {
+        // when the signed-in account is itself holding the slot, and sending
+        // someone to go free up an account they do not own is the wrong
+        // instruction when the thing to remove is on screen in front of them.
+        if lowered.contains("this account already has a voice") {
             return .deviceAlreadyHasVoice
+        }
+        // The relay meters by account now, so its 401 means nobody is signed
+        // in — not that a key was refused. The old answer sent people off to
+        // check a credential they had never been asked for.
+        if status == 401, lowered.contains("sign in") {
+            return .signInRequired(Self.signInToGenerate)
         }
         if lowered.contains("voice_limit") || lowered.contains("voice limit")
             || lowered.contains("maximum amount of custom voices") {

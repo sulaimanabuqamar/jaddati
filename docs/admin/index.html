@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Jaddati — Who has signed in</title>
+<link rel="stylesheet" href="../_style.css">
+<style>
+  /* Only what the shared sheet has no answer for. */
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  input[type=password] {
+    flex: 1 1 240px; min-width: 0; padding: 12px 14px; font: inherit; font-size: 15px;
+    color: #302725; background: #FFFDFA; border: 1px solid #E4DCD3; border-radius: 12px;
+  }
+  input[type=password]:focus { outline: 2px solid #592C43; outline-offset: 1px; }
+  button {
+    padding: 12px 20px; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+    color: #FEFAF5; background: #592C43; border: 1px solid #592C43; border-radius: 12px;
+    min-height: 44px;
+  }
+  button.quiet { color: #592C43; background: transparent; font-weight: 400; }
+  button[disabled] { opacity: 0.5; cursor: default; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 12px; margin: 22px 0 6px; }
+  .tile { background: #FEFAF5; border: 1px solid #E4DCD3; border-radius: 16px; padding: 14px 16px; }
+  .tile b { display: block; font-family: Georgia, serif; font-weight: 400; font-size: 27px; line-height: 1.15; color: #302725; }
+  .tile span { font-size: 12px; letter-spacing: 0.07em; text-transform: uppercase; color: #766861; }
+  td.num, th.num { text-align: end; font-variant-numeric: tabular-nums; }
+  .low { color: #9C4221; font-weight: 600; }
+  .live { width: 8px; height: 8px; border-radius: 50%; background: #6B8E6B; display: inline-block; margin-inline-end: 7px; }
+  .quietline { font-size: 13px; color: #766861; margin: 10px 0 0; }
+  .problem { color: #9C4221; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <img class="mark" src="../_mark.svg" alt="">
+  <div class="name">JADDATI</div>
+  <h1>Who has signed in</h1>
+  <p class="sub">Everyone who has signed in with Google to make new audio, and what is left of their allowance this month.</p>
+
+  <!-- The token is typed here and never stored anywhere but this tab. It is
+       not in this page, it is not in the repository, and closing the tab
+       forgets it: the page is public, and the only thing keeping the roll
+       private is the relay's own check. -->
+  <form id="gate" class="card">
+    <h3>Admin token</h3>
+    <div class="row">
+      <input id="token" type="password" autocomplete="current-password" placeholder="The ADMIN_TOKEN set on the relay" required>
+      <button type="submit">Show the roll</button>
+    </div>
+    <p class="quietline">Kept in this tab only, for as long as it stays open.</p>
+    <p id="problem" class="quietline problem"></p>
+  </form>
+
+  <div id="roll" class="hidden">
+    <div class="tiles">
+      <div class="tile"><b id="t-people">—</b><span>Signed in</span></div>
+      <div class="tile"><b id="t-voices">—</b><span>Voices held</span></div>
+      <div class="tile"><b id="t-made">—</b><span>Clips made</span></div>
+      <div class="tile"><b id="t-month">—</b><span>Month</span></div>
+    </div>
+    <p class="quietline"><span class="live"></span><span id="t-when">…</span> · <span id="t-allow"></span></p>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Account</th><th>First seen</th><th>Last seen</th>
+            <th class="num">Clips</th><th class="num">Left this month</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <p id="empty" class="quietline hidden">Nobody has signed in yet.</p>
+
+    <div class="row" style="margin-top:18px">
+      <button id="again" class="quiet" type="button">Refresh now</button>
+      <button id="forget" class="quiet" type="button">Forget the token</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>What this page can and cannot see</h3>
+    <p>The relay keeps one row per Google account that has signed in: the address, when it was first and last seen, how many clips it has made, and how many characters that came to. That is the whole record.</p>
+    <p>It holds <b>nothing about what anyone said</b> — no text, no audio, no titles, no names of the people in the app. Those never leave the phone or the browser they were typed on, and the relay never had them to keep.</p>
+    <p>A voice slot is released when the account gives it up, or when somebody new needs one and this account's is the one nobody has used for longest.</p>
+  </div>
+
+  <footer>
+    <a href="../">Jaddati</a>
+    <a href="../privacy/">Privacy policy</a>
+    <a href="../support/">Support</a>
+  </footer>
+</div>
+
+<script>
+const RELAY = "https://jaddati-proxy.sulaimanabuqamar.workers.dev";
+const KEY = "jaddati.admin.token";
+const $ = id => document.getElementById(id);
+
+const gate = $("gate"), roll = $("roll"), problem = $("problem");
+let timer = null;
+
+/** When, in the words someone standing in a room actually wants. */
+function when(ms) {
+  if (!ms) return "—";
+  const seconds = Math.round((Date.now() - ms) / 1000);
+  if (seconds < 45) return "just now";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return minutes + (minutes === 1 ? " minute ago" : " minutes ago");
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return hours + (hours === 1 ? " hour ago" : " hours ago");
+  const days = Math.round(hours / 24);
+  if (days < 8) return days + (days === 1 ? " day ago" : " days ago");
+  return new Date(ms).toLocaleDateString();
+}
+
+const count = n => Number(n || 0).toLocaleString();
+
+async function load(token) {
+  const r = await fetch(RELAY + "/admin/accounts", { headers: { "x-jaddati-admin": token } });
+  if (r.status === 401) throw new Error("That token was refused. Check what `wrangler secret put ADMIN_TOKEN` was given.");
+  if (!r.ok) throw new Error("The relay answered " + r.status + ".");
+  return r.json();
+}
+
+function draw(data) {
+  const people = data.accounts || [];
+  $("t-people").textContent = count(people.length);
+  $("t-voices").textContent = (data.voices ? data.voices.held : 0) + " / " + (data.voices ? data.voices.cap : "—");
+  $("t-made").textContent = count(people.reduce((n, a) => n + Number(a.generations || 0), 0));
+  $("t-month").textContent = data.month || "—";
+  $("t-when").textContent = "Read " + new Date().toLocaleTimeString();
+  $("t-allow").textContent = count(data.creditsPerAccount) + " characters each per month";
+
+  const body = $("rows");
+  body.textContent = "";
+  for (const a of people) {
+    const tr = document.createElement("tr");
+    // textContent throughout, never innerHTML: an address is somebody else's
+    // text, and this page is not the place to find out it was also markup.
+    const cell = (text, cls) => {
+      const td = document.createElement("td");
+      td.textContent = text;
+      if (cls) td.className = cls;
+      return td;
+    };
+    tr.append(cell(a.email || a.sub || "—"));
+    tr.append(cell(when(a.firstSeen)));
+    tr.append(cell(when(a.lastSeen)));
+    tr.append(cell(count(a.generations), "num"));
+    const left = cell(count(a.leftThisMonth), "num");
+    if (Number(a.leftThisMonth) <= 0) { left.classList.add("low"); left.textContent = "none left"; }
+    tr.append(left);
+    body.append(tr);
+  }
+  $("empty").classList.toggle("hidden", people.length > 0);
+}
+
+async function show(token) {
+  try {
+    draw(await load(token));
+    problem.textContent = "";
+    gate.classList.add("hidden");
+    roll.classList.remove("hidden");
+    sessionStorage.setItem(KEY, token);
+    // Every half minute, which is often enough to watch a queue and rare
+    // enough that a page left open overnight is not hammering the relay.
+    if (!timer) timer = setInterval(() => show(token), 30000);
+  } catch (e) {
+    problem.textContent = e.message || "Could not reach the relay.";
+    gate.classList.remove("hidden");
+    roll.classList.add("hidden");
+    if (timer) { clearInterval(timer); timer = null; }
+  }
+}
+
+gate.addEventListener("submit", e => {
+  e.preventDefault();
+  const token = $("token").value.trim();
+  if (token) show(token);
+});
+$("again").addEventListener("click", () => show(sessionStorage.getItem(KEY) || ""));
+$("forget").addEventListener("click", () => {
+  sessionStorage.removeItem(KEY);
+  if (timer) { clearInterval(timer); timer = null; }
+  $("token").value = "";
+  roll.classList.add("hidden");
+  gate.classList.remove("hidden");
+});
+
+// A reload inside the same tab should not mean typing it again.
+const remembered = sessionStorage.getItem(KEY);
+if (remembered) { $("token").value = remembered; show(remembered); }
+</script>
+</body>
+</html>

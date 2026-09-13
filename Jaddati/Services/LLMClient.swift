@@ -108,12 +108,20 @@ struct LLMClient: StoryCompanion {
 
     /// Models leak formatting no matter how firmly the prompt asks them not to,
     /// and every stray asterisk becomes a sound the voice has to make.
-    static func tidy(_ raw: String) -> String {
+    ///
+    /// `keepLines` is for the one caller whose newlines ARE the content. An
+    /// answer is one paragraph and a model that broke it into four should not
+    /// get four — but a sentence sent away to have its harakat added comes home
+    /// through here too, and flattening it took the blank lines out of
+    /// someone's Arabic and with them every pause. Silently, on exactly the
+    /// language this app exists for: the stored text is still what they typed,
+    /// and only the audio came back run together.
+    static func tidy(_ raw: String, keepLines: Bool = false) -> String {
         var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         for marker in ["**", "__", "*", "`", "#"] {
             text = text.replacingOccurrences(of: marker, with: "")
         }
-        text = text.replacingOccurrences(of: "\n", with: " ")
+        if !keepLines { text = text.replacingOccurrences(of: "\n", with: " ") }
         while text.contains("  ") { text = text.replacingOccurrences(of: "  ", with: " ") }
         // A whole answer wrapped in quotes is read aloud as a quotation.
         let quotes: [(Character, Character)] = [("\"", "\""), ("\u{201C}", "\u{201D}")]

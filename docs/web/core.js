@@ -5,8 +5,9 @@
 // is where those live — IndexedDB for the audio blobs, because a browser has no
 // application-support directory, and localStorage for the index.
 
-import { L, Counts, isArabicText, state as lang } from "./strings.js?v=d12ee3c9ab";
-import { prefs } from "./prefs.js?v=d12ee3c9ab";
+import { L, Counts, isArabicText, state as lang } from "./strings.js?v=8c06d25e9d";
+import { prefs } from "./prefs.js?v=8c06d25e9d";
+import { refusal } from "./blocked-words.js?v=8c06d25e9d";
 
 export const uuid = () =>
   (crypto.randomUUID ? crypto.randomUUID()
@@ -965,25 +966,53 @@ export const voiceHeaders = (extra = {}) =>
 export const textHeaders = (extra = {}) =>
   withDevice({ authorization: `Bearer ${Config.llmKey}`, ...extra }, Config.usesRelayText);
 
+/// Who is asking, for the three calls that cost the relay something.
+///
+/// Deliberately NOT folded into voiceHeaders. Getting a live token can mean a
+/// round trip to Google, and voiceHeaders is a plain function called from
+/// places that cannot wait for one; making it async would have quietly turned
+/// every header object in the app into a promise.
+///
+/// Empty when this build is not going through the relay at all. Someone who
+/// has pasted their own ElevenLabs key is spending their own money, and owes
+/// nobody here an account — which is also why the demo phone is untouched by
+/// all of this.
+async function accountHeader(refusal) {
+  if (!Config.usesRelayVoice) return {};
+  const token = await Cloud.accountToken();
+  if (!token) throw new VoiceError("signIn", refusal);
+  return { "x-jaddati-account": token };
+}
+
 function voiceMessage(status, detail) {
-  // The relay answers 403 "not this device's voice" when the sweep has already
-  // lifted this device's lock — which, with a ten-minute voice lifetime, is the
-  // NORMAL state by the end of a session. Reading it as a rejected key sent
-  // people to check a credential that was never the problem.
-  if (status === 403 && (detail || "").toLowerCase().includes("not this device")) {
-    return L("That voice is no longer this phone's to remove — the voice service has already let it go.");
+  const said = (detail || "").toLowerCase();
+
+  // The relay counts against an account now, so its 401 means nobody is signed
+  // in — not that a key was refused. The old answer sent people off to check a
+  // credential they had never been asked for, which is the one screen that
+  // could not help them.
+  if (status === 401 && said.includes("sign in")) {
+    return L("Sign in with Google to make new audio. The button is in Backup, on the You tab.");
+  }
+
+  // The relay answers 403 "not this account's voice" when that slot has already
+  // gone to somebody else — which, with six shared between everyone, is an
+  // ordinary end to a busy afternoon rather than a fault.
+  if (status === 403 && said.includes("not this account")) {
+    return L("That voice is no longer yours to remove — the voice service has already let it go.");
   }
   if (status === 401 || status === 403) return L("The key was refused by the voice service.");
   if (status === 429) {
     // Going through the relay, 429 covers two different walls, and "wait a few
     // seconds" is wrong advice for both. The wording is matched rather than a
     // code, because upstream sends the same status for genuine busyness.
-    const said = (detail || "").toLowerCase();
-    // Checked first: the relay says this when THIS browser is holding the
-    // slot. "There is no room at the moment" would send them to go free up an
-    // account they have no access to, when the thing to remove is on screen.
-    if (said.includes("this device already has a voice")) {
-      return L("This browser already holds a recreated voice. Remove that person, or the voice on their Setup screen, before making another.");
+    //
+    // Checked first: the relay says this when the signed-in account is itself
+    // holding the slot. "There is no room at the moment" would send them to go
+    // free up an account they have no access to, when the thing to remove is
+    // on screen in front of them.
+    if (said.includes("this account already has a voice")) {
+      return L("You already have a recreated voice. Remove that person, or the voice on their Setup screen, before making another.");
     }
     if (said.includes("voice limit")) {
       return L("There is no room for another voice at the moment. Remove one you have already made, or try again in a few days.");
@@ -1004,6 +1033,75 @@ function voiceMessage(status, detail) {
   return L("The voice service reported a problem.") + ` (${status})` + (detail ? " " + detail : "");
 }
 
+// ── what happens to the words before they are spoken ────────────────────
+// The mirror of SpokenText.swift. Kept beside Voice rather than at the five
+// call sites, because the call site that gets forgotten is the one a judge
+// finds.
+
+export const PAUSE_TAG = '<break time="0.9s" />';
+const MAX_PAUSES = 6;
+
+/** A blank line between paragraphs becomes a pause; a single newline does not.
+ *  ElevenLabs reads <break> on the v2 models this app uses, and warns that too
+ *  many in one generation make it speed up or add artefacts — so past the
+ *  ceiling there are no tags at all. */
+export function withParagraphPauses(text) {
+  const unified = String(text || "").replace(/\r\n/g, "\n");
+  if (!/\n[ \t]*\n/.test(unified)) return unified;
+  const spaced = unified.replace(/\n[ \t]*(?:\n[ \t]*)+/g, "\n" + PAUSE_TAG + "\n");
+  const inserted = spaced.split(PAUSE_TAG).length - 1;
+  return inserted <= MAX_PAUSES ? spaced : unified;
+}
+
+const AR_MARKS = /[\u064B-\u0652\u0670]/g;
+const AR_STRIP = /[\u064B-\u0652\u0670\u0640]/g;
+const AR_LETTERS = /[\u0620-\u064A]/g;
+
+/** Arabic written bare. The voice service then has to guess which word علم is,
+ *  and it guesses wrong often enough to be worth one call. Short strings are
+ *  left alone: the call costs a question from the allowance and a second of
+ *  waiting, and نعم does not need it. */
+export function needsHarakat(text) {
+  const source = String(text || "");
+  const letters = (source.match(AR_LETTERS) || []).length;
+  if (letters < 12) return false;
+  return ((source.match(AR_MARKS) || []).length) / letters < 0.15;
+}
+
+export function withoutMarks(text) {
+  return String(text || "").replace(AR_STRIP, "").split(/\s+/).filter(Boolean).join(" ");
+}
+
+/** The whole safety of the feature. A model asked to add harakat will sometimes
+ *  helpfully correct the grammar, or answer the sentence instead of marking it,
+ *  and that would put words the family never wrote into a dead person's mouth.
+ *  If a single letter changed, the original is used. */
+export function marksOnly(vowelled, original) {
+  return !!vowelled && withoutMarks(vowelled) === withoutMarks(original);
+}
+
+const TASHKEEL_SYSTEM =
+  "You add Arabic diacritics (tashkeel/harakat) to text. Return ONLY the same " +
+  "text with full diacritics added. Do not translate. Do not answer it. Do not " +
+  "correct spelling or grammar. Do not add, remove or reorder a single word or " +
+  "letter. Do not add quotation marks or any commentary. If the text is not " +
+  "Arabic, return it exactly as given.";
+
+/** Best effort by design: every failure path returns the original. Nobody
+ *  should lose a generation because a diacritics call timed out. */
+async function withHarakat(text) {
+  if (!needsHarakat(text)) return text;
+  try {
+    // keepLines, because the paragraphs in what was typed are the pauses in
+    // what is heard, and this call is the only thing standing between them.
+    const reply = await chat(TASHKEEL_SYSTEM, text, { maxTokens: 1400, temperature: 0, keepLines: true });
+    const cleaned = String(reply || "").trim();
+    return marksOnly(cleaned, text) ? cleaned : text;
+  } catch {
+    return text;
+  }
+}
+
 export const Voice = {
   async createVoice(name, blob) {
     if (Config.isDemo) {
@@ -1012,11 +1110,17 @@ export const Voice = {
     }
     if (!Consent.allowsNetwork) throw new ConsentMissing();
 
+    // Asked before the recording is packed up, so that somebody who is not
+    // signed in is told so in the second it takes to check, rather than after
+    // a megabyte of audio has gone up the wire.
+    const account = await accountHeader(
+      L("Sign in with Google to make new audio. The button is in Backup, on the You tab."));
+
     const form = new FormData();
     form.append("name", name);
     form.append("files", blob, "sample." + (blob.type.includes("wav") ? "wav" : blob.type.includes("mpeg") ? "mp3" : "m4a"));
     const r = await fetchWithTimeout(`${Config.voiceBaseURL}/v1/voices/add`, {
-      method: "POST", headers: voiceHeaders(), body: form,
+      method: "POST", headers: voiceHeaders(account), body: form,
     }).catch(e => {
       // A timeout is not a missing connection, and telling someone to check
       // their wifi when the request simply never finished sends them to fix
@@ -1033,19 +1137,38 @@ export const Voice = {
   },
 
   async synthesize(text, voiceId, modelId, tuning) {
+    const trimmed = (text || "").trim();
+
+    // Before the demo check, not after: the browser's own voice still says the
+    // words out loud, and "it was only the demo voice" is not a defence.
+    if (refusal(trimmed)) {
+      throw new VoiceError("refused", L("That will not be spoken in their voice."));
+    }
+
     if (Config.isDemo || isDemoVoice(voiceId)) return { demo: true, text };
     if (!Consent.allowsNetwork) throw new ConsentMissing();
 
-    const trimmed = (text || "").trim();
+    // Measured on what was typed, not on what is sent: the break tags are the
+    // app's doing and should not eat someone's allowance.
     if (trimmed.length > Config.maxCharactersPerGeneration) {
       throw new VoiceError("tooLong", L("That is longer than one go allows. Shorten it and try again."));
     }
+
+    // Before the harakat call, not after: that one is a round trip to a model
+    // of its own, and spending it on a sentence that is about to be refused
+    // for want of a sign-in is a wait for nothing.
+    const account = await accountHeader(
+      L("Sign in with Google to make new audio. The button is in Backup, on the You tab."));
+
+    // Marks first, then pauses. The other order hands a break tag to a model
+    // that has just been told to put a vowel on every letter.
+    const spoken = withParagraphPauses(await withHarakat(trimmed));
     const url = `${Config.voiceBaseURL}/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`;
     const r = await fetchWithTimeout(url, {
       method: "POST",
-      headers: voiceHeaders({ "content-type": "application/json", accept: "audio/mpeg" }),
+      headers: voiceHeaders({ ...account, "content-type": "application/json", accept: "audio/mpeg" }),
       body: JSON.stringify({
-        text: trimmed, model_id: modelId,
+        text: spoken, model_id: modelId,
         voice_settings: {
           stability: tuning.stability, similarity_boost: tuning.similarity,
           style: tuning.style, use_speaker_boost: tuning.speakerBoost, speed: tuning.speed,
@@ -1072,8 +1195,12 @@ export const Voice = {
     if (!voiceId || isDemoVoice(voiceId)) return;
     if (!Consent.allowsNetwork) throw new ConsentMissing();
     if (!Config.elevenKey) throw new VoiceError("notConfigured", L("The key was refused by the voice service."));
+    // The relay will not take a deletion from nobody either: it has to know the
+    // slot being given up is the one this account is holding.
+    const account = await accountHeader(
+      L("Sign in with Google to take this voice back off the voice service. The button is in Backup, on the You tab."));
     const r = await fetchWithTimeout(`${Config.voiceBaseURL}/v1/voices/${encodeURIComponent(voiceId)}`, {
-      method: "DELETE", headers: voiceHeaders(),
+      method: "DELETE", headers: voiceHeaders(account),
     }).catch(e => {
       // A timeout is not a missing connection, and telling someone to check
       // their wifi when the request simply never finished sends them to fix
@@ -1088,7 +1215,7 @@ export const Voice = {
     // session. The caller wanted the voice absent from this phone, and it is;
     // treating it as a failure stopped the deletion and left the person with an
     // alarming note about a credential that was never the problem.
-    if (r.status === 403 && said.toLowerCase().includes("not this device")) return;
+    if (r.status === 403 && said.toLowerCase().includes("not this account")) return;
     if (!r.ok) throw new VoiceError("provider", voiceMessage(r.status, said));
   },
 };
@@ -1130,10 +1257,19 @@ ${page.pageText}`;
 
 /** Models leak formatting however firmly the prompt asks them not to, and every
  *  stray asterisk becomes a sound the voice has to make. */
-export function tidyAnswer(raw) {
+export function tidyAnswer(raw, { keepLines = false } = {}) {
   let t = (raw || "").trim();
   for (const m of ["**", "__", "*", "`", "#"]) t = t.split(m).join("");
-  t = t.replace(/\n/g, " ").replace(/ {2,}/g, " ");
+  // An answer is one paragraph, and a model that broke it into four should not
+  // get four. But this same tidying is what a sentence sent away to have its
+  // harakat added comes home through, and there the newlines ARE the content:
+  // flattening them took the blank lines out of someone's Arabic and with them
+  // every pause, silently, on exactly the language this app exists for. It
+  // never showed on screen — the stored text is what they typed; only the
+  // audio came back run together.
+  t = keepLines
+    ? t.replace(/[ \t]{2,}/g, " ")
+    : t.replace(/\n/g, " ").replace(/ {2,}/g, " ");
   const pairs = [['"', '"'], ["“", "”"]];
   for (const [o, c] of pairs) {
     if (t.length > 2 && t.startsWith(o) && t.endsWith(c)) t = t.slice(1, -1);
@@ -1182,7 +1318,7 @@ export const Companion = {
  * same shape to the same endpoint; only the instructions differ, so the retry
  * and error handling live here rather than being written twice and drifting.
  */
-async function chat(system, user, { maxTokens = 200, temperature = 0.3 } = {}) {
+async function chat(system, user, { maxTokens = 200, temperature = 0.3, keepLines = false } = {}) {
   if (!Consent.allowsNetwork) throw new ConsentMissing();
   if (!Config.llmKey) throw new CompanionError(L("Questions are not set up on this build."));
 
@@ -1211,7 +1347,7 @@ async function chat(system, user, { maxTokens = 200, temperature = 0.3 } = {}) {
   if (choice?.finish_reason === "length") {
     throw new CompanionError(L("The answer came back unfinished. Try again, or shorten what you wrote."));
   }
-  const cleaned = tidyAnswer(content);
+  const cleaned = tidyAnswer(content, { keepLines });
   if (!cleaned) throw new CompanionError(L("No answer came back. Try asking it a different way."));
   return cleaned;
 }
@@ -1439,11 +1575,96 @@ export async function makeBook(file, personId) {
   return { personId, title: tidyTitle(name), pages };
 }
 
-/** PDF.js is not bundled, and a page that fetches a library at import time
- *  stops working the day that CDN does. A PDF is refused with an explanation
- *  instead of failing silently. */
-async function pdfPages() {
-  throw new ImportError(L("PDF files cannot be read in the browser version. Save the text as a .txt file and import that, or use the iPhone app."));
+/** Reading a PDF, with PDF.js vendored rather than fetched.
+ *
+ *  The original decision here was to refuse PDFs outright, and the reasoning
+ *  was sound: pulling a library off a CDN at run time means the page stops
+ *  working the day that CDN does. That is exactly why the library now sits in
+ *  docs/web/vendor/ instead of being fetched — same capability, nothing owed
+ *  to anyone else's uptime, and it still works with the network off once the
+ *  page has been loaded once.
+ *
+ *  Imported dynamically, so the 1.6 MB only loads for somebody who actually
+ *  opens a PDF. Every other visit never touches it.
+ */
+let pdfjsLoading = null;
+
+function loadPdfjs() {
+  if (!pdfjsLoading) {
+    pdfjsLoading = import("./vendor/pdf.min.mjs").then(lib => {
+      // Resolved against this module's own URL so it is right whether the app
+      // is served from the domain root or from /jaddati/web/.
+      lib.GlobalWorkerOptions.workerSrc =
+        new URL("./vendor/pdf.worker.min.mjs", import.meta.url).href;
+      return lib;
+    }).catch(e => { pdfjsLoading = null; throw e; });
+  }
+  return pdfjsLoading;
+}
+
+async function pdfPages(file) {
+  let lib;
+  try { lib = await loadPdfjs(); }
+  catch { throw new ImportError(L("That PDF could not be opened.")); }
+
+  let doc;
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    doc = await lib.getDocument({ data: bytes, isEvalSupported: false }).promise;
+  } catch {
+    throw new ImportError(L("That PDF could not be opened."));
+  }
+
+  // BookImporter.swift, page for page: a PDF's own pages ARE its pages, and
+  // only a page longer than one spoken page is re-flowed. Re-flowing them all
+  // by character count turned a seven-page picture book into one block.
+  const pages = [];
+  let arabicLetters = 0, totalLetters = 0;
+  try {
+    for (let number = 1; number <= doc.numPages; number++) {
+      const page = await doc.getPage(number);
+      const content = await page.getTextContent();
+      // `hasEOL` is how pdf.js marks the end of a line. Without it every line
+      // of a poem runs into the next one.
+      // NFKC folds the presentation forms a PDF stores — the ﬁ ligature, and
+      // every shaped Arabic glyph — back to the letters they were typed as.
+      const raw = content.items
+        .map(i => (i.str || "") + (i.hasEOL ? "\n" : ""))
+        .join("")
+        .normalize("NFKC");
+      arabicLetters += (raw.match(/[\u0620-\u064A]/g) || []).length;
+      totalLetters += (raw.match(/\p{L}/gu) || []).length;
+      const cleaned = tidyText(stripPageFurniture(raw));
+      if (!cleaned) continue;                      // an illustration-only page
+      if (cleaned.length > PAGE_TARGET) pages.push(...paginate(cleaned));
+      else pages.push(cleaned);
+    }
+  } finally {
+    try { await doc.destroy(); } catch {}
+  }
+
+  // A scan has pages and no text layer. This is the same answer the phone
+  // gives for the same file, and it is the true one.
+  if (!pages.length) throw new ImportError(L("There was no text in that file."));
+
+  // Arabic is refused, and this is the honest reason rather than a limitation
+  // dressed up as a policy.
+  //
+  // A PDF stores glyphs in the order they were PAINTED, which for Arabic is
+  // right to left — so the text comes out backwards, and the letters come out
+  // as the shaped presentation forms rather than the letters that were typed.
+  // NFKC above fixes the second half. The first half needs the bidi order
+  // rebuilt from each glyph's position on the page, and a partial job is worse
+  // than none here: reversing the items alone gets "اتركني" back as "اتركين",
+  // which is not a word. Read aloud, in her voice, that is gibberish — and
+  // sounding confidently wrong in a dead person's voice is the one failure
+  // this app exists to avoid.
+  //
+  // A .txt file has no paint order and comes through exactly as written.
+  if (totalLetters > 0 && arabicLetters / totalLetters > 0.05) {
+    throw new ImportError(L("Arabic PDFs come out of the file with the letters in the wrong order. Save the text as a .txt file and import that instead."));
+  }
+  return pages;
 }
 
 // ── one voice, the whole family ─────────────────────────────────────────
@@ -1647,6 +1868,10 @@ export const Cloud = {
       access_token: t.access_token,
       expires_at: Date.now() + (t.expires_in || 3600) * 1000,
       email: emailFromIdToken(t.id_token),
+      // Kept, not just read and thrown away. The relay counts what is spent
+      // against an account, and this is the only thing the app holds that
+      // says which account without also handing over the person's Drive.
+      id_token: t.id_token || "",
     };
     return true;
   },
@@ -1660,6 +1885,38 @@ export const Cloud = {
     const t = this.tokens;
     if (!t) throw new CloudError(L("Sign in to Google first."));
     if (t.access_token && Date.now() < t.expires_at - 60000) return t.access_token;
+    return (await this._refresh()).access_token;
+  },
+
+  /** Who is signed in, in a form the relay can check for itself — or null.
+   *
+   *  Not the access token. That one is a bearer token for somebody's Drive,
+   *  and the relay has no business holding one; the id token says which
+   *  account is asking and authorises nothing at all, which is exactly the
+   *  amount of power this needs to carry.
+   *
+   *  Null rather than a throw when nobody is signed in: the caller's next move
+   *  is to ask them to sign in, not to show them an error about it.
+   */
+  async accountToken() {
+    const t = this.tokens;
+    if (!t || !t.refresh_token) return null;
+    if (idTokenLifeLeft(t.id_token) > 60000) return t.id_token;
+    // Deliberately not accessToken(): the two expire on separate clocks, and
+    // an access token with half an hour left on it says nothing whatever about
+    // the id token sitting beside it. Going through accessToken here would
+    // have handed back the stale one without ever asking Google, and the relay
+    // would have answered 401 to a person who was in fact signed in.
+    try {
+      const fresh = await this._refresh();
+      return idTokenLifeLeft(fresh.id_token) > 0 ? fresh.id_token : null;
+    } catch { return null; }
+  },
+
+  /** The round trip itself, shared by both of the above. */
+  async _refresh() {
+    const t = this.tokens;
+    if (!t) throw new CloudError(L("Sign in to Google first."));
 
     const r = await fetchWithTimeout(RELAY_URL + "/google/refresh", {
       method: "POST", headers: relayHeaders({ "content-type": "application/json" }),
@@ -1685,8 +1942,14 @@ export const Cloud = {
       throw new CloudError(L("Could not reach Google just now. Try again in a moment."));
     }
     this.tokens = { ...t, access_token: fresh.access_token,
-                    expires_at: Date.now() + (fresh.expires_in || 3600) * 1000 };
-    return fresh.access_token;
+                    expires_at: Date.now() + (fresh.expires_in || 3600) * 1000,
+                    // Google sends a new id token with every refresh of a grant
+                    // that asked for openid. Keeping the old one when it does
+                    // not is right for the address label and wrong for the
+                    // relay, which is why accountToken checks the life left on
+                    // what comes back rather than trusting that it is fresh.
+                    id_token: fresh.id_token || t.id_token || "" };
+    return this.tokens;
   },
 
   // ── the backup itself ─────────────────────────────────────────────────
@@ -1773,7 +2036,10 @@ export const Cloud = {
       // Originals only. A kept clip left behind is a smaller loss than a
       // recording left behind, and counting the two together would let someone
       // with many clips and one missing recording block their own backup.
-      const expected = store.assetsFor(person.id, "original").length;
+      // Counted the same way export counts them, rehearsal clips excluded —
+      // otherwise a library of rehearsal audio looks like a library whose
+      // recordings all failed to read, and the guard refuses to back up at all.
+      const expected = store.assetsFor(person.id, "original").filter(a => !a.demo).length;
       if (expected > 0 && carriedOriginals < expected) { atRisk++; continue; }
 
       const body = JSON.stringify(file);
@@ -1890,11 +2156,23 @@ export const Cloud = {
 /** The address, read out of the id token without verifying it. That is fine
  *  for a label — it came straight from the relay's own exchange — and it is
  *  never used to decide anything. */
-function emailFromIdToken(idToken) {
+function claimsFromIdToken(idToken) {
   try {
     const body = String(idToken || "").split(".")[1];
-    return JSON.parse(atob(body.replace(/-/g, "+").replace(/_/g, "/"))).email || "";
-  } catch { return ""; }
+    return JSON.parse(atob(body.replace(/-/g, "+").replace(/_/g, "/"))) || {};
+  } catch { return {}; }
+}
+
+function emailFromIdToken(idToken) { return claimsFromIdToken(idToken).email || ""; }
+
+/** How long this id token has left, in milliseconds.
+ *
+ *  Zero for anything unreadable, which is the safe answer: it means "ask
+ *  Google for a new one" rather than "send this and hope". The relay checks
+ *  the signature properly at its end — nothing here decides anything. */
+function idTokenLifeLeft(idToken) {
+  const exp = claimsFromIdToken(idToken).exp;
+  return exp ? Math.max(0, exp * 1000 - Date.now()) : 0;
 }
 
 /// What to call the file at the other end.
@@ -1931,14 +2209,18 @@ export const Archive = {
     const person = store.person(personId);
     if (!person) throw new ArchiveError(L("That person could not be found."));
 
+    // `!a.demo` is doing real work. A rehearsal clip reports fileExists true —
+    // that flag exists so it still draws in a list — but there is no blob
+    // behind it, so it was being counted as carried, failing the blob read, and
+    // quietly landing in `leftBehind`. Excluding it here keeps that number
+    // honest and stops a backup claiming to hold audio that does not exist.
+    const real = a => !a.demo && store.fileExists(a);
     const originals = store.assets
-      .filter(a => a.personId === personId && a.source === "original" && store.fileExists(a));
+      .filter(a => a.personId === personId && a.source === "original" && real(a));
     // keptClips, not `isSaved`: book pages are stored saved so a page is never
     // paid for twice, and reading the flag directly would carry the whole page
     // cache of every imported book into the backup.
-    const extras = includingKeptClips
-      ? store.keptClips(personId).filter(a => store.fileExists(a))
-      : [];
+    const extras = includingKeptClips ? store.keptClips(personId).filter(real) : [];
 
     const recordings = [];
     let carried = 0, leftBehind = 0;

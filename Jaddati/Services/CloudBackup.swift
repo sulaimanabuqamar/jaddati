@@ -34,6 +34,11 @@ final class CloudBackup: NSObject, ObservableObject {
     }
     private var accessToken = ""
     private var accessExpires = Date.distantPast
+    /// Not persisted on purpose. It lasts an hour, and a cold start gets a
+    /// fresh one from the refresh token in the same round trip it was going to
+    /// make anyway — so writing an hour-old identity to disk buys nothing and
+    /// leaves one more thing lying about that names the person.
+    private var idToken = ""
     private var session: ASWebAuthenticationSession?
 
     private static let authURL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -110,6 +115,7 @@ final class CloudBackup: NSObject, ObservableObject {
         }
         accessToken = token.access_token ?? ""
         accessExpires = Date().addingTimeInterval(TimeInterval(token.expires_in ?? 3600))
+        idToken = token.id_token ?? ""
         email = Self.emailFrom(idToken: token.id_token)
         UserDefaults.standard.set(email, forKey: "jaddati.cloud.email")
         isSignedIn = !(refreshToken ?? "").isEmpty
@@ -119,9 +125,39 @@ final class CloudBackup: NSObject, ObservableObject {
         refreshToken = nil
         accessToken = ""
         accessExpires = .distantPast
+        idToken = ""
         email = ""
         UserDefaults.standard.removeObject(forKey: "jaddati.cloud.email")
         isSignedIn = false
+    }
+
+    /// Who is signed in, in a form the relay can check for itself — or nil.
+    ///
+    /// Not the access token. That one opens this person's Drive, and the relay
+    /// has no business holding a key to it; the id token says which account is
+    /// asking and authorises nothing at all, which is the exact amount of power
+    /// this needs to carry.
+    ///
+    /// Nil rather than a throw when nobody is signed in: the caller's next move
+    /// is to ask them to, not to report a failure.
+    func accountToken() async -> String? {
+        guard !(refreshToken ?? "").isEmpty else { return nil }
+        if Self.lifeLeft(idToken) > 60 { return idToken }
+        // Deliberately not freshAccessToken()'s own answer: the two expire on
+        // separate clocks, and an access token with half an hour left on it
+        // says nothing whatever about the id token beside it. Asking for the
+        // access token is only the way to make the round trip happen; what is
+        // wanted is what that trip leaves in idToken.
+        guard (try? await freshAccessToken()) != nil else { return nil }
+        return Self.lifeLeft(idToken) > 0 ? idToken : nil
+    }
+
+    /// Seconds this id token has left. Zero for anything unreadable, which is
+    /// the safe answer: it means "ask Google for another" rather than "send
+    /// this and hope". The relay checks the signature properly at its end.
+    private static func lifeLeft(_ idToken: String) -> TimeInterval {
+        guard let exp = claims(idToken)["exp"] as? Double else { return 0 }
+        return max(0, exp - Date().timeIntervalSince1970)
     }
 
     private func present(_ url: URL) async throws -> URL {
@@ -214,6 +250,12 @@ final class CloudBackup: NSObject, ObservableObject {
             ])
             accessToken = token.access_token ?? ""
             accessExpires = Date().addingTimeInterval(TimeInterval(token.expires_in ?? 3600))
+            // Google sends a new id token with every refresh of a grant that
+            // asked for openid. Keeping the old one when it does not is right
+            // for the address label and wrong for the relay, which is why
+            // accountToken checks the life left on what it gets back rather
+            // than assuming this line gave it something fresh.
+            if let issued = token.id_token, !issued.isEmpty { idToken = issued }
             return accessToken
         } catch Failure.revoked {
             // Google said invalid_grant: access really was taken away in the
@@ -468,16 +510,21 @@ final class CloudBackup: NSObject, ObservableObject {
     /// label — it came straight from Google's own token endpoint over TLS —
     /// and it is never used to decide anything.
     private static func emailFrom(idToken: String?) -> String {
-        let parts = (idToken ?? "").split(separator: ".")
-        guard parts.count > 1 else { return "" }
+        claims(idToken ?? "")["email"] as? String ?? ""
+    }
+
+    /// The claims inside an id token, read without verifying the signature.
+    private static func claims(_ idToken: String) -> [String: Any] {
+        let parts = idToken.split(separator: ".")
+        guard parts.count > 1 else { return [:] }
         var body = String(parts[1])
             .replacingOccurrences(of: "-", with: "+")
             .replacingOccurrences(of: "_", with: "/")
         while body.count % 4 != 0 { body += "=" }
         guard let data = Data(base64Encoded: body),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return "" }
-        return (json["email"] as? String) ?? ""
+        else { return [:] }
+        return json
     }
 }
 

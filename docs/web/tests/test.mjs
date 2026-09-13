@@ -252,11 +252,15 @@ await live.waitForTimeout(400);
 await live.click('button:has-text("Add their voice") >> nth=0');
 await live.waitForTimeout(400);
 
-// The sweep clears voices every ten minutes so everyone in the room gets a
-// turn. Someone handing over a recording deserves to know that before they
-// do it, not when their voice disappears.
-log(await live.locator('text=removed automatically about every ten minutes').isVisible(),
-    'the add-voice screen warns that voices are cleared every ten minutes');
+// A voice can be cleared to make room for somebody else. Whoever is handing
+// over a recording deserves to know that before they do it, not when the voice
+// disappears. Matched on the promise rather than on a number: the timer that
+// used to say "about every ten minutes" is gone, and a slot is now taken only
+// when a new person needs one.
+log(await live.locator('text=may be cleared to make room').isVisible(),
+    'the add-voice screen warns that a voice can be cleared to make room');
+log(!(await live.locator('text=every ten minutes').count()),
+    'and no longer promises a clock that is not running any more');
 log(await live.locator('text=Deleting this person removes it from there as well').isVisible(),
     'and no longer claims deleting a person leaves the voice behind');
 
@@ -265,6 +269,34 @@ await live.waitForTimeout(700);
 await live.click('.sheet .switch >> nth=0');
 await live.click('.sheet .switch >> nth=1');
 await live.waitForTimeout(200);
+// ── signed out: the relay is never reached ────────────────────────────
+// The point of the gate is that the refusal happens HERE, before a megabyte
+// of someone's recording goes up the wire to be counted against nobody.
+await live.click('.sheet button:has-text("Create voice")');
+await live.waitForTimeout(1200);
+log(!seen.some(r => r.url.includes('/v1/voices/add')),
+    'a voice is not even attempted while nobody is signed in');
+log(await live.locator('text=Sign in with Google to make new audio').first().isVisible(),
+    'and the screen says what to do about it');
+
+// ── signed in ─────────────────────────────────────────────────────────
+// Written straight into storage rather than driven through Google's consent
+// screen, which no test can click. The id token is shaped the way a real one
+// is — three dots-separated parts, an `exp` the app reads — because that shape
+// is exactly what accountToken() decides on.
+const ACCOUNT = await live.evaluate(() => {
+  const b64 = o => btoa(JSON.stringify(o)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const token = [b64({ alg: 'RS256' }),
+                 b64({ email: 'tester@example.com', sub: 'tester', aud: 'web.client',
+                       exp: Math.floor(Date.now() / 1000) + 3600 }),
+                 'signature-not-checked-here'].join('.');
+  localStorage.setItem('jaddati.cloud.tokens', JSON.stringify({
+    refresh_token: 'stub-refresh', access_token: 'stub-access',
+    expires_at: Date.now() + 3600e3, email: 'tester@example.com', id_token: token,
+  }));
+  return token;
+});
+
 await live.click('.sheet button:has-text("Create voice")');
 await live.waitForTimeout(1500);
 
@@ -274,6 +306,10 @@ log(!!add && add.headers['xi-api-key'] === 'jd_7cvjRdcDM88CWeY5tjUjuWwqf92u_wTWl
     'it sends the relay token, not a blank key', add && add.headers['xi-api-key']);
 log(!!add && /^[A-Za-z0-9-]{8,64}$/.test(add.headers['x-jaddati-device'] || ''),
     'it sends a device id the relay will accept', add && add.headers['x-jaddati-device']);
+log(!!add && add.headers['x-jaddati-account'] === ACCOUNT,
+    'and the account the relay bills, which is the id token and not the Drive key');
+log(!!add && add.headers['x-jaddati-account'] !== 'stub-access',
+    'the token that opens their Drive is not what gets sent to us');
 log(!seen.some(r => /api\.elevenlabs\.io|api\.groq\.com/.test(r.url)),
     'nothing goes straight to ElevenLabs or Groq');
 
@@ -289,6 +325,8 @@ log(!!tts, 'speaking calls the relay');
 log(!!tts && tts.url.includes('stub_voice_1'), 'it speaks with the voice the relay handed back');
 log(!!tts && tts.headers['x-jaddati-device'] === add.headers['x-jaddati-device'],
     'the same device id is used throughout, so the meter counts one visitor');
+log(!!tts && tts.headers['x-jaddati-account'] === ACCOUNT,
+    'and speaking is billed to the same account that made the voice');
 log(await live.locator('.player-art').isVisible(), 'the clip plays back through the relay path');
 
 // The device id has to survive a reload, or every visit spends a fresh
@@ -310,8 +348,10 @@ const refusal = async (detail, expected, what) => {
   });
   log(said.includes(expected), what, said.slice(0, 80));
 };
-await refusal('voice limit reached for this device', 'no room for another voice',
+await refusal('voice limit reached', 'no room for another voice',
               'a full voice list reads as "no room for another voice", not "busy, try again"');
+await refusal('this account already has a voice', 'already have a recreated voice',
+              'and a lock held by this account sends them to the voice on screen, not to an account they cannot reach');
 await refusal('credit allowance used for this month (0 of 500 left)', "month's allowance",
               'an exhausted allowance says so, rather than blaming the network');
 

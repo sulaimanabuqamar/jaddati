@@ -32,15 +32,24 @@ protocol VoiceService {
 enum VoiceServiceError: LocalizedError, Equatable {
     case notConfigured
     case textTooLong(limit: Int)
+    /// The words were refused before anything was spent. Deliberately does
+    /// not name the word back at the person.
+    case refused
     case sampleUnreadable
     case sampleRejected(String)
     case voiceUnavailable(String)
     case unauthorised
     case outOfCredits
     case voiceLimitReached
-    /// This phone already holds a recreated voice. Different from the account
-    /// being full, and the remedy is different too, so it is its own case.
+    /// The signed-in account already holds a recreated voice. Different from
+    /// the account being full, and the remedy is different too, so it is its
+    /// own case. Named for the phone because that is what it used to mean: the
+    /// relay keyed the lock to a device before it keyed it to a person.
     case deviceAlreadyHasVoice
+    /// Nobody is signed in, and the relay bills somebody for this. Carries its
+    /// own sentence because the three calls that need it are asking for
+    /// different things, and "to make new audio" is not true of a deletion.
+    case signInRequired(String)
     case rateLimited
     case offline
     case timedOut
@@ -53,6 +62,8 @@ enum VoiceServiceError: LocalizedError, Equatable {
             return L("The voice service is not set up on this build.")
         case .textTooLong(let limit):
             return L("Shorten the text to fit the limit.") + " (\(limit))"
+        case .refused:
+            return L("That will not be spoken in their voice.")
         case .sampleUnreadable:
             return L("That recording could not be read from this phone. Try importing it again.")
         case .sampleRejected(let why):
@@ -71,7 +82,9 @@ enum VoiceServiceError: LocalizedError, Equatable {
         case .voiceLimitReached:
             return L("This account has no free voice slots left. Remove an unused voice at the voice service, then try again.")
         case .deviceAlreadyHasVoice:
-            return L("This phone already holds a recreated voice. Remove that person, or the voice on their Setup screen, before making another.")
+            return L("You already have a recreated voice. Remove that person, or the voice on their Setup screen, before making another.")
+        case .signInRequired(let why):
+            return why
         case .rateLimited:
             return L("The voice service is busy. Wait a moment and try again.")
         case .offline:

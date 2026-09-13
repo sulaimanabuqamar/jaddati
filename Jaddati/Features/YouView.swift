@@ -169,6 +169,18 @@ struct YouView: View {
                     .underline()
                     .frame(minHeight: Theme.Metric.touchTarget, alignment: .leading)
                 } else {
+                    // Signing in is not only about Drive any more. On a build
+                    // that goes through the shared relay, new audio is counted
+                    // against an account, so this is the button that allows any
+                    // — and the alternative to saying so here is finding out at
+                    // the moment of pressing Create, which is the worst
+                    // possible time to learn it.
+                    if AppConfig.sendsVoiceDeviceHeader {
+                        Text(L("Making new audio also needs this. Playing what is already here does not."))
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.Palette.inkSoft)
+                    }
+
                     Button(L("Sign in with Google")) {
                         cloudNote = nil
                         cloudProblem = nil

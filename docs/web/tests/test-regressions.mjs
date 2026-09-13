@@ -5,7 +5,7 @@
 // presses — so these press the button.
 
 import pw from 'playwright';
-import { go } from './paths.mjs';
+import { go, signedIn } from './paths.mjs';
 
 const URL = 'http://localhost:8899/index.html';
 const problems = [];
@@ -46,6 +46,9 @@ await page.route('**/jaddati-proxy.sulaimanabuqamar.workers.dev/**', async route
   return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
 });
 
+// Billed to an account now: without this the app refuses before it reaches
+// the relay, and every assertion below would be testing the refusal.
+await signedIn(page);
 await page.goto(URL, { waitUntil: 'networkidle' });
 await page.waitForTimeout(500);
 await page.click('text=Allow these three things'); await page.waitForTimeout(400);

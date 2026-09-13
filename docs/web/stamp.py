@@ -23,11 +23,14 @@ import re
 import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
-MODULES = ["prefs.js", "strings.js", "core.js", "ui.js", "nav.js", "screens.js", "app.js"]
+MODULES = ["prefs.js", "strings.js", "blocked-words.js", "core.js", "ui.js",
+           "nav.js", "screens.js", "app.js"]
 FILES = MODULES + ["index.html"]
 
-STAMPED = re.compile(r'(["\'])(\.\/[\w.]+\.js)\?v=[0-9a-f]+(["\'])')
-BARE = re.compile(r'(["\'])(\.\/[\w.]+\.js)(["\'])')
+# [\w.-] and not [\w.]: blocked-words.js has a hyphen in it, and a module the
+# stamper cannot see is a module a browser can cache out of step with the rest.
+STAMPED = re.compile(r'(["\'])(\.\/[\w.-]+\.js)\?v=[0-9a-f]+(["\'])')
+BARE = re.compile(r'(["\'])(\.\/[\w.-]+\.js)(["\'])')
 # Also written onto <html>, so anything needing to reach the SAME module
 # instance the app loaded can find the URL it was loaded under. An import
 # without the stamp resolves to a second, separate copy of the module — a

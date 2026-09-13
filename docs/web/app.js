@@ -3,25 +3,25 @@
 // and Saved and Books are scoped to one person because a pile of clips with no
 // name on it is not an archive.
 
-import { L, isAr, isArabicText, dirOf, Counts, state as lang, setLang, toggleLang } from "./strings.js?v=d12ee3c9ab";
+import { L, isAr, isArabicText, dirOf, Counts, state as lang, setLang, toggleLang } from "./strings.js?v=8c06d25e9d";
 import {
   store, Consent, ConsentMissing, Config, Voice, Companion, VoiceError, CompanionError,
   Intent, INTENTS, ContentProvenance, TUNING, sameTuning, presetName,
   AFFIRMATIONS, STORIES, makeBook, ImportError, isDemoVoice, uuid, blobURL,
   STOCK_VOICE_URL, STOCK_LLM_URL, Archive, ArchiveError, Cloud, CloudError,
-} from "./core.js?v=d12ee3c9ab";
+} from "./core.js?v=8c06d25e9d";
 import {
   h, clear, bidi, icon, appBar, globeButton, headline, eyebrow, sectionLabel,
   subtext, caption, panel, panelS, errorNote, emptyHint, avatar, breadcrumb,
   sourceBadge, contentBadge, badgesFor, audioRow, player, confirmDialog, sheet,
   toast, Recorder, durationOf, demoDuration, track, unmountAll,
-} from "./ui.js?v=d12ee3c9ab";
-import { nav, remember, setRenderer, render, push, pop, popTo, goTab } from "./nav.js?v=d12ee3c9ab";
-import { appearance } from "./prefs.js?v=d12ee3c9ab";
+} from "./ui.js?v=8c06d25e9d";
+import { nav, remember, setRenderer, render, push, pop, popTo, goTab } from "./nav.js?v=8c06d25e9d";
+import { appearance } from "./prefs.js?v=8c06d25e9d";
 import {
   createScreen, booksScreen, readerScreen, memoriesScreen, playerScreen, openAddVoice,
   personHasVoice, lettersScreen, captureScreen,
-} from "./screens.js?v=d12ee3c9ab";
+} from "./screens.js?v=8c06d25e9d";
 
 const root = document.getElementById("app");
 
@@ -630,10 +630,20 @@ function cloudSection() {
           }),
           h("button", { class: "small", style: { textDecoration: "underline", minHeight: "var(--touch)" },
             onClick: () => { Cloud.signOut(); render(); } }, L("Sign out of Google")))
-      : h("button", { class: "btn-quiet", onClick: async () => {
-          try { await Cloud.beginSignIn(); }
-          catch (err) { clear(note); note.append(errorNote(err.message)); }
-        } }, L("Sign in with Google")),
+      : h("div", { class: "stack", style: { gap: "8px" } },
+          // Signing in is not only about Drive any more. On a build that goes
+          // through the shared relay, new audio is counted against an account,
+          // so this is the button that allows any — and the alternative to
+          // saying so here is finding out at the moment of pressing Create,
+          // which is the worst possible time to learn it.
+          Config.usesRelayVoice
+            ? h("p", { class: "small", style: { margin: 0 } },
+                L("Making new audio also needs this. Playing what is already here does not."))
+            : null,
+          h("button", { class: "btn-quiet", onClick: async () => {
+            try { await Cloud.beginSignIn(); }
+            catch (err) { clear(note); note.append(errorNote(err.message)); }
+          } }, L("Sign in with Google"))),
 
     busy, note);
 }
@@ -691,13 +701,14 @@ function personScreen({ personId }) {
 
       primaryAction(person, { hasVoice, placeholder, pending }),
 
-      // The sweep is announced when the voice is CREATED, which is the wrong
-      // moment: ten minutes later you are back on this screen wondering where
-      // she went. It belongs where the disappearance is noticed. Only on the
-      // shared relay — a phone using its own key keeps its voices.
+      // Announced where the disappearance is NOTICED, not only where the voice
+      // was created: someone who reads it once while adding a recording is not
+      // the person standing on this screen a day later wondering where she
+      // went. Only on the shared relay — a phone using its own key keeps its
+      // voices until it removes them itself.
       hasVoice && Config.usesRelayVoice && !Config.isDemo
         ? h("p", { class: "caption amber-text", style: { margin: "14px 0 0", textAlign: "center" } },
-            L("Voices made here are removed automatically about every ten minutes, so that everyone seeing the demonstration gets a turn. The recording you add stays on this device."))
+            L("A voice made here may be cleared to make room when several families are using the demonstration at once. The recording you add stays on this device."))
         : null,
 
       hasVoice ? personCards(person) : null));

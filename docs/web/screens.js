@@ -1,20 +1,20 @@
 // Compose, shelf, reader, archive, player — and the one screen the whole
 // product rests on, where a voice is created.
 
-import { L, isAr, isArabicText, dirOf, Counts } from "./strings.js?v=d12ee3c9ab";
+import { L, isAr, isArabicText, dirOf, Counts } from "./strings.js?v=8c06d25e9d";
 import {
   store, Consent, ConsentMissing, Config, Voice, Companion,
   Intent, INTENTS, TUNING, sameTuning, presetName,
   AFFIRMATIONS, STORIES, makeBook, ImportError, isDemoVoice, blobURL, DEMO_PREFIX,
   FamilyAnswer, Translator, NotInNotesError, CAPTURE_PROMPTS,
-} from "./core.js?v=d12ee3c9ab";
+} from "./core.js?v=8c06d25e9d";
 import {
   h, clear, bidi, icon, appBar, headline, eyebrow, sectionLabel, subtext,
   panel, panelS, errorNote, emptyHint, avatar, breadcrumb, sourceBadge,
   contentBadge, badgesFor, audioRow, player, confirmDialog, sheet, toast,
   Recorder, durationOf, demoDuration, track,
-} from "./ui.js?v=d12ee3c9ab";
-import { nav, push, pop, popTo, render, replace } from "./nav.js?v=d12ee3c9ab";
+} from "./ui.js?v=8c06d25e9d";
+import { nav, push, pop, popTo, render, replace } from "./nav.js?v=8c06d25e9d";
 
 const trimmedOf = s => (s || "").trim();
 
@@ -205,9 +205,15 @@ export function openAddVoice(personId) {
           // Only on the relay: someone using their own key keeps their voices
           // until they remove them, and telling them otherwise would be a lie
           // about their own account.
+          //
+          // Worded without a clock or a count on purpose. A slot is only taken
+          // when somebody new actually needs one, and it is the one nobody has
+          // used for longest that goes — so "about every ten minutes" was a
+          // promise the relay stopped keeping, and a number here would be a new
+          // promise waiting to go stale the day the cap changes.
           Config.usesRelayVoice && !Config.isDemo
             ? h("p", { class: "caption amber-text", style: { margin: 0 } },
-                L("Voices made here are removed automatically about every ten minutes, so that everyone seeing the demonstration gets a turn. The recording you add stays on this device."))
+                L("A voice made here may be cleared to make room when several families are using the demonstration at once. The recording you add stays on this device."))
             : null,
           h("div", { class: "stack", style: { gap: "3px" } },
             h("div", { class: "label" }, L("Voice service") + ": " + Config.providerName),
@@ -565,7 +571,7 @@ export function booksScreen({ personId, isTabRoot = false }) {
   const books = person ? store.booksFor(person.id) : [];
   const errorSlot = h("div", {});
 
-  const fileInput = h("input", { type: "file", accept: ".txt,text/plain", class: "hidden", onChange: async e => {
+  const fileInput = h("input", { type: "file", accept: ".txt,text/plain,.pdf,application/pdf", class: "hidden", onChange: async e => {
     const f = e.target.files?.[0]; e.target.value = "";
     if (!f || !person) return;
     clear(errorSlot);

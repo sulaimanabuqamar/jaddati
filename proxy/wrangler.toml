@@ -2,12 +2,18 @@ name = "jaddati-proxy"
 main = "src/worker.js"
 compatibility_date = "2026-09-01"
 
-# Slots come back on their own. Without this the account fills once and
-# stays full, and the demo cannot create a voice.
+# The collector behind the eviction, not the mechanism itself.
 #
-# Every ten minutes, not nightly: during a demonstration the account has to
-# clear itself between people, and a voice left behind by the last visitor is
-# a slot the next one cannot have.
+# This used to run every ten minutes and delete EVERY voice, which is how the
+# account cleared itself between visitors. That took the voice of whoever
+# happened to be mid-sentence just as readily as one nobody had touched for an
+# hour. A seventh person now takes the least recently used slot at the moment
+# they need it, and this sweep only clears voices nobody has spoken with for a
+# whole day — the ones whose owner is not coming back today.
+#
+# Kept at ten minutes even so: the run is cheap, it only ever touches records
+# older than a day, and a slower schedule would mean a dead voice sitting in a
+# slot for hours before anything noticed.
 [triggers]
 crons = ["*/10 * * * *"]
 
@@ -22,6 +28,27 @@ crons = ["*/10 * * * *"]
 # allowance is used up. Raise it if you want a visitor to get more than one
 # full-length generation — this is the minimum coherent value, not a generous
 # one.
+# Per signed-in account, per month.
+#
+# READ THIS BEFORE CHANGING IT, AND READ IT BEFORE DEMO DAY.
+#
+# 1000 is what was asked for, and it is NOT a generous number. The compose box
+# counts up to 800 characters and a book page is about 900, so one account gets
+# roughly one long message, or two short ones, or a single page of a book — and
+# then it is done until the calendar month turns over.
+#
+# It is also below maxCharactersPerGeneration (2500) on both clients, which
+# means somebody who types a genuinely long message is refused on their first
+# attempt and told their allowance is used up, having spent nothing. The relay
+# says how much is left in that refusal, so it is not a lie, but it will read
+# as one.
+#
+# If judges are going to scan the poster and try it, this wants to be 3000 or
+# more. It is one line and one `npx wrangler deploy`.
+CREDITS_PER_ACCOUNT = "1000"
+
+# Only the question endpoint still meters by device; speech and cloning moved to
+# the account above. Left in place because /chat/completions has no sign-in.
 CREDITS_PER_DEVICE = "2500"
 
 # And a ceiling across EVERYONE for the month. The per-device meter is keyed on
@@ -62,12 +89,24 @@ LLM_BASE_URL = "https://api.groq.com/openai/v1"
 # SECRET is not, and is set the same way as the others:
 #   npx wrangler secret put GOOGLE_CLIENT_SECRET
 GOOGLE_CLIENT_ID = "1095337789662-6go3m02k3hiur7a5sd2jmorfflqu8b2k.apps.googleusercontent.com"
+# The phone signs in with its own client id, so a token minted there carries a
+# different audience. Both are public identifiers, not secrets — the secret is
+# GOOGLE_CLIENT_SECRET, which is set with `wrangler secret put` and is not here.
+GOOGLE_IOS_CLIENT_ID = "1095337789662-c6udbufnu3ua8ogvi06e1462vp62fmro.apps.googleusercontent.com"
 
 
 # Secrets are NOT set here — they would end up in git. Set them with:
 #   npx wrangler secret put ELEVENLABS_API_KEY
 #   npx wrangler secret put LLM_API_KEY
 #   npx wrangler secret put APP_TOKEN
+#   npx wrangler secret put GOOGLE_CLIENT_SECRET
+#
+# And one more, for the roll of who has signed in at docs/admin/:
+#   npx wrangler secret put ADMIN_TOKEN
+#
+# Pick anything long and random; nothing else uses it and nothing has to know
+# it but you. Until it is set, /admin/accounts answers 401 to everyone —
+# including you — which is the right way round for a page anyone can open.
 
 [[kv_namespaces]]
 binding = "JADDATI"
