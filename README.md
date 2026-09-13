@@ -14,9 +14,17 @@ undergraduate category, theme *AI for Stronger Family Bonds*.
 
 ## Status — read this first
 
-This build was written in a single session and **has never been compiled or run.**
-Expect a round of compiler errors on first open. Nothing in this repository
-should be described as working until it has been built and used on the phone.
+The iPhone app builds clean and has been run on a device. What has and has not
+actually been exercised is recorded honestly in `docs/verified-vs-unverified.md`,
+including things that were tried and failed — cloning does not reproduce an
+Emirati accent, and the Arabic interface and the microphone have not yet been used
+on a physical phone. Nothing here should be described as working beyond what that
+file says.
+
+The web version has sixteen browser suites (`docs/web/tests/`) and there are
+eleven static checkers (`tools/`, `docs/web/`); all of them pass. The iPhone app
+has thirteen XCTest cases written but **not wired into the Xcode project**, so
+they have never run — see Known limitations.
 
 `docs/verified-vs-unverified.md` lists exactly what has evidence behind it and
 what does not. Please keep it accurate — it is the difference between a defensible
@@ -81,15 +89,23 @@ dangling path tomorrow.
 
 ## Known limitations
 
-- **The key ships inside the app bundle.** It is not in source control, but a
-  bundled key is a development shortcut, not a shipping design. The correct
-  answer is a small server proxy holding the key and rate-limiting generation.
-  `VoiceService` exists precisely so that proxy can be dropped in without
-  touching a view. Say this plainly if asked — do not claim the key is secure.
-- **Deleting a person does not delete the voice at ElevenLabs.** The app removes
-  everything on the phone and says so in the confirmation dialog. Removing the
-  provider-side voice is a manual step in the ElevenLabs account.
-- **No test target.** Verification so far is manual.
+- **A build can carry a key in its bundle.** It is not in source control, but a
+  bundled key is a development shortcut, not a shipping design. The answer is the
+  relay in `proxy/`, which holds the real key and meters generation; point
+  `ELEVENLABS_BASE_URL` at it and the bundled value becomes an app token rather
+  than a credential. A build that still talks to ElevenLabs directly still carries
+  the real key. Say this plainly if asked — do not claim the key is secure.
+- **Deleting a person deletes the voice at the provider first, then locally** —
+  `SetupView.remove()` calls `ElevenLabsClient.deleteVoice` before touching
+  anything on the phone, so a failure there does not leave an orphan nobody can
+  reach. The one exception is deliberate: a voice that arrived with an archive
+  from another phone is left alone, so one relative tidying up cannot destroy the
+  family's voice for everyone else. The confirmation dialog says which case you
+  are in.
+- **The iPhone app has no wired test target.** Thirteen XCTest cases exist in
+  `JaddatiTests` but `project.pbxproj` does not reference them, so they have never
+  executed. Verification on the phone is six static checkers plus manual use. The
+  web half is covered by sixteen browser suites that do run.
 - **Professional Voice Cloning is not usable for this product.** ElevenLabs only
   permits cloning your own voice at that tier and requires a verification
   recording from the speaker. Instant Voice Cloning is the only route, which is

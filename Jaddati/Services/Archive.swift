@@ -268,13 +268,15 @@ enum Archive {
         // the screen for the whole export — long enough that "Preparing…" never
         // got drawn, so the app looked dead rather than busy.
         let outline = Self.plan(person: person, library: library)
-        let (exported, body) = try await Task.detached(priority: .userInitiated) { () -> (ExportResult, Data) in
+        let (exported, body) = try await Task.detached(priority: .userInitiated) {
+            () async throws -> (ExportResult, Data) in
             let built = try Archive.build(outline, ceiling: Archive.relayMaxBytes)
             // The temporary file has done its job the moment it is read. Left
             // behind, every handoff leaks another copy of the whole archive
             // into the container.
             defer { try? FileManager.default.removeItem(at: built.url) }
-            return (built, try Data(contentsOf: built.url))
+            let bytes = try Data(contentsOf: built.url)
+            return (built, bytes)
         }.value
 
         var request = URLRequest(url: URL(string: AppConfig.relayURL + "/archive")!)
