@@ -1,8 +1,8 @@
 // The pieces every screen is built from. Ported from Design/Components.swift
 // and Design/Theme.swift so the two versions stay the same app.
 
-import { L, isAr, isArabicText, dirOf, Counts, toggleLang } from "./strings.js?v=183c50fb31";
-import { store, blobURL, ContentProvenance, Config } from "./core.js?v=183c50fb31";
+import { L, isAr, isArabicText, dirOf, Counts, toggleLang } from "./strings.js?v=c280b865d7";
+import { store, blobURL, ContentProvenance, Config } from "./core.js?v=c280b865d7";
 
 // ── DOM ─────────────────────────────────────────────────────────────────
 
@@ -402,11 +402,16 @@ export function confirmDialog({ title, message, confirm, cancel = L("Cancel"), d
   return close;
 }
 
+/** `build` is called with (close, scrim). The scrim is there so a sheet that
+ *  holds something needing releasing — a microphone, above all — can listen
+ *  for "jaddati:closed" and let it go. The close BUTTON is not enough: tapping
+ *  the scrim is the commonest way a sheet gets dismissed, and it used to leave
+ *  the recorder running with the browser's microphone light still on. */
 export function sheet(build) {
   const scrim = h("div", { class: "sheet-scrim", onClick: e => { if (e.target === scrim) close(); } });
   const close = () => { scrim.dispatchEvent(new Event("jaddati:closed")); scrim.remove(); };
   const body = h("div", { class: "sheet", role: "dialog", "aria-modal": "true" });
-  body.append(build(close));
+  body.append(build(close, scrim));
   scrim.append(body);
   document.body.append(scrim);
   return close;

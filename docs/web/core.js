@@ -5,8 +5,8 @@
 // is where those live — IndexedDB for the audio blobs, because a browser has no
 // application-support directory, and localStorage for the index.
 
-import { L, Counts, isArabicText, state as lang } from "./strings.js?v=183c50fb31";
-import { prefs } from "./prefs.js?v=183c50fb31";
+import { L, Counts, isArabicText, state as lang } from "./strings.js?v=c280b865d7";
+import { prefs } from "./prefs.js?v=c280b865d7";
 
 export const uuid = () =>
   (crypto.randomUUID ? crypto.randomUUID()
@@ -549,6 +549,17 @@ class Store extends EventTarget {
     this.books = this.books.filter(b => b.personId !== person.id);
     this.people = this.people.filter(p => p.id !== person.id);
     this.save();
+  }
+
+  /// Where this person's backup lives in Drive.
+  ///
+  /// Set once and then carried, so a person who has been restored onto a new
+  /// browser still writes over the same file rather than beside it. Without
+  /// it, backup and restore multiplied each other: every restore made a new
+  /// local id, and every backup after that made a new Drive file for it.
+  async setCloudKey(person, key) {
+    if (!key || person.cloudKey === key) return;
+    this.updatePerson({ ...person, cloudKey: key });
   }
 
   async setPhoto(person, blob) {
@@ -1369,6 +1380,14 @@ export const Cloud = {
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
     const state = b64url(crypto.getRandomValues(new Uint8Array(16)));
     prefs.set(K_CLOUD_PKCE, JSON.stringify({ verifier, state }));
+    // The verifier is the only proof that the browser coming back is the one
+    // that left. Private windows and blocked site data make prefs a no-op, and
+    // without this check the app sent people all the way to Google's consent
+    // screen and then refused them on return, every time, with nothing said
+    // about why it could never work.
+    if (!prefs.get(K_CLOUD_PKCE)) {
+      throw new CloudError(L("This browser is not keeping site data, so signing in cannot finish. Turn that on, or use a normal window."));
+    }
 
     const url = new URL(GOOGLE_AUTH_URL);
     url.search = new URLSearchParams({
@@ -1391,6 +1410,20 @@ export const Cloud = {
   /// knows to re-render rather than guess.
   async completeSignIn() {
     const params = new URLSearchParams(location.search);
+
+    // Google answers a refusal with ?error=, not with a code. Looking only for
+    // a code left that answer sitting in the address bar for the rest of the
+    // session and told the person nothing at all.
+    const refused = params.get("error");
+    if (refused) {
+      prefs.remove(K_CLOUD_PKCE);
+      history.replaceState(null, "", this.redirectURI);
+      // Someone closing the consent screen is not a failure, and telling them
+      // it was would be the app arguing with them.
+      if (refused === "access_denied") return false;
+      throw new CloudError(L("Google refused that sign-in.") + " (" + refused + ")");
+    }
+
     const code = params.get("code");
     if (!code) return false;
 
@@ -1435,10 +1468,16 @@ export const Cloud = {
       body: JSON.stringify({ refresh_token: t.refresh_token }),
     });
     if (!r.ok) {
-      // A refused refresh means access was revoked in the Google account. Say
-      // so by signing out rather than retrying forever against a dead token.
-      this.signOut();
-      throw new CloudError(L("Google access has ended. Sign in again."));
+      // Only one answer means the grant itself is dead. A 500, a 429, a phone
+      // that lost signal mid-refresh — none of those mean Google revoked
+      // anything, and signing out on them threw away a working connection
+      // whose only way back is the whole consent screen again.
+      const said = await r.text().catch(() => "");
+      if (r.status === 400 || r.status === 401 || said.includes("invalid_grant")) {
+        this.signOut();
+        throw new CloudError(L("Google access has ended. Sign in again."));
+      }
+      throw new CloudError(L("Could not reach Google just now. Try again in a moment."));
     }
     const fresh = await r.json();
     this.tokens = { ...t, access_token: fresh.access_token,
@@ -1497,7 +1536,13 @@ export const Cloud = {
       const body = JSON.stringify(file);
       if (new TextEncoder().encode(body).length > 24 * 1024 * 1024) { skipped++; continue; }
 
-      const name = this.nameFor(person.id);
+      // Key the file by where this person ORIGINALLY came from, not by the
+      // id this device happens to hold. A restored person arrives with a
+      // fresh local id, so backing up after a restore wrote a SECOND file for
+      // the same grandmother, and the next restore brought back both.
+      const key = person.cloudKey || person.id;
+      if (!person.cloudKey) await store.setCloudKey(person, key);
+      const name = this.nameFor(key);
       const id = existing.get(name);
       const metadata = id ? { name } : { name, parents: ["appDataFolder"] };
       const boundary = "jaddati" + Math.random().toString(36).slice(2);
@@ -1523,16 +1568,25 @@ export const Cloud = {
   /// arrives by — same validation, same refusals, same fresh local ids.
   async restore() {
     const existing = await this._existing();
-    let brought = 0, failed = 0;
+    let brought = 0, failed = 0, already = 0;
+
     for (const [name, id] of existing) {
       if (!name.startsWith("person-")) continue;
+      // The file name carries the key. Someone already here under that key is
+      // the same person, and importing again would stand a second copy of her
+      // next to the first — every time the button was pressed.
+      const key = name.slice("person-".length).replace(/\.jaddati\.json$/, "");
+      if (store.people.some(p => (p.cloudKey || p.id) === key)) { already++; continue; }
       try {
         const r = await this._drive(DRIVE_FILES + "/" + id + "?alt=media");
-        await Archive.import(await r.text());
+        const arrived = await Archive.import(await r.text());
+        // Remember where she came from, so backing up again writes over the
+        // same file rather than beside it.
+        if (arrived && arrived.person) await store.setCloudKey(arrived.person, key);
         brought++;
       } catch { failed++; }
     }
-    return { brought, failed };
+    return { brought, failed, already };
   },
 };
 
@@ -1681,6 +1735,11 @@ export const Archive = {
       voiceId,
       id: personId,
       photoFilename: null,
+      // Never inherited from the file. The key says where a backup lives in
+      // THIS browser's Drive, and restore is the only thing entitled to set
+      // it — otherwise an archive passed by code would arrive claiming a
+      // backup slot it has never been written to.
+      cloudKey: null,
       createdAt: file.person.createdAt || new Date().toISOString(),
       // The whole point of the handoff is that every phone speaks in the SAME
       // clone. That makes the voice shared property, so this device must not

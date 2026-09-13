@@ -3,25 +3,25 @@
 // and Saved and Books are scoped to one person because a pile of clips with no
 // name on it is not an archive.
 
-import { L, isAr, isArabicText, dirOf, Counts, state as lang, setLang, toggleLang } from "./strings.js?v=183c50fb31";
+import { L, isAr, isArabicText, dirOf, Counts, state as lang, setLang, toggleLang } from "./strings.js?v=c280b865d7";
 import {
   store, Consent, ConsentMissing, Config, Voice, Companion, VoiceError, CompanionError,
   Intent, INTENTS, ContentProvenance, TUNING, sameTuning, presetName,
   AFFIRMATIONS, STORIES, makeBook, ImportError, isDemoVoice, uuid, blobURL,
   STOCK_VOICE_URL, STOCK_LLM_URL, Archive, ArchiveError, Cloud, CloudError,
-} from "./core.js?v=183c50fb31";
+} from "./core.js?v=c280b865d7";
 import {
   h, clear, bidi, icon, appBar, globeButton, headline, eyebrow, sectionLabel,
   subtext, caption, panel, panelS, errorNote, emptyHint, avatar, breadcrumb,
   sourceBadge, contentBadge, badgesFor, audioRow, player, confirmDialog, sheet,
   toast, Recorder, durationOf, demoDuration, track, unmountAll,
-} from "./ui.js?v=183c50fb31";
-import { nav, remember, setRenderer, render, push, pop, popTo, goTab } from "./nav.js?v=183c50fb31";
-import { appearance } from "./prefs.js?v=183c50fb31";
+} from "./ui.js?v=c280b865d7";
+import { nav, remember, setRenderer, render, push, pop, popTo, goTab } from "./nav.js?v=c280b865d7";
+import { appearance } from "./prefs.js?v=c280b865d7";
 import {
   createScreen, booksScreen, readerScreen, memoriesScreen, playerScreen, openAddVoice,
   personHasVoice, lettersScreen, captureScreen,
-} from "./screens.js?v=183c50fb31";
+} from "./screens.js?v=c280b865d7";
 
 const root = document.getElementById("app");
 
@@ -579,9 +579,19 @@ function cloudSection() {
             return lines.join(" ");
           }),
           run(L("Bring everything back"), async () => {
-            const { brought } = await Cloud.restore();
+            const { brought, failed, already } = await Cloud.restore();
+            const lines = [L("Brought back.") + " " + Counts.number(brought)];
+            if (already) lines.push(L("Some were already here and were left alone."));
+            if (failed) lines.push(L("Some could not be read and were left in Drive."));
+            const said = lines.join(" ");
+            // Said in a toast, not in the note below the button. Bringing
+            // people back changes the screen, so render() rebuilds this whole
+            // tree — and the note the result was being written into had
+            // already been thrown away by the time it was written. The result
+            // of the restore was never once displayed.
+            toast(said);
             render();
-            return L("Brought back.") + " " + Counts.number(brought);
+            return said;
           }),
           h("button", { class: "small", style: { textDecoration: "underline", minHeight: "var(--touch)" },
             onClick: () => { Cloud.signOut(); render(); } }, L("Sign out of Google")))

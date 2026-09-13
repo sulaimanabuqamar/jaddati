@@ -5,7 +5,7 @@
 // This table is generated from Jaddati/Design/Strings.swift — do not hand-edit.
 // Regenerate with docs/web/build-strings.py after changing the app's strings.
 
-import { prefs } from "./prefs.js?v=183c50fb31";
+import { prefs } from "./prefs.js?v=c280b865d7";
 
 export const AR = {
  "A bedtime story": "قصة قبل النوم",
@@ -424,6 +424,12 @@ export const AR = {
  "Some of this\nleaves the phone.": "بعض هذا\nيغادر الهاتف.",
  "Some recordings could not be read from this phone and were left out.": "تعذّرت قراءة بعض التسجيلات من هذا الجهاز فلم تُضمَّن.",
  "Some recordings could not be read, so those people were left as they were rather than overwritten.": "تعذّرت قراءة بعض التسجيلات، فتُركت تلك النسخ كما هي بدل الكتابة فوقها.",
+ "Opening a letter needs their recreated voice. Add it on their Setup screen first.": "فتح الرسالة يحتاج إلى صوتهم المُعاد إنشاؤه. أضفه من شاشة الإعداد أولًا.",
+ "This browser is not keeping site data, so signing in cannot finish. Turn that on, or use a normal window.": "هذا المتصفّح لا يحفظ بيانات الموقع، لذا لا يمكن إتمام تسجيل الدخول. فعّل الحفظ أو استخدم نافذة عادية.",
+ "Google refused that sign-in.": "رفضت جوجل تسجيل الدخول هذا.",
+ "Some were already here and were left alone.": "بعضهم كان موجودًا هنا فعلًا فتُرك كما هو.",
+ "Some could not be read and were left in Drive.": "تعذّرت قراءة بعضها فبقيت في درايف.",
+ "Could not reach Google just now. Try again in a moment.": "تعذّر الوصول إلى جوجل الآن. حاول بعد قليل.",
  "Some were too large and were left out.": "بعضها كان كبيرًا جدًا فتُرك خارجًا.",
  "Something went wrong. Try again.": "حدث خطأ ما. حاول مجددًا.",
  "Source quality and language both affect the result. A high likeness value is not a guarantee.": "تؤثّر جودة التسجيل واللغة في النتيجة. وارتفاع قيمة التشابه ليس ضمانًا.",

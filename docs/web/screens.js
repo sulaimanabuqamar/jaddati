@@ -1,20 +1,20 @@
 // Compose, shelf, reader, archive, player — and the one screen the whole
 // product rests on, where a voice is created.
 
-import { L, isAr, isArabicText, dirOf, Counts } from "./strings.js?v=183c50fb31";
+import { L, isAr, isArabicText, dirOf, Counts } from "./strings.js?v=c280b865d7";
 import {
   store, Consent, ConsentMissing, Config, Voice, Companion,
   Intent, INTENTS, TUNING, sameTuning, presetName,
   AFFIRMATIONS, STORIES, makeBook, ImportError, isDemoVoice, blobURL, DEMO_PREFIX,
   FamilyAnswer, Translator, NotInNotesError, CAPTURE_PROMPTS,
-} from "./core.js?v=183c50fb31";
+} from "./core.js?v=c280b865d7";
 import {
   h, clear, bidi, icon, appBar, headline, eyebrow, sectionLabel, subtext,
   panel, panelS, errorNote, emptyHint, avatar, breadcrumb, sourceBadge,
   contentBadge, badgesFor, audioRow, player, confirmDialog, sheet, toast,
   Recorder, durationOf, demoDuration, track,
-} from "./ui.js?v=183c50fb31";
-import { nav, push, pop, popTo, render, replace } from "./nav.js?v=183c50fb31";
+} from "./ui.js?v=c280b865d7";
+import { nav, push, pop, popTo, render, replace } from "./nav.js?v=c280b865d7";
 
 const trimmedOf = s => (s || "").trim();
 
@@ -43,7 +43,7 @@ async function keepAudio(result, opts) {
 // be asked. The wording says exactly that.
 
 export function openAddVoice(personId) {
-  sheet(close => {
+  sheet((close, scrim) => {
     const person = store.person(personId);
     const replacing = !!person?.voiceId;
 
@@ -69,6 +69,11 @@ export function openAddVoice(personId) {
 
     const recorder = new Recorder();
     let recording = false;
+
+    // Dismissing by tapping the scrim never ran the X button's cancel, so the
+    // microphone stayed open — light on, nothing recording it — until the tab
+    // was closed. Every way out of this sheet has to let it go.
+    scrim.addEventListener("jaddati:closed", () => { try { recorder.cancel(); } catch {} });
 
     const recordBtn = h("button", { class: "btn-quiet", onClick: async () => {
       if (recording) {
@@ -408,7 +413,7 @@ export function createScreen({ personId, intent }) {
     if (!mine.length) return null;
     return h("div", { class: "stack gap-s mt-s" }, h("div", { class: "divider" }),
       h("div", { class: "label" }, shelfTitle),
-      mine.map(a => audioRow(a, asset => push(playerScreen, { assetId: asset.id }))));
+      mine.map(a => track(audioRow(a, asset => push(playerScreen, { assetId: asset.id })))));
   };
 
   // The six ways of asking used to be six full-width rows on the person
@@ -857,7 +862,7 @@ export function memoriesScreen({ personId, isTabRoot = false }) {
       return;
     }
     for (const asset of items) {
-      const row = audioRow(asset, a => push(playerScreen, { assetId: a.id }));
+      const row = track(audioRow(asset, a => push(playerScreen, { assetId: a.id })));
       row.addEventListener("contextmenu", e => {
         e.preventDefault();
         confirmDialog({
@@ -909,7 +914,7 @@ export function playerScreen({ assetId }) {
   const knob = h("div", { class: "track__knob", style: { insetInlineStart: "0px" } });
   const elapsed = h("span", {}, "0:00");
   const total = h("span", {}, Counts.clock(asset.durationSeconds));
-  const track = h("div", { class: "track", role: "slider", "aria-label": L("Playing") },
+  const scrubber = h("div", { class: "track", role: "slider", "aria-label": L("Playing") },
     h("div", { class: "track__bg" }), fill, knob);
 
   const playBtn = h("button", { class: "bigplay", "aria-label": L("Play"), onClick: () => player.play(asset) }, icon("play"));
@@ -957,9 +962,9 @@ export function playerScreen({ assetId }) {
 
   const errorSlot = h("p", { class: "caption danger center hidden", style: { margin: 0 } });
 
-  track.addEventListener("pointerdown", e => {
+  scrubber.addEventListener("pointerdown", e => {
     const move = ev => {
-      const r = track.getBoundingClientRect();
+      const r = scrubber.getBoundingClientRect();
       let f = (ev.clientX - r.left) / r.width;
       if (isAr()) f = 1 - f;
       player.seek(Math.min(Math.max(f, 0), 1));
@@ -992,7 +997,7 @@ export function playerScreen({ assetId }) {
 
       present
         ? h("div", { class: "stack gap-s", style: { width: "100%" } },
-            track, h("div", { class: "clock" }, elapsed, total),
+            scrubber, h("div", { class: "clock" }, elapsed, total),
             h("div", { class: "transport" }, back, playBtn, fwd),
             speedRow)
         : errorNote(L("This audio file is not available. Playback is unavailable.")),
@@ -1013,7 +1018,11 @@ export function playerScreen({ assetId }) {
   player.addEventListener("change", sync);
   screen.addEventListener("jaddati:unmount", () => player.removeEventListener("change", sync));
   if (present) setTimeout(() => player.play(asset), 60);
-  return screen;
+  // Tracked, or the listener above is never removed: this screen registered
+  // its own cleanup and then never asked for it to be called, so every visit
+  // to a clip left another subscription on the player for the rest of the
+  // session.
+  return track(screen);
 }
 
 // ── words that arrive later ─────────────────────────────────────────────
@@ -1151,7 +1160,26 @@ export function lettersScreen({ personId }) {
       const button = h("button", { class: "btn-primary", onClick: () => open(letter) }, L("Open it"));
       openButtons.push({ id: letter.id, button });
       return button;
-    })()));
+    })(),
+    // Why the button is grey, said out loud. A disabled primary button with
+    // no explanation reads as the app being broken.
+    !personHasVoice(person) || !Config.isConfigured
+      ? h("p", { class: "small", style: { margin: 0 } },
+          L("Opening a letter needs their recreated voice. Add it on their Setup screen first."))
+      : null,
+    // A letter that has been opened and then discarded comes back here, and
+    // until now this card was the end of the road: the button can be disabled
+    // — no voice yet, nothing configured — and there was no other way out.
+    // The words then sat where nothing could reach them.
+    h("button", {
+      class: "wine-text", style: { fontSize: "13px", fontWeight: "600", textAlign: "start", minHeight: "var(--touch)" },
+      onClick: () => confirmDialog({
+        title: L("Remove this letter?"),
+        message: L("The words are deleted from this phone. This cannot be undone."),
+        confirm: L("Remove"),
+        onConfirm: () => { store.removeLetter(letter.id); render(); },
+      }),
+    }, L("Remove"))));
 
   // A sealed letter shows its date and its occasion, never its words. Being
   // able to read it early is the same as not having sealed it.
