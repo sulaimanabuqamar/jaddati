@@ -112,7 +112,8 @@ function consentGate() {
       labelled(L("What they do with it"), why));
 
   const labelled = (title, detail) => h("div", { class: "stack", style: { gap: "2px" } },
-    h("div", { style: { fontSize: "11px", fontWeight: "600", textTransform: "uppercase", letterSpacing: isAr() ? "0" : ".6px", color: "var(--wine-ink)" } }, title),
+    // Sentence case in the soft ink, not uppercase wine — see ConsentGate.swift.
+    h("div", { style: { fontSize: "12px", fontWeight: "600", color: "var(--ink-soft)" } }, title),
     h("p", { class: "caption", style: { margin: 0 } }, detail));
 
   return h("div", { class: "screen" },
@@ -120,13 +121,13 @@ function consentGate() {
       h("div", { class: "stack gap-m" },
         h("div", { class: "stack gap-s" },
           h("div", { class: "row between" }, eyebrow(L("Before you begin")), globeButton()),
-          headline(L("Some of this\nleaves the phone."), 33),
-          subtext(L("Jaddati can work entirely on this phone. Three things cannot, because they are done by companies outside it. Here is exactly what they are."))),
+          headline(L("Most of this\nstays on your phone."), 33),
+          subtext(L("Your recordings, the people you keep here, and everything you make stay on this phone. Three things need a company outside it — here is exactly what they are."))),
 
         panel(h("div", { class: "stack gap-m" },
           recipient("ElevenLabs", L("Voice service"),
             L("The recording you choose, and the words you ask to be spoken."),
-            L("It builds the voice and reads your words in it. The voice it builds is kept on their servers, not only here.")),
+            L("It builds the voice and reads your words in it. The voice it builds is kept on their servers as well as here.")),
           h("div", { class: "divider" }),
           recipient("Groq", L("Questions and dictation"),
             L("A question typed or spoken during a story, with the page it is about — and the audio itself when you speak instead of typing."),

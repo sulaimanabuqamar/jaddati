@@ -54,8 +54,8 @@ struct ConsentGate: View {
                     .frame(width: Theme.Metric.touchTarget,
                            height: Theme.Metric.touchTarget)
             }
-            Headline(text: L("Some of this\nleaves the phone."), size: 33)
-            SubText(text: L("Jaddati can work entirely on this phone. Three things cannot, because they are done by companies outside it. Here is exactly what they are."))
+            Headline(text: L("Most of this\nstays on your phone."), size: 33)
+            SubText(text: L("Your recordings, the people you keep here, and everything you make stay on this phone. Three things need a company outside it — here is exactly what they are."))
         }
     }
 
@@ -66,7 +66,7 @@ struct ConsentGate: View {
                     name: AppConfig.voiceProviderName,
                     role: L("Voice service"),
                     sends: L("The recording you choose, and the words you ask to be spoken."),
-                    why: L("It builds the voice and reads your words in it. The voice it builds is kept on their servers, not only here.")
+                    why: L("It builds the voice and reads your words in it. The voice it builds is kept on their servers as well as here.")
                 )
 
                 Divider().overlay(Theme.Palette.hairline)
@@ -101,11 +101,14 @@ struct ConsentGate: View {
 
     private func labelled(_ title: String, _ detail: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
+            // Sentence case in the soft ink, not uppercase wine. The words
+            // are unchanged and nothing is hidden — but uppercase tracked
+            // labels in the accent colour read as a form to be signed, and
+            // this is the first screen someone sees on the day they are
+            // trying to keep hold of a voice.
             Text(title)
-                .font(.system(size: 11, weight: .semibold))
-                .tracking(uiIsArabic ? 0 : 0.6)
-                .textCase(.uppercase)
-                .foregroundStyle(Theme.Palette.wineInk)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Theme.Palette.inkSoft)
             Text(detail)
                 .font(Theme.Font.caption)
                 .foregroundStyle(Theme.Palette.inkSoft)

@@ -584,11 +584,11 @@ let arabicStrings: [String: String] = [
     // MARK: Consent, privacy and data
 
     "Before you begin": "قبل أن تبدأ",
-    "Some of this\nleaves the phone.": "بعض هذا\nيغادر الهاتف.",
-    "Jaddati can work entirely on this phone. Three things cannot, because they are done by companies outside it. Here is exactly what they are.": "يستطيع جدّتي أن يعمل داخل هذا الهاتف بالكامل. ثلاثة أشياء لا تستطيع ذلك، لأن شركات خارجه هي التي تقوم بها. وهذه هي بالضبط.",
+    "Most of this\nstays on your phone.": "معظم هذا\nيبقى في هاتفك.",
+    "Your recordings, the people you keep here, and everything you make stay on this phone. Three things need a company outside it — here is exactly what they are.": "تسجيلاتك، ومن تحتفظ بهم هنا، وكل ما تصنعه يبقى في هذا الهاتف. ثلاثة أشياء تحتاج إلى شركة من خارجه — وهذه هي بالضبط.",
     "Questions and dictation": "الأسئلة والإملاء",
     "The recording you choose, and the words you ask to be spoken.": "التسجيل الذي تختاره، والكلمات التي تطلب نطقها.",
-    "It builds the voice and reads your words in it. The voice it builds is kept on their servers, not only here.": "تُنشئ الصوت وتقرأ كلماتك به. والصوت الذي تُنشئه يُحفظ على خوادمها، لا هنا وحده.",
+    "It builds the voice and reads your words in it. The voice it builds is kept on their servers as well as here.": "تُنشئ الصوت وتقرأ كلماتك به. والصوت الذي تُنشئه يُحفظ على خوادمها إلى جانب هذا الهاتف.",
     "A question typed or spoken during a story, with the page it is about — and the audio itself when you speak instead of typing.": "سؤال يُكتب أو يُقال أثناء القصة، ومعه الصفحة التي يتعلق بها — والصوت نفسه حين تتحدث بدل الكتابة.",
     "It writes the answer, and turns speech into text. It is never told whose voice will read the answer out.": "تكتب الإجابة، وتحوّل الكلام إلى نص. ولا تُخبَر أبدًا بصاحب الصوت الذي سيقرأ الإجابة.",
     "What is sent": "ما الذي يُرسَل",

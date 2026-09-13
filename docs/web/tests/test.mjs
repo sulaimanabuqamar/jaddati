@@ -33,7 +33,7 @@ await page.goto(URL, { waitUntil: 'networkidle' });
 await page.waitForTimeout(600);
 
 // ── the gate ───────────────────────────────────────────────────────────
-log(await page.locator('text=Some of this').isVisible(), 'consent gate is the first screen');
+log(await page.locator('text=stays on your phone').isVisible(), 'consent gate is the first screen');
 log(await page.locator('text=ElevenLabs').isVisible(), 'gate names ElevenLabs');
 log(await page.locator('text=Groq').isVisible(), 'gate names Groq');
 log(!(await page.locator('.tabrail').isVisible().catch(() => false)), 'no tab rail behind the gate');
@@ -197,7 +197,7 @@ log(await page.evaluate(() => document.documentElement.dir) === 'ltr', 'switchin
 await page.reload({ waitUntil: 'networkidle' });
 await page.waitForTimeout(800);
 log(await page.locator('.person-card').count() === 1, 'the person survives a reload');
-log(!(await page.locator('text=Some of this').isVisible().catch(() => false)), 'the gate does not reappear after answering');
+log(!(await page.locator('text=stays on your phone').isVisible().catch(() => false)), 'the gate does not reappear after answering');
 
 // ── layout ─────────────────────────────────────────────────────────────
 const overflow = await page.evaluate(() =>
