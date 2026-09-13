@@ -1,20 +1,20 @@
 // Compose, shelf, reader, archive, player — and the one screen the whole
 // product rests on, where a voice is created.
 
-import { L, isAr, isArabicText, dirOf, Counts } from "./strings.js?v=bb08ca101e";
+import { L, isAr, isArabicText, dirOf, Counts } from "./strings.js?v=d12ee3c9ab";
 import {
   store, Consent, ConsentMissing, Config, Voice, Companion,
   Intent, INTENTS, TUNING, sameTuning, presetName,
   AFFIRMATIONS, STORIES, makeBook, ImportError, isDemoVoice, blobURL, DEMO_PREFIX,
   FamilyAnswer, Translator, NotInNotesError, CAPTURE_PROMPTS,
-} from "./core.js?v=bb08ca101e";
+} from "./core.js?v=d12ee3c9ab";
 import {
   h, clear, bidi, icon, appBar, headline, eyebrow, sectionLabel, subtext,
   panel, panelS, errorNote, emptyHint, avatar, breadcrumb, sourceBadge,
   contentBadge, badgesFor, audioRow, player, confirmDialog, sheet, toast,
   Recorder, durationOf, demoDuration, track,
-} from "./ui.js?v=bb08ca101e";
-import { nav, push, pop, popTo, render, replace } from "./nav.js?v=bb08ca101e";
+} from "./ui.js?v=d12ee3c9ab";
+import { nav, push, pop, popTo, render, replace } from "./nav.js?v=d12ee3c9ab";
 
 const trimmedOf = s => (s || "").trim();
 
@@ -296,11 +296,14 @@ export function createScreen({ personId, intent }) {
     saveLine.classList.toggle("hidden", !(intent === "comfort" && person && t && !already));
     const kept = person && store.memories(person.id).some(n => trimmedOf(n.text) === t);
     saveMemory.classList.toggle("hidden", !(intent === "storyFromMemories" && person && t && !kept));
-    quote.textContent = "$" + Math.max(t.length * 0.00011, 0.01).toFixed(2);
+    // No dollar sign in Arabic: the label beside this already says دولار, and
+    // both together read as "$0.01 dollar".
+    quote.textContent = (isAr() ? "" : "$") + Math.max(t.length * 0.00011, 0.01).toFixed(2);
   }
   area.addEventListener("input", sync);
 
-  const quote = h("span", { style: { fontSize: "14px", fontWeight: "600" } }, "$0.01");
+  const quote = h("span", { style: { fontSize: "14px", fontWeight: "600" } },
+                  (isAr() ? "" : "$") + "0.01");
 
   /**
    * What actually gets spoken.
