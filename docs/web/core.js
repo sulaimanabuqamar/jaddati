@@ -5,8 +5,8 @@
 // is where those live — IndexedDB for the audio blobs, because a browser has no
 // application-support directory, and localStorage for the index.
 
-import { L, Counts, isArabicText, state as lang } from "./strings.js?v=a805f97143";
-import { prefs } from "./prefs.js?v=a805f97143";
+import { L, Counts, isArabicText, state as lang } from "./strings.js?v=49b6266d78";
+import { prefs } from "./prefs.js?v=49b6266d78";
 
 export const uuid = () =>
   (crypto.randomUUID ? crypto.randomUUID()
@@ -196,7 +196,11 @@ function db() {
  * whatever is in the compose box. A request that has not answered in this long
  * is not going to.
  */
-const REQUEST_TIMEOUT_MS = 25000;
+// Long enough not to cut off a real generation — 2500 characters of speech on
+// a slow connection is not instant — and short enough that a dead socket does
+// not hold the screen for ever. The failure it exists for is a captive portal
+// that accepts the connection and then says nothing at all.
+const REQUEST_TIMEOUT_MS = 45000;
 
 async function fetchWithTimeout(input, init = {}, ms = REQUEST_TIMEOUT_MS) {
   // A caller that brought its own signal keeps it; we only add one when there
@@ -288,11 +292,23 @@ class Store extends EventTarget {
       this.letters = index.letters || [];
     } catch {
       // Same rule as the app: a corrupt index must not be overwritten by the
-      // next save. Move it aside under its own name first, so nothing is lost
-      // and the app stays usable.
-      prefs.set(INDEX_KEY + ".corrupt-" + Date.now(), raw);
-      prefs.remove(INDEX_KEY);
-      this.storageError = L("Saved memories could not be read, so they have been set aside rather than overwritten. The audio files are still on this phone.");
+      // next save. Move it aside under its own name FIRST — and only remove
+      // the original once the copy is known to have landed.
+      //
+      // Ignoring that return value meant the copy could fail on quota — most
+      // likely precisely when the index is large — and the original was then
+      // deleted anyway. A recoverable problem became a total one.
+      const copied = prefs.set(INDEX_KEY + ".corrupt-" + Date.now(), raw);
+      if (copied) {
+        prefs.remove(INDEX_KEY);
+        this.storageError = L("Saved memories could not be read, so they have been set aside rather than overwritten. The audio files are still on this phone.");
+      } else {
+        // Nowhere safe to put it, so it stays exactly where it is and nothing
+        // is allowed to write over it. Refusing to save is the whole point:
+        // the words are still in there and a later version may read them.
+        this.loadFailed = true;
+        this.storageError = L("Saved memories could not be read and could not be set aside either, so nothing will be written over them. The audio files are still on this phone.");
+      }
     }
   }
 
@@ -623,8 +639,14 @@ class Store extends EventTarget {
   /// it, backup and restore multiplied each other: every restore made a new
   /// local id, and every backup after that made a new Drive file for it.
   async setCloudKey(person, key) {
-    if (!key || person.cloudKey === key) return;
-    this.updatePerson({ ...person, cloudKey: key });
+    if (!key) return;
+    // Re-read rather than spreading the snapshot the caller is holding. A
+    // backup captures the person before a long upload, and anything written to
+    // her in the meantime — a voice finishing, a photo — was being reverted by
+    // this one small write.
+    const current = this.person(person.id) || person;
+    if (current.cloudKey === key) return;
+    this.updatePerson({ ...current, cloudKey: key });
   }
 
   async setPhoto(person, blob) {
@@ -1452,6 +1474,12 @@ export const Cloud = {
   async beginSignIn() {
     if (!Consent.allowsNetwork) throw new ConsentMissing();
     if (!(await this.configured())) throw new CloudError(L("Signing in is not set up on this build."));
+    // crypto.subtle only exists on a secure origin. Demoing the web version
+    // from a phone against a laptop's IP over plain http is a real thing to do,
+    // and without this it failed with a raw TypeError and no explanation.
+    if (!globalThis.crypto?.subtle) {
+      throw new CloudError(L("Signing in needs a secure connection (https). This page is not on one."));
+    }
     const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
     const state = b64url(crypto.getRandomValues(new Uint8Array(16)));
@@ -1485,6 +1513,10 @@ export const Cloud = {
   /// Called on load. Returns true when it consumed a redirect, so the caller
   /// knows to re-render rather than guess.
   async completeSignIn() {
+    // Guarded like every other network call. This runs on any load carrying
+    // ?code=, and it posts to the relay — so without this it was the one path
+    // that reached the network whatever the person had answered.
+    if (!Consent.allowsNetwork) return false;
     const params = new URLSearchParams(location.search);
 
     // Google answers a refusal with ?error=, not with a code. Looking only for
@@ -1584,11 +1616,33 @@ export const Cloud = {
   },
 
   /** What is already up there, by the name we gave it. */
+  /** What is already up there, by the name we gave it.
+   *
+   *  Paged, because a single request stopped at 200 files and silently
+   *  pretended the rest did not exist — which on a backup means writing a
+   *  second file for someone who already had one.
+   *
+   *  Drive tolerates two files with the same name. Where that has happened,
+   *  keep the FIRST and hand the rest back as strays: collapsing them into one
+   *  Map entry left the others invisible, holding stale copies that a later
+   *  restore could pick up instead of the good one.
+   */
   async _existing() {
-    const url = DRIVE_FILES + "?spaces=appDataFolder&fields=files(id,name)&pageSize=200";
-    const r = await this._drive(url);
     const out = new Map();
-    for (const f of (await r.json()).files || []) out.set(f.name, f.id);
+    const strays = [];
+    let token = "";
+    for (let page = 0; page < 20; page++) {
+      const url = DRIVE_FILES + "?spaces=appDataFolder&fields=nextPageToken,files(id,name)"
+        + "&pageSize=200" + (token ? "&pageToken=" + encodeURIComponent(token) : "");
+      const body = await (await this._drive(url)).json();
+      for (const f of body.files || []) {
+        if (out.has(f.name)) strays.push(f.id);
+        else out.set(f.name, f.id);
+      }
+      token = body.nextPageToken || "";
+      if (!token) break;
+    }
+    out.strays = strays;
     return out;
   },
 
@@ -1655,6 +1709,15 @@ export const Cloud = {
       sent++;
       if (onProgress) onProgress(sent, store.people.length);
     }
+
+    // Duplicate files for one person, left by an older version that could
+    // write twice. Remove them once we have written the good copy, so a later
+    // restore cannot pick a stale one up. Best effort — a failure here costs
+    // nothing that matters.
+    for (const id of existing.strays || []) {
+      try { await this._drive(DRIVE_FILES + "/" + id, { method: "DELETE" }); } catch {}
+    }
+
     return { sent, skipped, atRisk, failed };
   },
 

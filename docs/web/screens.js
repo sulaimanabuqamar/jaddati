@@ -1,20 +1,20 @@
 // Compose, shelf, reader, archive, player — and the one screen the whole
 // product rests on, where a voice is created.
 
-import { L, isAr, isArabicText, dirOf, Counts } from "./strings.js?v=a805f97143";
+import { L, isAr, isArabicText, dirOf, Counts } from "./strings.js?v=49b6266d78";
 import {
   store, Consent, ConsentMissing, Config, Voice, Companion,
   Intent, INTENTS, TUNING, sameTuning, presetName,
   AFFIRMATIONS, STORIES, makeBook, ImportError, isDemoVoice, blobURL, DEMO_PREFIX,
   FamilyAnswer, Translator, NotInNotesError, CAPTURE_PROMPTS,
-} from "./core.js?v=a805f97143";
+} from "./core.js?v=49b6266d78";
 import {
   h, clear, bidi, icon, appBar, headline, eyebrow, sectionLabel, subtext,
   panel, panelS, errorNote, emptyHint, avatar, breadcrumb, sourceBadge,
   contentBadge, badgesFor, audioRow, player, confirmDialog, sheet, toast,
   Recorder, durationOf, demoDuration, track,
-} from "./ui.js?v=a805f97143";
-import { nav, push, pop, popTo, render, replace } from "./nav.js?v=a805f97143";
+} from "./ui.js?v=49b6266d78";
+import { nav, push, pop, popTo, render, replace } from "./nav.js?v=49b6266d78";
 
 const trimmedOf = s => (s || "").trim();
 

@@ -67,6 +67,12 @@ struct CreateView: View {
             return L("The test voice is not a real voice. Create one to continue.")
         }
         if person?.hasVoice != true { return L("Add a voice before creating audio.") }
+        // canSpeak also requires this, and without a branch here the button sat
+        // grey under the words "Type something for them to say" — the one thing
+        // they had just done.
+        if library.loadFailed {
+            return L("Saved memories could not be read on this phone, so nothing new can be made until that is sorted out.")
+        }
         if trimmed.count > intent.characterLimit {
             return L("Shorten the text to fit the limit.")
         }

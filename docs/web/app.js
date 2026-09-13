@@ -3,25 +3,25 @@
 // and Saved and Books are scoped to one person because a pile of clips with no
 // name on it is not an archive.
 
-import { L, isAr, isArabicText, dirOf, Counts, state as lang, setLang, toggleLang } from "./strings.js?v=a805f97143";
+import { L, isAr, isArabicText, dirOf, Counts, state as lang, setLang, toggleLang } from "./strings.js?v=49b6266d78";
 import {
   store, Consent, ConsentMissing, Config, Voice, Companion, VoiceError, CompanionError,
   Intent, INTENTS, ContentProvenance, TUNING, sameTuning, presetName,
   AFFIRMATIONS, STORIES, makeBook, ImportError, isDemoVoice, uuid, blobURL,
   STOCK_VOICE_URL, STOCK_LLM_URL, Archive, ArchiveError, Cloud, CloudError,
-} from "./core.js?v=a805f97143";
+} from "./core.js?v=49b6266d78";
 import {
   h, clear, bidi, icon, appBar, globeButton, headline, eyebrow, sectionLabel,
   subtext, caption, panel, panelS, errorNote, emptyHint, avatar, breadcrumb,
   sourceBadge, contentBadge, badgesFor, audioRow, player, confirmDialog, sheet,
   toast, Recorder, durationOf, demoDuration, track, unmountAll,
-} from "./ui.js?v=a805f97143";
-import { nav, remember, setRenderer, render, push, pop, popTo, goTab } from "./nav.js?v=a805f97143";
-import { appearance } from "./prefs.js?v=a805f97143";
+} from "./ui.js?v=49b6266d78";
+import { nav, remember, setRenderer, render, push, pop, popTo, goTab } from "./nav.js?v=49b6266d78";
+import { appearance } from "./prefs.js?v=49b6266d78";
 import {
   createScreen, booksScreen, readerScreen, memoriesScreen, playerScreen, openAddVoice,
   personHasVoice, lettersScreen, captureScreen,
-} from "./screens.js?v=a805f97143";
+} from "./screens.js?v=49b6266d78";
 
 const root = document.getElementById("app");
 

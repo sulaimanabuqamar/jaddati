@@ -522,6 +522,7 @@ let arabicStrings: [String: String] = [
     "Add their voice again to create a new one.": "أضف صوتهم مرة أخرى لإنشاء صوت جديد.",
     "This month's voice credits are used up. Saved memories still play.": "نفد رصيد هذا الشهر. المقاطع المحفوظة ما زالت تُشغَّل.",
     "This phone already holds a recreated voice. Remove that person, or the voice on their Setup screen, before making another.": "هذا الهاتف يحتفظ بصوت مُعاد إنشاؤه بالفعل. احذف ذلك الشخص، أو الصوت من شاشة الإعداد، قبل إنشاء صوت آخر.",
+    "Saved memories could not be read on this phone, so nothing new can be made until that is sorted out.": "تعذّرت قراءة الذكريات المحفوظة على هذا الهاتف، فلا يمكن إنشاء شيء جديد حتى تُحلّ المشكلة.",
     "This account has no free voice slots left. Remove an unused voice at the voice service, then try again.": "لم تعد في الحساب خانات أصوات متاحة. احذف صوتًا غير مستخدم لدى خدمة الصوت ثم حاول مجددًا.",
     "No connection. New audio needs the internet — saved memories still play.": "لا يوجد اتصال. إنشاء مقاطع جديدة يحتاج إلى الإنترنت — والمقاطع المحفوظة ما زالت تُشغَّل.",
     "No internet connection.": "لا يوجد اتصال بالإنترنت.",
