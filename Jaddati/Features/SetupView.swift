@@ -206,10 +206,15 @@ struct SetupView: View {
         do {
             let result = try await Archive.send(person: person, library: library)
             handoffCode = result.code
-            archiveNote = result.tooLarge > 0
-                ? L("Sent without some recordings — the file would have been too large.")
-                : result.carried > 0 ? nil
-                  : L("Ready to send. No original recordings were included.")
+            // Same three cases, in the same order, as the file path below.
+            // They used to differ, and the code path — the one the demo uses —
+            // was the one that said nothing when recordings failed to read.
+            archiveNote = result.unreadable > 0
+                ? L("Some recordings could not be read from this phone and were left out.")
+                : result.tooLarge > 0
+                  ? L("Sent without some recordings — the file would have been too large.")
+                  : result.carried > 0 ? nil
+                    : L("Ready to send. No original recordings were included.")
         } catch {
             codeProblem = (error as? LocalizedError)?.errorDescription
                 ?? L("The code could not be created. Try again.")
@@ -230,8 +235,15 @@ struct SetupView: View {
         archiveNote = nil
         let snapshot = person
         do {
-            let result = try await Task.detached(priority: .userInitiated) { [library] in
-                try Archive.export(person: snapshot, library: library)
+            // Gather on this actor, build on another. `Archive.export` is
+            // @MainActor because it reads the Library, so calling it from
+            // inside a detached task would be a cross-actor hop that lands the
+            // heavy work straight back on the main thread — the freeze this is
+            // here to avoid, with an extra thread hop for company.
+            let outline = Archive.plan(person: snapshot, library: library)
+            let result = try await Task.detached(priority: .userInitiated) {
+                () async throws -> Archive.ExportResult in
+                try Archive.build(outline)
             }.value
             exported = result.url
             archiveNote = result.unreadable > 0

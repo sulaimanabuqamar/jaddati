@@ -1,20 +1,20 @@
 // Compose, shelf, reader, archive, player — and the one screen the whole
 // product rests on, where a voice is created.
 
-import { L, isAr, isArabicText, dirOf, Counts } from "./strings.js?v=c280b865d7";
+import { L, isAr, isArabicText, dirOf, Counts } from "./strings.js?v=a805f97143";
 import {
   store, Consent, ConsentMissing, Config, Voice, Companion,
   Intent, INTENTS, TUNING, sameTuning, presetName,
   AFFIRMATIONS, STORIES, makeBook, ImportError, isDemoVoice, blobURL, DEMO_PREFIX,
   FamilyAnswer, Translator, NotInNotesError, CAPTURE_PROMPTS,
-} from "./core.js?v=c280b865d7";
+} from "./core.js?v=a805f97143";
 import {
   h, clear, bidi, icon, appBar, headline, eyebrow, sectionLabel, subtext,
   panel, panelS, errorNote, emptyHint, avatar, breadcrumb, sourceBadge,
   contentBadge, badgesFor, audioRow, player, confirmDialog, sheet, toast,
   Recorder, durationOf, demoDuration, track,
-} from "./ui.js?v=c280b865d7";
-import { nav, push, pop, popTo, render, replace } from "./nav.js?v=c280b865d7";
+} from "./ui.js?v=a805f97143";
+import { nav, push, pop, popTo, render, replace } from "./nav.js?v=a805f97143";
 
 const trimmedOf = s => (s || "").trim();
 
@@ -928,7 +928,15 @@ export function playerScreen({ assetId }) {
 
   const keepBtn = h("button", { class: "btn-quiet grow", disabled: kept, onClick: () => {
     if (kept) return;
-    store.updateAsset({ ...asset, isSaved: true });
+    // Only say it if it happened. Saying "Clip saved" over a failed write, and
+    // hiding the warning that says the clip is about to be removed, is how
+    // someone loses the one clip they went out of their way to keep.
+    if (!store.updateAsset({ ...asset, isSaved: true })) {
+      keepBtn.textContent = L("Could not keep this clip");
+      warning.textContent = L("This phone would not save it. Free some space and try again.");
+      warning.classList.remove("hidden");
+      return;
+    }
     kept = true; keepBtn.textContent = L("Clip saved"); keepBtn.disabled = true;
     warning.classList.add("hidden");
   } }, kept ? L("Clip saved") : L("Keep this clip"));
@@ -941,7 +949,9 @@ export function playerScreen({ assetId }) {
     speeds.map(rate => h("button", {
       class: "chip", "aria-selected": String(Math.abs(player.playbackRate - rate) < 0.01),
       "aria-label": L("Playback speed"), onClick: () => { player.setRate(rate); sync(); },
-    }, rate === 1 ? L("Normal") : rate + "×")));
+    // Isolated, or the bidi algorithm moves the multiplication sign to the
+    // other side in Arabic and 0.75× renders as ×0.75.
+    }, rate === 1 ? L("Normal") : "\u2066" + rate + "\u00D7\u2069")));
 
   function sync() {
     const isCurrent = player.assetId === asset.id;

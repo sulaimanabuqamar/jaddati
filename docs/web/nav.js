@@ -5,8 +5,8 @@
 // language change on purpose: switching language rebuilds everything, and
 // losing your place because you tapped the globe is its own small betrayal.
 
-import { player } from "./ui.js?v=c280b865d7";
-import { prefs } from "./prefs.js?v=c280b865d7";
+import { player } from "./ui.js?v=a805f97143";
+import { prefs } from "./prefs.js?v=a805f97143";
 
 export const TABS = ["people", "letters", "you"];
 

@@ -3,25 +3,25 @@
 // and Saved and Books are scoped to one person because a pile of clips with no
 // name on it is not an archive.
 
-import { L, isAr, isArabicText, dirOf, Counts, state as lang, setLang, toggleLang } from "./strings.js?v=c280b865d7";
+import { L, isAr, isArabicText, dirOf, Counts, state as lang, setLang, toggleLang } from "./strings.js?v=a805f97143";
 import {
   store, Consent, ConsentMissing, Config, Voice, Companion, VoiceError, CompanionError,
   Intent, INTENTS, ContentProvenance, TUNING, sameTuning, presetName,
   AFFIRMATIONS, STORIES, makeBook, ImportError, isDemoVoice, uuid, blobURL,
   STOCK_VOICE_URL, STOCK_LLM_URL, Archive, ArchiveError, Cloud, CloudError,
-} from "./core.js?v=c280b865d7";
+} from "./core.js?v=a805f97143";
 import {
   h, clear, bidi, icon, appBar, globeButton, headline, eyebrow, sectionLabel,
   subtext, caption, panel, panelS, errorNote, emptyHint, avatar, breadcrumb,
   sourceBadge, contentBadge, badgesFor, audioRow, player, confirmDialog, sheet,
   toast, Recorder, durationOf, demoDuration, track, unmountAll,
-} from "./ui.js?v=c280b865d7";
-import { nav, remember, setRenderer, render, push, pop, popTo, goTab } from "./nav.js?v=c280b865d7";
-import { appearance } from "./prefs.js?v=c280b865d7";
+} from "./ui.js?v=a805f97143";
+import { nav, remember, setRenderer, render, push, pop, popTo, goTab } from "./nav.js?v=a805f97143";
+import { appearance } from "./prefs.js?v=a805f97143";
 import {
   createScreen, booksScreen, readerScreen, memoriesScreen, playerScreen, openAddVoice,
   personHasVoice, lettersScreen, captureScreen,
-} from "./screens.js?v=c280b865d7";
+} from "./screens.js?v=a805f97143";
 
 const root = document.getElementById("app");
 
@@ -80,7 +80,20 @@ function tabRail() {
       h("span", {}, title))));
 }
 
-store.addEventListener("change", () => { if (!document.querySelector(".sheet-scrim")) render(); });
+/// True while a backup or restore is running.
+///
+/// Those loops write to the store as they go — setting a person's cloud key —
+/// and every write fires "change", which used to rebuild the whole tree from
+/// under them. The spinner vanished mid-run, the button became clickable
+/// again, and a second tap wrote a SECOND Drive file for the same person. The
+/// screen repaints once at the end instead.
+let cloudBusy = false;
+export const setCloudBusy = on => { cloudBusy = on; };
+
+store.addEventListener("change", () => {
+  if (cloudBusy) return;
+  if (!document.querySelector(".sheet-scrim")) render();
+});
 window.addEventListener("jaddati:lang", () => render());
 
 // ── the gate ────────────────────────────────────────────────────────────
@@ -542,6 +555,7 @@ function cloudSection() {
     onClick: async e => {
       const b = e.currentTarget;
       b.disabled = true; clear(note); clear(busy);
+      setCloudBusy(true);
       busy.append(h("div", { class: "row gap-s mt-xs" }, h("span", { class: "spinner" }),
         h("span", { class: "caption" }, L("Working…"))));
       try {
@@ -549,7 +563,7 @@ function cloudSection() {
       } catch (err) {
         note.append(errorNote(err instanceof CloudError ? err.message
           : L("That did not work. Try again.")));
-      } finally { b.disabled = false; clear(busy); }
+      } finally { setCloudBusy(false); b.disabled = false; clear(busy); }
     },
   }, label);
 

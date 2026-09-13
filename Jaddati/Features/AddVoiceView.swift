@@ -613,6 +613,11 @@ struct AddVoiceView: View {
             errorAllowsRetry = !(known == .unauthorised
                                  || known == .outOfCredits
                                  || known == .voiceLimitReached
+                                 // The relay refuses because THIS phone already
+                                 // holds a voice. Trying again gets the same
+                                 // answer every time; the thing to do is on the
+                                 // Setup screen, and the message says so.
+                                 || known == .deviceAlreadyHasVoice
                                  || known == .badResponse
                                  || known == .notConfigured
                                  // Same reasoning as .badResponse: we gave up

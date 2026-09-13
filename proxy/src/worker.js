@@ -227,6 +227,18 @@ async function speak(request, env, voiceId) {
     return json(429, `credit allowance used for this month (${left} of ${allowance} left)`);
   }
 
+  // And a ceiling across EVERYONE. The per-device meter is keyed on a header
+  // the caller writes, so clearing site data mints a new meter — it is
+  // friction, not a limit, and on its own it does not stop one determined
+  // visitor draining the month's credits for the whole account. This is the
+  // number that protects the bill.
+  const monthKey = `used:all:${period()}`;
+  const monthCap = num(env.CREDITS_PER_MONTH, 100000);
+  const monthSpent = num(await env.JADDATI.get(monthKey), 0);
+  if (monthSpent + text.length > monthCap) {
+    return json(429, "credit allowance used for this month across all devices");
+  }
+
   const url = new URL(request.url);
   const upstream = await fetch(
     `${ELEVEN}/v1/text-to-speech/${encodeURIComponent(voiceId)}${url.search}`,
@@ -245,6 +257,13 @@ async function speak(request, env, voiceId) {
   // the person who asked for it.
   if (upstream.ok) {
     await env.JADDATI.put(key, String(spent + text.length), { expirationTtl: 70 * 86400 });
+    // Re-read rather than reuse `monthSpent`: the check happened before the
+    // upstream call, and on a busy minute several requests will have been in
+    // flight since. Still lossy under real concurrency, but it drifts DOWN
+    // rather than up, which is the safe direction for a ceiling that exists to
+    // stop the account being drained.
+    const now = num(await env.JADDATI.get(monthKey), monthSpent);
+    await env.JADDATI.put(monthKey, String(now + text.length), { expirationTtl: 70 * 86400 });
   }
 
   return new Response(upstream.body, {
@@ -253,8 +272,24 @@ async function speak(request, env, voiceId) {
   });
 }
 
-/** Groq, for questions during a story and for dictation. Cheap; not metered. */
+/**
+ * Groq, for questions during a story and for dictation.
+ *
+ * Cheap per call, which is not the same as free: the relay token is published
+ * in the web build, so anyone who reads the page source had an unmetered
+ * language model on our key. Counted per device per month like speech, with a
+ * far looser allowance — the point is a ceiling, not a budget.
+ */
 async function groq(request, env, path) {
+  const device = deviceId(request);
+  const askKey = `asks:${device}:${period()}`;
+  const askCap = num(env.ASKS_PER_DEVICE, 200);
+  const asked = num(await env.JADDATI.get(askKey), 0);
+  if (asked >= askCap) {
+    return json(429, "question allowance used for this month");
+  }
+  await env.JADDATI.put(askKey, String(asked + 1), { expirationTtl: 70 * 86400 });
+
   const upstream = await fetch(`${env.LLM_BASE_URL}${path}`, {
     method: "POST",
     headers: {
@@ -525,19 +560,35 @@ export default {
       if (created > cutoff) continue;
 
       const voiceId = entry.name.slice(2);
-      const gone = await fetch(`${ELEVEN}/v1/voices/${voiceId}`, {
-        method: "DELETE",
-        headers: { "xi-api-key": env.ELEVENLABS_API_KEY },
-      });
+      // One voice the provider will not talk about must not stop the sweep:
+      // an unhandled throw here used to abort the whole run, so nothing later
+      // in the list was ever cleaned up.
+      let gone;
+      try {
+        gone = await fetch(`${ELEVEN}/v1/voices/${voiceId}`, {
+          method: "DELETE",
+          headers: { "xi-api-key": env.ELEVENLABS_API_KEY },
+        });
+      } catch { continue; }
       // 404 means it is already gone, which is the outcome we wanted anyway.
       if (gone.ok || gone.status === 404) {
         await env.JADDATI.delete(entry.name);
         // Lift the owner's lock in the same breath. Without this they are told
         // they already have a voice, for the ten minutes after it was removed.
         if (owner) await env.JADDATI.delete(`voice:${owner}`);
-        live = Math.max(live - 1, 0);
       }
     }
-    await env.JADDATI.put("voices:live", String(live));
+
+    // Recount rather than adjust.
+    //
+    // `voices:live` was a read-modify-write with nothing serialising it and
+    // nothing ever checking it, so every lost update leaked a slot PERMANENTLY.
+    // A `v:` record expiring before a sweep saw it, or any throw inside this
+    // loop, left the count above the truth for ever — and once it reached the
+    // ceiling every visitor got "no slots are free" with no way back but
+    // editing KV by hand. Counting what is actually there makes the number
+    // self-correcting: at worst it is wrong until the next sweep.
+    const after = await env.JADDATI.list({ prefix: "v:" });
+    await env.JADDATI.put("voices:live", String(after.keys.length));
   },
 };

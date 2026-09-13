@@ -288,6 +288,120 @@ const browser = await pw.chromium.launch({ executablePath: '/opt/pw-browsers/chr
   await ctx.close();
 }
 
+// ── a blob that is not there is null, not an IDBRequest ─────────────────
+// `tx()` resolved with the request object whenever `.result` was undefined, so
+// a MISSING blob came back truthy with no .size and no .type. Every caller then
+// believed the audio was present: the export threw instead of counting the file
+// as left behind, blobURL threw instead of returning null so the player's
+// "Audio file missing" line was unreachable, and `has()` answered true for a
+// blob that does not exist. It also defeated the guard that refuses to replace
+// a good backup with an empty one.
+{
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const page = await start(ctx);
+  const out = await page.evaluate(async () => {
+    const core = await import('./core.js?v=' + (document.documentElement.dataset.v || ''));
+    const missing = await core.Blobs.get('no-such-file-at-all.m4a');
+    let urlThrew = false, url = null;
+    try { url = await core.blobURL('no-such-file-at-all.m4a'); }
+    catch { urlThrew = true; }
+    return {
+      missingIsNull: missing === null || missing === undefined,
+      missingType: Object.prototype.toString.call(missing),
+      has: await core.Blobs.has('no-such-file-at-all.m4a'),
+      urlThrew, url,
+    };
+  });
+  log(out.missingIsNull, 'a missing blob reads as nothing, not as a request object', out.missingType);
+  log(out.has === false, 'and has() says false for it', String(out.has));
+  log(!out.urlThrew && !out.url, 'blobURL returns nothing rather than throwing',
+      out.urlThrew ? 'threw' : String(out.url));
+  await ctx.close();
+}
+
+// ── allowing the services later must not leave backup hidden ────────────
+// configured() cached its "no" while consent was off, and the cache was never
+// cleared — so answering "keep everything on this phone" and then allowing the
+// services from the privacy sheet left the whole Backup section missing until a
+// full reload. Demonstrating the privacy controls first hid the backup.
+{
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const page = await ctx.newPage();
+  await stub(page);
+  await page.goto(URL_, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(500);
+  await page.click('text=Not now'); await page.waitForTimeout(500);
+
+  await go.you(page);
+  await page.waitForTimeout(400);
+  let body = await page.locator('.screen').innerText();
+  log(!/Sign in with Google/i.test(body), 'with everything kept on the phone, backup is not offered');
+
+  // turn the services on the way the app itself offers
+  await page.evaluate(async () => {
+    const core = await import('./core.js?v=' + (document.documentElement.dataset.v || ''));
+    core.Consent.record(true);
+  });
+  await page.waitForTimeout(200);
+  await go.people(page); await page.waitForTimeout(300);
+  await go.you(page); await page.waitForTimeout(900);
+  body = await page.locator('.screen').innerText();
+  log(/Sign in with Google/i.test(body),
+      'and once they are allowed, backup appears without a reload');
+  await ctx.close();
+}
+
+// ── a backup must never replace a complete copy with a partial one ──────
+{
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const page = await start(ctx);
+  await signIn(page);
+
+  await go.people(page);
+  await page.click('text=Add someone'); await page.waitForTimeout(300);
+  await page.fill('.sheet input >> nth=0', 'Jiddo');
+  await page.click('.sheet button:has-text("Add person")'); await page.waitForTimeout(600);
+
+  // three originals, with real blobs behind them
+  await page.evaluate(async () => {
+    const core = await import('./core.js?v=' + (document.documentElement.dataset.v || ''));
+    const person = core.store.people.find(p => p.name === 'Jiddo');
+    for (let i = 0; i < 3; i++) {
+      const blob = new Blob([new Uint8Array([1, 2, 3, 4, i])], { type: 'audio/mpeg' });
+      await core.store.storeAudio(blob, { personId: person.id, source: 'original',
+                                          text: 'take ' + i, duration: 2, isSaved: true });
+    }
+  });
+  await page.waitForTimeout(500);
+
+  const before = drive.size;
+  await go.you(page);
+  await page.click('button:has-text("Back up now")'); await page.waitForTimeout(2500);
+  const stored = JSON.parse([...drive.values()].pop() || '{}');
+  log((stored.recordings || []).length === 3, 'a complete backup carries every recording',
+      String((stored.recordings || []).length));
+
+  // now lose two of the three blobs, the way an eviction does
+  await page.evaluate(async () => {
+    const core = await import('./core.js?v=' + (document.documentElement.dataset.v || ''));
+    const person = core.store.people.find(p => p.name === 'Jiddo');
+    const mine = core.store.assetsFor(person.id, 'original');
+    await core.Blobs.del(mine[0].filename);
+    await core.Blobs.del(mine[1].filename);
+    await core.store.refreshPresence();
+  });
+  await page.waitForTimeout(400);
+
+  await page.click('button:has-text("Back up now")'); await page.waitForTimeout(2500);
+  const after = JSON.parse([...drive.values()].pop() || '{}');
+  log((after.recordings || []).length === 3,
+      'and a backup missing two of three does NOT overwrite it',
+      String((after.recordings || []).length));
+  const said = await page.locator('.screen').innerText();
+  log(/could not be read/i.test(said), 'the screen says why nothing was sent for her');
+  await ctx.close();
+}
+
 await browser.close();
 console.log(problems.length ? `\n${problems.length} PROBLEM(S)` : '\nall OK');
 process.exit(problems.length ? 1 : 0);

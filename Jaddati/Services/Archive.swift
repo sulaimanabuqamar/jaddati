@@ -257,6 +257,11 @@ enum Archive {
         let hours: Int
         let carried: Int
         let tooLarge: Int
+        /// Files that would not READ, as opposed to would not fit. Different
+        /// cause, different remedy, and dropping it meant a family could be
+        /// told the code was ready while three recordings had quietly failed
+        /// to travel — with nothing said at either end.
+        let unreadable: Int
     }
 
     @MainActor
@@ -295,7 +300,8 @@ enum Archive {
             throw Failure.codeFailed
         }
         return CodeResult(code: held.code, hours: held.hours,
-                          carried: exported.carried, tooLarge: exported.tooLarge)
+                          carried: exported.carried, tooLarge: exported.tooLarge,
+                          unreadable: exported.unreadable)
     }
 
     @MainActor

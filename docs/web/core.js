@@ -5,8 +5,8 @@
 // is where those live — IndexedDB for the audio blobs, because a browser has no
 // application-support directory, and localStorage for the index.
 
-import { L, Counts, isArabicText, state as lang } from "./strings.js?v=c280b865d7";
-import { prefs } from "./prefs.js?v=c280b865d7";
+import { L, Counts, isArabicText, state as lang } from "./strings.js?v=a805f97143";
+import { prefs } from "./prefs.js?v=a805f97143";
 
 export const uuid = () =>
   (crypto.randomUUID ? crypto.randomUUID()
@@ -187,6 +187,41 @@ function db() {
   return dbPromise;
 }
 
+/**
+ * fetch, but it gives up.
+ *
+ * Not one request in this app had a timeout. On a venue's captive portal — a
+ * connection that accepts the socket and then says nothing — "Creating audio…"
+ * span for ever with no cancel and no way out but a reload, which loses
+ * whatever is in the compose box. A request that has not answered in this long
+ * is not going to.
+ */
+const REQUEST_TIMEOUT_MS = 25000;
+
+async function fetchWithTimeout(input, init = {}, ms = REQUEST_TIMEOUT_MS) {
+  // A caller that brought its own signal keeps it; we only add one when there
+  // is none, so nothing upstream loses the ability to cancel.
+  if (init.signal || typeof AbortController === "undefined") return globalThis.fetch(input, init);
+  const control = new AbortController();
+  const timer = setTimeout(() => control.abort(), ms);
+  try {
+    return await globalThis.fetch(input, { ...init, signal: control.signal });
+  } catch (e) {
+    // An abort we caused reads as a timeout, not as "something went wrong".
+    if (e && e.name === "AbortError") throw new TimedOut();
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export class TimedOut extends Error {
+  constructor() {
+    super(L("That took too long. Your words are still here — try again."));
+    this.name = "TimedOut";
+  }
+}
+
 async function tx(mode, fn) {
   const d = await db();
   return new Promise((resolve, reject) => {
@@ -194,7 +229,19 @@ async function tx(mode, fn) {
     const store = t.objectStore(BLOBS);
     let out;
     try { out = fn(store); } catch (e) { reject(e); return; }
-    t.oncomplete = () => resolve(out && out.result !== undefined ? out.result : out);
+    t.oncomplete = () => {
+      // `out` is whatever fn returned — an IDBRequest for get/put/delete.
+      // Reading `.result` only when it is defined meant a MISSING key resolved
+      // with the IDBRequest itself: truthy, no .size, no .type. Every caller
+      // then believed the audio was there. blobURL threw instead of returning
+      // null, the export threw instead of counting the file as left behind,
+      // and `has()` answered true for a blob that does not exist.
+      if (out && typeof out === "object" && "result" in out) {
+        resolve(out.result === undefined ? null : out.result);
+        return;
+      }
+      resolve(out === undefined ? null : out);
+    };
     t.onerror = () => reject(t.error);
     t.onabort = () => reject(t.error || new Error("aborted"));
   });
@@ -514,9 +561,20 @@ class Store extends EventTarget {
     return asset;
   }
 
+  /// Returns whether the change reached durable storage.
+  ///
+  /// It used to return nothing, so "Keep this clip" said "Clip saved" whether
+  /// or not the save had worked. The sweep for abandoned drafts then deleted
+  /// the audio, and a clip the person had explicitly chosen to keep was gone
+  /// after a reload, having been told twice that it was safe.
   updateAsset(a) {
     const i = this.assets.findIndex(x => x.id === a.id);
-    if (i < 0) return; this.assets[i] = a; this.save();
+    if (i < 0) return false;
+    const before = this.assets[i];
+    this.assets[i] = a;
+    if (this.save()) return true;
+    this.assets[i] = before;
+    return false;
   }
 
   async deleteAsset(asset) {
@@ -549,6 +607,13 @@ class Store extends EventTarget {
     this.books = this.books.filter(b => b.personId !== person.id);
     this.people = this.people.filter(p => p.id !== person.id);
     this.save();
+
+    // And out of Drive, if there is a copy there. Removing someone from the
+    // phone while their whole archive — sealed letters included — sits in a
+    // backup is not what "delete" means to anyone. Best effort: signed out, or
+    // offline, this does nothing and the local deletion still stands.
+    const key = person.cloudKey || person.id;
+    try { await Cloud.forget(key); } catch {}
   }
 
   /// Where this person's backup lives in Drive.
@@ -827,6 +892,13 @@ export const textHeaders = (extra = {}) =>
   withDevice({ authorization: `Bearer ${Config.llmKey}`, ...extra }, Config.usesRelayText);
 
 function voiceMessage(status, detail) {
+  // The relay answers 403 "not this device's voice" when the sweep has already
+  // lifted this device's lock — which, with a ten-minute voice lifetime, is the
+  // NORMAL state by the end of a session. Reading it as a rejected key sent
+  // people to check a credential that was never the problem.
+  if (status === 403 && (detail || "").toLowerCase().includes("not this device")) {
+    return L("That voice has already been removed at the voice service. Nothing is left to delete there.");
+  }
   if (status === 401 || status === 403) return L("The key was refused by the voice service.");
   if (status === 429) {
     // Going through the relay, 429 covers two different walls, and "wait a few
@@ -862,7 +934,7 @@ export const Voice = {
     const form = new FormData();
     form.append("name", name);
     form.append("files", blob, "sample." + (blob.type.includes("wav") ? "wav" : blob.type.includes("mpeg") ? "mp3" : "m4a"));
-    const r = await fetch(`${Config.voiceBaseURL}/v1/voices/add`, {
+    const r = await fetchWithTimeout(`${Config.voiceBaseURL}/v1/voices/add`, {
       method: "POST", headers: voiceHeaders(), body: form,
     }).catch(() => { throw new VoiceError("offline", L("No internet connection.")); });
 
@@ -882,7 +954,7 @@ export const Voice = {
       throw new VoiceError("tooLong", L("That is longer than one go allows. Shorten it and try again."));
     }
     const url = `${Config.voiceBaseURL}/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`;
-    const r = await fetch(url, {
+    const r = await fetchWithTimeout(url, {
       method: "POST",
       headers: voiceHeaders({ "content-type": "application/json", accept: "audio/mpeg" }),
       body: JSON.stringify({
@@ -907,7 +979,7 @@ export const Voice = {
     if (!voiceId || isDemoVoice(voiceId)) return;
     if (!Consent.allowsNetwork) throw new ConsentMissing();
     if (!Config.elevenKey) throw new VoiceError("notConfigured", L("The key was refused by the voice service."));
-    const r = await fetch(`${Config.voiceBaseURL}/v1/voices/${encodeURIComponent(voiceId)}`, {
+    const r = await fetchWithTimeout(`${Config.voiceBaseURL}/v1/voices/${encodeURIComponent(voiceId)}`, {
       method: "DELETE", headers: voiceHeaders(),
     }).catch(() => { throw new VoiceError("offline", L("No internet connection.")); });
     if (r.status === 404) return;                 // already gone is the outcome we wanted
@@ -972,7 +1044,7 @@ export const Companion = {
     if (!Consent.allowsNetwork) throw new ConsentMissing();
     if (!Config.llmKey) throw new CompanionError(L("Questions are not set up on this build."));
 
-    const r = await fetch(`${Config.llmBaseURL}/chat/completions`, {
+    const r = await fetchWithTimeout(`${Config.llmBaseURL}/chat/completions`, {
       method: "POST",
       headers: textHeaders({ "content-type": "application/json" }),
       body: JSON.stringify({
@@ -1005,7 +1077,7 @@ async function chat(system, user, { maxTokens = 200, temperature = 0.3 } = {}) {
   if (!Consent.allowsNetwork) throw new ConsentMissing();
   if (!Config.llmKey) throw new CompanionError(L("Questions are not set up on this build."));
 
-  const r = await fetch(`${Config.llmBaseURL}/chat/completions`, {
+  const r = await fetchWithTimeout(`${Config.llmBaseURL}/chat/completions`, {
     method: "POST",
     headers: textHeaders({ "content-type": "application/json" }),
     body: JSON.stringify({
@@ -1342,10 +1414,14 @@ export const Cloud = {
     // Not even asked when the answer was no. A "Sign in with Google" row on a
     // screen that says "Everything is being kept on this phone" is the app
     // contradicting itself in the space of two rows.
-    if (!Consent.allowsNetwork) { this._configured = false; return false; }
+    // Answer false WITHOUT caching it. Cached, allowing the two services from
+    // the privacy sheet left the whole Backup section hidden until a full
+    // reload — so demonstrating the privacy controls first made the backup
+    // disappear for the rest of the session.
+    if (!Consent.allowsNetwork) return false;
     if (this._configured !== null) return this._configured;
     try {
-      const r = await fetch(RELAY_URL + "/google/status", {
+      const r = await fetchWithTimeout(RELAY_URL + "/google/status", {
         method: "POST", headers: relayHeaders({ "content-type": "application/json" }),
         body: "{}",
       });
@@ -1438,7 +1514,7 @@ export const Cloud = {
       throw new CloudError(L("That sign-in could not be completed. Try again."));
     }
 
-    const r = await fetch(RELAY_URL + "/google/exchange", {
+    const r = await fetchWithTimeout(RELAY_URL + "/google/exchange", {
       method: "POST", headers: relayHeaders({ "content-type": "application/json" }),
       body: JSON.stringify({ code, redirect_uri: this.redirectURI, code_verifier: pkce.verifier }),
     });
@@ -1463,7 +1539,7 @@ export const Cloud = {
     if (!t) throw new CloudError(L("Sign in to Google first."));
     if (t.access_token && Date.now() < t.expires_at - 60000) return t.access_token;
 
-    const r = await fetch(RELAY_URL + "/google/refresh", {
+    const r = await fetchWithTimeout(RELAY_URL + "/google/refresh", {
       method: "POST", headers: relayHeaders({ "content-type": "application/json" }),
       body: JSON.stringify({ refresh_token: t.refresh_token }),
     });
@@ -1480,6 +1556,12 @@ export const Cloud = {
       throw new CloudError(L("Could not reach Google just now. Try again in a moment."));
     }
     const fresh = await r.json();
+    // A 200 carrying no token used to be stored anyway, with an hour's life on
+    // it. Every later call then sent "Bearer undefined" to Drive, which 401s
+    // for ever, and nothing on screen ever said why.
+    if (!fresh || !fresh.access_token) {
+      throw new CloudError(L("Could not reach Google just now. Try again in a moment."));
+    }
     this.tokens = { ...t, access_token: fresh.access_token,
                     expires_at: Date.now() + (fresh.expires_in || 3600) * 1000 };
     return fresh.access_token;
@@ -1493,7 +1575,7 @@ export const Cloud = {
   async _drive(path, init = {}) {
     if (!Consent.allowsNetwork) throw new ConsentMissing();
     const token = await this.accessToken();
-    const r = await fetch(path, {
+    const r = await fetchWithTimeout(path, {
       ...init,
       headers: { authorization: "Bearer " + token, ...(init.headers || {}) },
     });
@@ -1517,10 +1599,17 @@ export const Cloud = {
   /// that is discovered to be partial at the worst possible moment.
   async backUp(onProgress) {
     const existing = await this._existing();
-    let sent = 0, skipped = 0, atRisk = 0;
+    let sent = 0, skipped = 0, atRisk = 0, failed = 0;
 
     for (const person of store.people) {
-      const { file, carried } = await Archive.export(person.id);
+      // One person who cannot be exported — deleted while this was running, a
+      // blob gone missing — used to throw out of the loop entirely, so the
+      // people already uploaded were never reported and the screen said
+      // nothing at all.
+      let file, carried;
+      try {
+        ({ file, carried } = await Archive.export(person.id));
+      } catch { failed++; continue; }
 
       // Refuse to overwrite a good backup with an empty one.
       //
@@ -1530,8 +1619,12 @@ export const Cloud = {
       // nothing. Pressing "Back up now" then, which is the natural reaction
       // to seeing "Audio file missing", would PATCH the last good copy in
       // Drive with one containing no audio at all.
+      // Fewer than expected, not only none. Losing two recordings of three and
+      // uploading the third replaces the one complete copy in Drive with an
+      // incomplete one — the exact loss this guard exists to prevent, and the
+      // commoner shape of it.
       const expected = store.assetsFor(person.id, "original").length;
-      if (expected > 0 && carried === 0) { atRisk++; continue; }
+      if (expected > 0 && carried < expected) { atRisk++; continue; }
 
       const body = JSON.stringify(file);
       if (new TextEncoder().encode(body).length > 24 * 1024 * 1024) { skipped++; continue; }
@@ -1552,15 +1645,31 @@ export const Cloud = {
         `\r\n--${boundary}\r\ncontent-type: application/json\r\n\r\n` +
         body + `\r\n--${boundary}--`;
 
-      await this._drive(
-        DRIVE_UPLOAD + (id ? "/" + id : "") + "?uploadType=multipart&fields=id",
-        { method: id ? "PATCH" : "POST",
-          headers: { "content-type": `multipart/related; boundary=${boundary}` },
-          body: multipart });
+      try {
+        await this._drive(
+          DRIVE_UPLOAD + (id ? "/" + id : "") + "?uploadType=multipart&fields=id",
+          { method: id ? "PATCH" : "POST",
+            headers: { "content-type": `multipart/related; boundary=${boundary}` },
+            body: multipart });
+      } catch { failed++; continue; }
       sent++;
       if (onProgress) onProgress(sent, store.people.length);
     }
-    return { sent, skipped, atRisk };
+    return { sent, skipped, atRisk, failed };
+  },
+
+  /// Remove one person's backup from Drive.
+  ///
+  /// Quiet by design: it is called from the delete path, where the local
+  /// removal has already happened and must stand whatever happens here. Not
+  /// signed in, no backup, or no connection all mean "nothing to do".
+  async forget(key) {
+    if (!this.isSignedIn || !Consent.allowsNetwork) return false;
+    const existing = await this._existing();
+    const id = existing.get(this.nameFor(key));
+    if (!id) return false;
+    await this._drive(DRIVE_FILES + "/" + id, { method: "DELETE" });
+    return true;
   },
 
   /// Bring back whatever is up there. Each file goes through Archive.import,
@@ -1580,6 +1689,10 @@ export const Cloud = {
       try {
         const r = await this._drive(DRIVE_FILES + "/" + id + "?alt=media");
         const arrived = await Archive.import(await r.text());
+        // `saved` is whether the index write actually reached durable storage.
+        // Counting the import as a success without it told people she was back
+        // when a reload would show she had never arrived.
+        if (arrived && arrived.saved === false) { failed++; continue; }
         // Remember where she came from, so backing up again writes over the
         // same file rather than beside it.
         if (arrived && arrived.person) await store.setCloudKey(arrived.person, key);
@@ -1669,7 +1782,7 @@ export const Archive = {
     const { file, carried, leftBehind } = await this.export(personId);
     const body = JSON.stringify(file);
 
-    const r = await fetch(RELAY_URL + "/archive", {
+    const r = await fetchWithTimeout(RELAY_URL + "/archive", {
       method: "POST",
       headers: relayHeaders({ "content-type": "application/json" }),
       body,
@@ -1696,7 +1809,7 @@ export const Archive = {
     // their sealed letters to a server — while the privacy screen two taps
     // away still said nothing leaves the phone.
     if (!Consent.allowsNetwork) throw new ConsentMissing();
-    const r = await fetch(RELAY_URL + "/archive/fetch", {
+    const r = await fetchWithTimeout(RELAY_URL + "/archive/fetch", {
       method: "POST",
       headers: relayHeaders({ "content-type": "application/json" }),
       body: JSON.stringify({ code }),
@@ -1735,11 +1848,13 @@ export const Archive = {
       voiceId,
       id: personId,
       photoFilename: null,
-      // Never inherited from the file. The key says where a backup lives in
-      // THIS browser's Drive, and restore is the only thing entitled to set
-      // it — otherwise an archive passed by code would arrive claiming a
-      // backup slot it has never been written to.
-      cloudKey: null,
+      // Carried, deliberately. Each person's Drive is their own, so there is
+      // no slot to collide with — and without it, someone who arrived by code
+      // is invisible to the restore check, so restoring the same archive from
+      // Drive stands a second copy of her beside the first and the next backup
+      // writes a second file. Only a string is accepted: this comes out of a
+      // file we did not write.
+      cloudKey: typeof file.person.cloudKey === "string" ? file.person.cloudKey : null,
       createdAt: file.person.createdAt || new Date().toISOString(),
       // The whole point of the handoff is that every phone speaks in the SAME
       // clone. That makes the voice shared property, so this device must not

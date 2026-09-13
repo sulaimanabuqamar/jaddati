@@ -5,7 +5,7 @@
 // This table is generated from Jaddati/Design/Strings.swift — do not hand-edit.
 // Regenerate with docs/web/build-strings.py after changing the app's strings.
 
-import { prefs } from "./prefs.js?v=c280b865d7";
+import { prefs } from "./prefs.js?v=a805f97143";
 
 export const AR = {
  "A bedtime story": "قصة قبل النوم",
@@ -427,6 +427,10 @@ export const AR = {
  "Opening a letter needs their recreated voice. Add it on their Setup screen first.": "فتح الرسالة يحتاج إلى صوتهم المُعاد إنشاؤه. أضفه من شاشة الإعداد أولًا.",
  "This browser is not keeping site data, so signing in cannot finish. Turn that on, or use a normal window.": "هذا المتصفّح لا يحفظ بيانات الموقع، لذا لا يمكن إتمام تسجيل الدخول. فعّل الحفظ أو استخدم نافذة عادية.",
  "Google refused that sign-in.": "رفضت جوجل تسجيل الدخول هذا.",
+ "Could not keep this clip": "تعذّر حفظ هذا المقطع",
+ "This phone would not save it. Free some space and try again.": "لم يتمكّن هذا الجهاز من حفظه. أفرغ بعض المساحة وحاول مجددًا.",
+ "That took too long. Your words are still here — try again.": "استغرق هذا وقتًا طويلًا. كلماتك ما زالت هنا — حاول مجددًا.",
+ "That voice has already been removed at the voice service. Nothing is left to delete there.": "أُزيل هذا الصوت من خدمة الصوت بالفعل. لم يبقَ شيء لحذفه هناك.",
  "Some were already here and were left alone.": "بعضهم كان موجودًا هنا فعلًا فتُرك كما هو.",
  "Some could not be read and were left in Drive.": "تعذّرت قراءة بعضها فبقيت في درايف.",
  "Could not reach Google just now. Try again in a moment.": "تعذّر الوصول إلى جوجل الآن. حاول بعد قليل.",

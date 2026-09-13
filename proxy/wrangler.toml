@@ -13,10 +13,26 @@ crons = ["*/10 * * * *"]
 
 [vars]
 # How many characters of speech one device may spend in a calendar month.
-# One page of a book is roughly 900, so 1000 is about a page — enough for
-# someone handed the phone to type a few real sentences and hear them back,
-# without one visitor draining the account.
-CREDITS_PER_DEVICE = "1000"
+# One page of a book is roughly 900, so this is a few pages — enough for
+# someone handed the phone to type real sentences and hear them back, without
+# one visitor draining the account.
+#
+# Must be at least Config.maxCharactersPerGeneration (2500), or a visitor who
+# has spent nothing is refused their first sentence and told the month's
+# allowance is used up. Raise it if you want a visitor to get more than one
+# full-length generation — this is the minimum coherent value, not a generous
+# one.
+CREDITS_PER_DEVICE = "2500"
+
+# And a ceiling across EVERYONE for the month. The per-device meter is keyed on
+# a header the caller writes, so clearing site data mints a new one — it is
+# friction, not a limit. This is the number that protects the bill.
+CREDITS_PER_MONTH = "100000"
+
+# Questions and dictation per device per month. Groq is cheap, but the relay
+# token is published in the web build, so without a ceiling it is an open
+# language model on our key.
+ASKS_PER_DEVICE = "200"
 
 # Ceiling on shared voices alive at once, ACROSS everyone. Set this BELOW the
 # number of slots the plan actually has, so the demo always has room.

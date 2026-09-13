@@ -214,7 +214,7 @@ final class CloudBackup: NSObject, ObservableObject {
 
     // MARK: The backup
 
-    struct BackedUp { let sent: Int; let skipped: Int }
+    struct BackedUp { let sent: Int; let skipped: Int; let atRisk: Int }
     struct BroughtBack { let brought: Int; let failed: Int }
 
     private static func name(for personId: UUID) -> String {
@@ -229,12 +229,28 @@ final class CloudBackup: NSObject, ObservableObject {
         defer { working = false }
 
         let existing = try await listing()
-        var sent = 0, skipped = 0
+        var sent = 0, skipped = 0, atRisk = 0
 
         for person in library.people {
-            let exported = try Archive.export(person: person, library: library)
-            defer { try? FileManager.default.removeItem(at: exported.url) }
-            let body = try Data(contentsOf: exported.url)
+            // Gather here, build off the main actor — the same split the code
+            // handoff uses, and for the same reason: this reads and base64s
+            // every recording the person has, and doing that on the main actor
+            // is a frozen screen for the whole backup.
+            let outline = Archive.plan(person: person, library: library)
+            let (built, body) = try await Task.detached(priority: .userInitiated) {
+                () async throws -> (Archive.ExportResult, Data) in
+                let made = try Archive.build(outline)
+                defer { try? FileManager.default.removeItem(at: made.url) }
+                let bytes = try Data(contentsOf: made.url)
+                return (made, bytes)
+            }.value
+
+            // Refuse to replace a good backup with a worse one. If recordings
+            // could not be read off this phone, the copy in Drive is more
+            // complete than the copy we are about to upload, and overwriting it
+            // turns a recoverable problem into a permanent loss. Fewer than
+            // expected is enough — it does not have to be all of them.
+            if built.carried < outline.originals.count { atRisk += 1; continue }
             if body.count > 24 * 1024 * 1024 { skipped += 1; continue }
 
             try await upload(name: Self.name(for: person.id),
@@ -242,7 +258,7 @@ final class CloudBackup: NSObject, ObservableObject {
                              body: body)
             sent += 1
         }
-        return BackedUp(sent: sent, skipped: skipped)
+        return BackedUp(sent: sent, skipped: skipped, atRisk: atRisk)
     }
 
     /// Everything up there, back. Each file goes through Archive.importArchive,
