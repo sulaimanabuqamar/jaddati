@@ -1752,9 +1752,10 @@ export const Cloud = {
       // blob gone missing — used to throw out of the loop entirely, so the
       // people already uploaded were never reported and the screen said
       // nothing at all.
-      let file, carried;
+      let file, carriedOriginals;
       try {
-        ({ file, carried } = await Archive.export(person.id));
+        ({ file, carriedOriginals } =
+          await Archive.export(person.id, { includingKeptClips: true }));
       } catch { failed++; continue; }
 
       // Refuse to overwrite a good backup with an empty one.
@@ -1769,8 +1770,11 @@ export const Cloud = {
       // uploading the third replaces the one complete copy in Drive with an
       // incomplete one — the exact loss this guard exists to prevent, and the
       // commoner shape of it.
+      // Originals only. A kept clip left behind is a smaller loss than a
+      // recording left behind, and counting the two together would let someone
+      // with many clips and one missing recording block their own backup.
       const expected = store.assetsFor(person.id, "original").length;
-      if (expected > 0 && carried < expected) { atRisk++; continue; }
+      if (expected > 0 && carriedOriginals < expected) { atRisk++; continue; }
 
       const body = JSON.stringify(file);
       if (new TextEncoder().encode(body).length > 24 * 1024 * 1024) { skipped++; continue; }
@@ -1893,30 +1897,82 @@ function emailFromIdToken(idToken) {
   } catch { return ""; }
 }
 
+/// What to call the file at the other end.
+///
+/// The phone stores a file extension; the browser stores a MIME type. Guessing
+/// "mp3" for everything is what put .m4a recordings on disk under the wrong
+/// name — mostly survivable, because players sniff, but not always.
+const extensionFor = (mime, filename) => {
+  const name = String(filename || "");
+  const dot = name.lastIndexOf(".");
+  const fromName = dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
+  if (fromName && fromName.length <= 4) return fromName;
+  const m = String(mime || "").toLowerCase();
+  if (m.includes("wav")) return "wav";
+  if (m.includes("webm")) return "webm";
+  if (m.includes("mp4") || m.includes("m4a") || m.includes("aac")) return "m4a";
+  return "mp3";
+};
+
 export const Archive = {
   /**
    * Everything one person is, as a single object ready to be written to a file.
    * Originals are carried as base64 until the budget runs out, and the result
    * says plainly whether they made it — a silent partial export would have the
    * family believing the recordings are safe on the other phone.
+   *
+   * `includingKeptClips` is set by the BACKUP and by nothing else. Sharing and
+   * backing up are not the same job: a shared file has to clear WhatsApp and
+   * the relay's ceiling, and a clip can be made again at the other end — but a
+   * backup answers "the laptop is gone, is she still there?", and there the
+   * wording someone chose and the day they chose it do not come back.
    */
-  async export(personId) {
+  async export(personId, { includingKeptClips = false } = {}) {
     const person = store.person(personId);
     if (!person) throw new ArchiveError(L("That person could not be found."));
 
     const originals = store.assets
       .filter(a => a.personId === personId && a.source === "original" && store.fileExists(a));
+    // keptClips, not `isSaved`: book pages are stored saved so a page is never
+    // paid for twice, and reading the flag directly would carry the whole page
+    // cache of every imported book into the backup.
+    const extras = includingKeptClips
+      ? store.keptClips(personId).filter(a => store.fileExists(a))
+      : [];
 
     const recordings = [];
     let carried = 0, leftBehind = 0;
-    for (const asset of originals) {
+    let carriedOriginals = 0;
+    // Originals first, always. The budget is spent on the irreplaceable things
+    // before the ones that can be made again, and the backup's "is this copy
+    // worse than the one already up there?" check counts originals — so a kept
+    // clip must never crowd a real recording out.
+    for (const asset of originals.concat(extras)) {
       const blob = await Blobs.get(asset.filename).catch(() => null);
       if (!blob) { leftBehind++; continue; }
       if (carried + blob.size > ARCHIVE_MAX_BYTES) { leftBehind++; continue; }
       carried += blob.size;
+      if (asset.source === "original") carriedOriginals++;
       recordings.push({
+        // `asset` is this platform's own shape and stays, so archives already
+        // in the wild keep opening. The flat fields beside it are what the
+        // PHONE reads: its RecordingCard looks for them at the top level and
+        // finds nothing inside `asset`, so until now every recording that
+        // crossed to iOS arrived with no words, no duration and the wrong file
+        // extension — and every date written here carries fractional seconds,
+        // which is a second reason the phone would not open this at all.
         asset: { ...asset, id: undefined, personId: undefined },
         type: blob.type || "audio/mpeg",
+        text: asset.text || "",
+        durationSeconds: asset.durationSeconds || 0,
+        fileExtension: extensionFor(blob.type, asset.filename),
+        source: asset.source,
+        intent: asset.intentRaw || undefined,
+        contentKind: asset.contentKind || undefined,
+        provenance: asset.provenance || undefined,
+        modelId: asset.modelId || undefined,
+        createdAt: asset.createdAt,
+        promptId: asset.promptId,
         data: await toBase64(blob),
       });
     }
@@ -1935,6 +1991,7 @@ export const Archive = {
         recordings,
       },
       carried: recordings.length,
+      carriedOriginals,
       leftBehind,
     };
   },
@@ -2086,13 +2143,36 @@ export const Archive = {
     for (const rec of list(file.recordings)) {
       try {
         const blob = fromBase64(rec.data, rec.type);
+        // Flat fields first — that is what the PHONE writes, and what this
+        // now writes too. `rec.asset` is the older shape from this platform.
+        // Reading only the nested one is what made every recording arriving
+        // from iOS land with no words and a zero duration.
+        const nested = rec.asset || {};
+        // Hard-coding "original" here told the family that clips made in her
+        // voice were recordings OF her. That is the one label in this app that
+        // must never be wrong. Absent still means original: every archive
+        // written for sharing says nothing, and so does every older backup.
+        const source = (rec.source || nested.source) === "generated"
+          ? "generated" : "original";
         const stored = await store.storeAudio(blob, {
-          personId, source: "original", text: rec.asset?.text || "",
-          duration: rec.asset?.durationSeconds || 0, isSaved: true,
-          fileExtension: (rec.type || "").includes("wav") ? "wav"
-            : (rec.type || "").includes("webm") ? "webm" : "mp3",
+          personId, source,
+          text: str(rec.text ?? nested.text),
+          duration: Number(rec.durationSeconds ?? nested.durationSeconds) || 0,
+          isSaved: true,
+          modelId: rec.modelId ?? nested.modelId ?? null,
+          provenance: rec.provenance ?? nested.provenance ?? null,
+          intent: rec.intent ?? nested.intentRaw ?? null,
+          content: rec.contentKind ?? nested.contentKind ?? null,
+          promptId: rec.promptId ?? nested.promptId,
+          fileExtension: str(rec.fileExtension) || extensionFor(rec.type, ""),
         });
-        if (stored) restored++;
+        if (stored) {
+          // storeAudio stamps "now". A clip that crossed to a second device
+          // was claiming it was made on the day it arrived.
+          const made = when(rec.createdAt ?? nested.createdAt);
+          if (made) { stored.createdAt = made; store.updateAsset(stored); }
+          restored++;
+        }
       } catch {
         // One unreadable recording must not cost the family the whole import.
       }

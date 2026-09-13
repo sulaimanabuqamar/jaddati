@@ -231,10 +231,18 @@ final class CloudBackup: NSObject, ObservableObject {
     // MARK: The backup
 
     struct BackedUp { let sent: Int; let skipped: Int; let atRisk: Int }
-    struct BroughtBack { let brought: Int; let failed: Int }
+    struct BroughtBack { let brought: Int; let failed: Int; let already: Int }
 
-    private static func name(for personId: UUID) -> String {
-        "person-\(personId.uuidString).jaddati.json"
+    /// The file name carries the key, which is how a second device recognises
+    /// someone it already has. Takes the key rather than the local id: those
+    /// are the same string only until the first restore.
+    private static func name(for key: String) -> String {
+        "person-\(key).jaddati.json"
+    }
+
+    private static func key(inFileNamed name: String) -> String {
+        name.dropFirst("person-".count)
+            .replacingOccurrences(of: ".jaddati.json", with: "")
     }
 
     /// One file per person, and the contents are exactly the archive the code
@@ -252,26 +260,54 @@ final class CloudBackup: NSObject, ObservableObject {
             // handoff uses, and for the same reason: this reads and base64s
             // every recording the person has, and doing that on the main actor
             // is a frozen screen for the whole backup.
-            let outline = Archive.plan(person: person, library: library)
-            let (built, body) = try await Task.detached(priority: .userInitiated) {
-                () async throws -> (Archive.ExportResult, Data) in
-                let made = try Archive.build(outline)
-                defer { try? FileManager.default.removeItem(at: made.url) }
-                let bytes = try Data(contentsOf: made.url)
-                return (made, bytes)
+            //
+            // `includingKeptClips` is the whole difference between this and
+            // sharing. A backup that brings back her recordings but not the
+            // things the family chose to keep is not an answer to "the phone
+            // is gone".
+            // Where her file lives in Drive. Set once, on the first backup,
+            // and carried from then on — so backing up after a restore writes
+            // over the same file instead of standing a second one beside it.
+            let key = person.cloudKey ?? person.id.uuidString
+            if person.cloudKey == nil {
+                var stamped = person
+                stamped.cloudKey = key
+                library.update(stamped)
+            }
+
+            let outline = Archive.plan(person: person, library: library,
+                                       includingKeptClips: true)
+            let built = try await Task.detached(priority: .userInitiated) {
+                () throws -> Archive.ExportResult in
+                try Archive.build(outline)
             }.value
+            // Deleted here rather than inside the task: the file IS what gets
+            // uploaded now, not a step on the way to some bytes. In a loop
+            // `defer` runs at the end of each pass, so nothing accumulates.
+            defer { try? FileManager.default.removeItem(at: built.url) }
 
             // Refuse to replace a good backup with a worse one. If recordings
             // could not be read off this phone, the copy in Drive is more
             // complete than the copy we are about to upload, and overwriting it
             // turns a recoverable problem into a permanent loss. Fewer than
             // expected is enough — it does not have to be all of them.
-            if built.carried < outline.originals.count { atRisk += 1; continue }
-            if body.count > 24 * 1024 * 1024 { skipped += 1; continue }
+            //
+            // Originals only. A kept clip left behind is a smaller loss than a
+            // recording left behind, and counting the two together would let
+            // someone with many clips and one unreadable recording block their
+            // own backup for good.
+            if built.carriedOriginals < outline.originals.count { atRisk += 1; continue }
 
-            try await upload(name: Self.name(for: person.id),
-                             replacing: existing[Self.name(for: person.id)],
-                             body: body)
+            var size = 0
+            if let values = try? built.url.resourceValues(forKeys: [.fileSizeKey]),
+               let bytes = values.fileSize {
+                size = bytes
+            }
+            if size > 24 * 1024 * 1024 { skipped += 1; continue }
+
+            try await upload(name: Self.name(for: key),
+                             replacing: existing[Self.name(for: key)],
+                             file: built.url)
             sent += 1
         }
         return BackedUp(sent: sent, skipped: skipped, atRisk: atRisk)
@@ -284,21 +320,35 @@ final class CloudBackup: NSObject, ObservableObject {
         working = true
         defer { working = false }
 
-        var brought = 0, failed = 0
+        var brought = 0, failed = 0, already = 0
         for (name, id) in try await listing() where name.hasPrefix("person-") {
+            // Someone already here under this key is the same person, and
+            // importing her again put a second copy on the People tab — every
+            // single time the button was pressed. Compared without case,
+            // because the phone writes an uppercase UUID and the browser a
+            // lowercase one for what is otherwise the same value.
+            let key = Self.key(inFileNamed: name)
+            if library.people.contains(where: {
+                ($0.cloudKey ?? $0.id.uuidString).caseInsensitiveCompare(key) == .orderedSame
+            }) { already += 1; continue }
             do {
                 let data = try await download(id: id)
                 let scratch = FileManager.default.temporaryDirectory
                     .appendingPathComponent("restore-\(UUID().uuidString).jaddati.json")
                 try data.write(to: scratch, options: .atomic)
                 defer { try? FileManager.default.removeItem(at: scratch) }
-                _ = try Archive.importArchive(from: scratch, into: library)
+                let arrived = try Archive.importArchive(from: scratch, into: library)
+                // Remember where she came from, or the next backup writes a
+                // second file for the person just restored.
+                var stamped = arrived.person
+                stamped.cloudKey = key
+                library.update(stamped)
                 brought += 1
             } catch {
                 failed += 1
             }
         }
-        return BroughtBack(brought: brought, failed: failed)
+        return BroughtBack(brought: brought, failed: failed, already: already)
     }
 
     private struct FileList: Decodable {
@@ -331,26 +381,55 @@ final class CloudBackup: NSObject, ObservableObject {
         return data
     }
 
-    private func upload(name: String, replacing id: String?, body: Data) async throws {
+    /// Sends the archive from a file rather than from bytes.
+    ///
+    /// This used to take the archive as `Data`, and by the time Drive saw it
+    /// the same audio existed four times over: the base64 strings inside the
+    /// archive, the JSON they were encoded into, that same file read straight
+    /// back off disk, and the multipart body built by appending around it —
+    /// which reallocates as it grows, so briefly a fifth time. Backing up a
+    /// family was hundreds of megabytes resident and iOS killed the app for
+    /// it, which is not an error the app can report: the process is gone.
+    ///
+    /// Now the envelope is assembled on disk and URLSession streams it. Peak
+    /// memory is one 512 KB chunk.
+    private func upload(name: String, replacing id: String?, file: URL) async throws {
         let boundary = "jaddati-\(UUID().uuidString)"
         var metadata: [String: Any] = ["name": name]
         if id == nil { metadata["parents"] = ["appDataFolder"] }
 
-        var payload = Data()
-        payload.append("--\(boundary)\r\ncontent-type: application/json; charset=UTF-8\r\n\r\n".data(using: .utf8)!)
-        payload.append(try JSONSerialization.data(withJSONObject: metadata))
-        payload.append("\r\n--\(boundary)\r\ncontent-type: application/json\r\n\r\n".data(using: .utf8)!)
-        payload.append(body)
-        payload.append("\r\n--\(boundary)--".data(using: .utf8)!)
+        let envelope = FileManager.default.temporaryDirectory
+            .appendingPathComponent("jaddati-upload-\(UUID().uuidString).multipart")
+        defer { try? FileManager.default.removeItem(at: envelope) }
+
+        var prologue = Data()
+        prologue.append("--\(boundary)\r\ncontent-type: application/json; charset=UTF-8\r\n\r\n".data(using: .utf8)!)
+        prologue.append(try JSONSerialization.data(withJSONObject: metadata))
+        prologue.append("\r\n--\(boundary)\r\ncontent-type: application/json\r\n\r\n".data(using: .utf8)!)
+        try prologue.write(to: envelope, options: .atomic)
+
+        // Scoped, so both handles are closed before the upload reads the file.
+        // A `defer` at function level would close them after it.
+        do {
+            let sink = try FileHandle(forWritingTo: envelope)
+            defer { try? sink.close() }
+            _ = try sink.seekToEnd()
+
+            let source = try FileHandle(forReadingFrom: file)
+            defer { try? source.close() }
+            while let chunk = try source.read(upToCount: 512 * 1024), !chunk.isEmpty {
+                try sink.write(contentsOf: chunk)
+            }
+            try sink.write(contentsOf: "\r\n--\(boundary)--".data(using: .utf8)!)
+        }
 
         let path = Self.driveUpload + (id.map { "/\($0)" } ?? "") + "?uploadType=multipart&fields=id"
         var request = URLRequest(url: URL(string: path)!)
         request.httpMethod = id == nil ? "POST" : "PATCH"
         request.setValue("Bearer \(try await freshAccessToken())", forHTTPHeaderField: "authorization")
         request.setValue("multipart/related; boundary=\(boundary)", forHTTPHeaderField: "content-type")
-        request.httpBody = payload
 
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (_, response) = try await URLSession.shared.upload(for: request, fromFile: envelope)
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(code) else { throw Failure.driveRefused }
     }

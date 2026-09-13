@@ -526,6 +526,7 @@ let arabicStrings: [String: String] = [
     "Nothing was backed up.": "لم يُنسخ أي شيء احتياطيًا.",
     "Some recordings could not be read, so those people were left as they were rather than overwritten.": "تعذّرت قراءة بعض التسجيلات، فتُركت تلك النسخ كما هي بدل الكتابة فوقها.",
     "Some could not be read and were left in Drive.": "تعذّرت قراءة بعضها فبقيت في درايف.",
+    "Some were already here and were left alone.": "بعضهم كان موجودًا هنا فعلًا فتُرك كما هو.",
     "This account has no free voice slots left. Remove an unused voice at the voice service, then try again.": "لم تعد في الحساب خانات أصوات متاحة. احذف صوتًا غير مستخدم لدى خدمة الصوت ثم حاول مجددًا.",
     "No connection. New audio needs the internet — saved memories still play.": "لا يوجد اتصال. إنشاء مقاطع جديدة يحتاج إلى الإنترنت — والمقاطع المحفوظة ما زالت تُشغَّل.",
     "No internet connection.": "لا يوجد اتصال بالإنترنت.",

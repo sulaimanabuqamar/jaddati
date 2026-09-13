@@ -103,6 +103,20 @@ struct Person: Identifiable, Codable, Equatable, Hashable {
     /// time — the iOS container path changes on every install.
     var photoFilename: String? = nil
 
+    /// Where this person's backup lives in Drive — which is NOT the id this
+    /// device happens to hold.
+    ///
+    /// A restored person arrives with a fresh local id, because two devices
+    /// sharing one id is a bug that only surfaces later. Naming her Drive file
+    /// after that id therefore wrote a SECOND file beside the first every time
+    /// someone restored and backed up again, and pressing "Bring everything
+    /// back" twice stood a second copy of her next to the first. Set once, on
+    /// the first backup, and then carried — including through the archive, so
+    /// a phone she reaches by code is not invisible to the same check.
+    ///
+    /// The web has carried this since its own restore had the identical bug.
+    var cloudKey: String? = nil
+
     /// How this person's voice is performed. Optional so an index written
     /// before this existed still decodes.
     var tuning: VoiceTuning? = nil

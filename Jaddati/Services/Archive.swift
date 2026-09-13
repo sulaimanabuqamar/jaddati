@@ -9,9 +9,16 @@ import Foundation
 /// taking a second voice slot for the same person.
 ///
 /// What travels: the person, the family's notes, anything still sealed, the
-/// original recordings, and that identifier. What does not: clips already
-/// generated. They are cheap to remake and expensive to carry, and a file too
-/// large to send is a file that never gets sent.
+/// original recordings, and that identifier.
+///
+/// Clips the family kept travel too, but ONLY into the cloud backup. Sharing
+/// and backing up are not the same job. A shared file has to clear WhatsApp
+/// and the relay's own ceiling, and at the other end a clip can simply be made
+/// again — so sharing carries originals and nothing else, as it always has. A
+/// backup is the answer to "the phone is gone, is she still there?", and there
+/// a kept clip is not remade by regenerating it: the wording someone chose, the
+/// day, and the reason they pressed keep do not come back. So `plan` takes a
+/// flag, and only the backup sets it.
 enum Archive {
 
     static let version = 1
@@ -33,6 +40,33 @@ enum Archive {
     static let relayMaxBytes = 20 * 1024 * 1024
 
     private static let base64Overhead = 4.0 / 3.0
+
+    /// ISO 8601, written by either platform.
+    ///
+    /// `.iso8601` is `ISO8601DateFormatter` with `.withInternetDateTime` and
+    /// nothing else, and that rejects fractional seconds outright. The web
+    /// stamps every date with `toISOString()`, which always has them. So an
+    /// archive made in the browser failed on its FIRST date field, whatever
+    /// else was right about it.
+    ///
+    /// The formatter is built inside the closure rather than held as a shared
+    /// one. It runs a handful of times per archive, and a date formatter that
+    /// two threads can reach is a class of bug not worth buying for that.
+    static func archiveDecoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { input in
+            let text = try input.singleValueContainer().decode(String.self)
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = formatter.date(from: text) { return date }
+            formatter.formatOptions = [.withInternetDateTime]
+            if let date = formatter.date(from: text) { return date }
+            throw DecodingError.dataCorrupted(.init(
+                codingPath: input.codingPath,
+                debugDescription: "Not an ISO 8601 date: \(text)"))
+        }
+        return decoder
+    }
 
     // MARK: The file
 
@@ -62,6 +96,11 @@ enum Archive {
         var voiceRequiresVerification: Bool?
         var consentConfirmedAt: Date?
         var tuning: VoiceTuning?
+        /// Carried deliberately. Each family's Drive is their own, so there is
+        /// no slot to collide with — and without it someone who arrived by
+        /// code is invisible to the restore check, so restoring the same
+        /// person from Drive stands a second copy of her beside the first.
+        var cloudKey: String? = nil
     }
 
     struct NoteCard: Codable {
@@ -79,18 +118,99 @@ enum Archive {
     }
 
     struct RecordingCard: Codable {
-        var text: String
-        var durationSeconds: Double
-        var promptId: String?
-        var fileExtension: String
+        // Optional, all three, because the WEB writes them one level down
+        // inside `asset` and does not write them here at all. Non-optional is
+        // what made every archive the browser produced fail to decode on the
+        // phone — and since `recordings` is an optional ARRAY rather than an
+        // array of optionals, that one mismatch took the whole Payload with it
+        // and the family were told the file was not a Jaddati archive.
+        //
+        // Read them through `spoken`, `seconds` and `suffix` below, never
+        // directly.
+        var text: String? = nil
+        var durationSeconds: Double? = nil
+        var promptId: String? = nil
+        var fileExtension: String? = nil
         /// Base64. Large, but a family archive that needs a second file
         /// alongside it is one that arrives incomplete.
         var data: String
+
+        // Everything below is optional, and absent means "a real recording".
+        // Absent is what every archive written for sharing says, and what every
+        // archive written before backup carried kept clips says. Optional is
+        // also what lets an older build open a newer archive: keys it does not
+        // know are ignored, and the clips land as recordings rather than the
+        // whole file failing to open.
+
+        /// `AudioSource.rawValue`.
+        var source: String? = nil
+        /// `Intent.rawValue` — which screen made the clip.
+        var intent: String? = nil
+        /// `ContentProvenance.rawValue` — where the words came from.
+        var contentKind: String? = nil
+        /// The authorship label shown with the clip. A fiction label that
+        /// survives only until the clip is restored is not a label.
+        var provenance: String? = nil
+        var modelId: String? = nil
+        /// The day it was made. Without it a restored clip claims it was made
+        /// on the day it arrived — the same bug the letters above already
+        /// carry a comment about.
+        var createdAt: Date? = nil
+
+        /// What the web puts here instead: the asset as it stores it, and a
+        /// MIME type where this side writes a file extension. Never written by
+        /// this platform, only read.
+        var asset: WebAssetCard? = nil
+        var type: String? = nil
+
+        // One place each of these is decided, so no caller has to know which
+        // platform wrote the file.
+        var spoken: String { text ?? asset?.text ?? "" }
+        var seconds: Double { durationSeconds ?? asset?.durationSeconds ?? 0 }
+        var suffix: String {
+            if let fileExtension, !fileExtension.isEmpty { return fileExtension }
+            let mime = type ?? ""
+            if mime.contains("wav") { return "wav" }
+            if mime.contains("webm") { return "webm" }
+            if mime.contains("mp4") || mime.contains("m4a") || mime.contains("aac") { return "m4a" }
+            return "mp3"
+        }
+        /// Absent means a real recording, on either platform.
+        var kind: AudioSource {
+            (source ?? asset?.source).flatMap(AudioSource.init(rawValue:)) ?? .original
+        }
+        var made: Date? { createdAt ?? asset?.createdAt }
+        var experience: String? { intent ?? asset?.intentRaw }
+        var words: String? { contentKind ?? asset?.contentKind }
+        var authorship: String? { provenance ?? asset?.provenance }
+        var model: String? { modelId ?? asset?.modelId }
+        var prompt: String? { promptId ?? asset?.promptId }
+    }
+
+    /// The web's shape for one recording's metadata. Decoded, never encoded,
+    /// and every field optional — this is someone else's format and a missing
+    /// key here must never cost the family the archive.
+    struct WebAssetCard: Codable {
+        var text: String? = nil
+        var durationSeconds: Double? = nil
+        var source: String? = nil
+        var intentRaw: String? = nil
+        var contentKind: String? = nil
+        var provenance: String? = nil
+        var modelId: String? = nil
+        var createdAt: Date? = nil
+        var promptId: String? = nil
     }
 
     struct ExportResult {
         let url: URL
         let carried: Int
+        /// Of `carried`, how many were real recordings. The backup compares
+        /// this against how many originals the person has before it overwrites
+        /// what is already in Drive, so it has to be counted apart from the
+        /// kept clips — otherwise a person with nine clips and one unreadable
+        /// recording looks complete.
+        let carriedOriginals: Int
         let tooLarge: Int
         let unreadable: Int
     }
@@ -136,6 +256,10 @@ enum Archive {
         var notes: [NoteCard]
         var letters: [LetterCard]
         var originals: [PlannedRecording]
+        /// Kept clips. Empty unless the caller asked for them. Held apart from
+        /// `originals` rather than mixed in, because the two are spent against
+        /// the size budget in order and counted separately afterwards.
+        var extras: [PlannedRecording] = []
     }
 
     /// One original recording, named by where it lives rather than by its
@@ -146,11 +270,21 @@ enum Archive {
         var durationSeconds: Double
         var promptId: String?
         var fileExtension: String
+
+        // Carried through to RecordingCard. Defaulted, so the originals below
+        // read exactly as they did before.
+        var source: AudioSource = .original
+        var intent: String? = nil
+        var contentKind: String? = nil
+        var provenance: String? = nil
+        var modelId: String? = nil
+        var createdAt: Date? = nil
     }
 
     /// Reads the library. Main actor only — see `ExportPlan`.
     @MainActor
-    static func plan(person: Person, library: Library) -> ExportPlan {
+    static func plan(person: Person, library: Library,
+                     includingKeptClips: Bool = false) -> ExportPlan {
         ExportPlan(
             displayName: person.name,
             person: PersonCard(name: person.name,
@@ -160,7 +294,8 @@ enum Archive {
                                voiceCreatedAt: person.voiceCreatedAt,
                                voiceRequiresVerification: person.voiceRequiresVerification,
                                consentConfirmedAt: person.consentConfirmedAt,
-                               tuning: person.tuning),
+                               tuning: person.tuning,
+                               cloudKey: person.cloudKey),
             notes: library.memories(for: person).map {
                 NoteCard(text: $0.text, addedBy: $0.addedBy, createdAt: $0.createdAt, kind: $0.kind)
             },
@@ -175,8 +310,27 @@ enum Archive {
                                  text: $0.text,
                                  durationSeconds: $0.durationSeconds,
                                  promptId: $0.promptId,
-                                 fileExtension: ($0.filename as NSString).pathExtension)
-            })
+                                 fileExtension: ($0.filename as NSString).pathExtension,
+                                 createdAt: $0.createdAt)
+            },
+            // keptClips, not `isSaved`: book pages are stored saved so a page is
+            // never paid for twice, and reading the flag directly would carry
+            // the whole page cache of every imported book into the backup.
+            extras: includingKeptClips
+                ? library.keptClips(for: person).map {
+                    PlannedRecording(url: library.url(for: $0),
+                                     text: $0.text,
+                                     durationSeconds: $0.durationSeconds,
+                                     promptId: $0.promptId,
+                                     fileExtension: ($0.filename as NSString).pathExtension,
+                                     source: .generated,
+                                     intent: $0.intentRaw,
+                                     contentKind: $0.contentKind,
+                                     provenance: $0.provenance,
+                                     modelId: $0.modelId,
+                                     createdAt: $0.createdAt)
+                }
+                : [])
     }
 
     /// Writes the archive to a temporary file and hands back its URL, ready for
@@ -200,18 +354,35 @@ enum Archive {
         // user's cue to send fewer, a file that would not READ is their cue to
         // go and look. Reporting both as "too large" sent people the wrong way.
         var carried = 0, tooLarge = 0, unreadable = 0
+        var carriedOriginals = 0
 
-        for asset in plan.originals {
-            guard let data = try? Data(contentsOf: asset.url) else { unreadable += 1; continue }
-            let encoded = Int(Double(data.count) * base64Overhead)
-            guard carried + encoded <= ceiling else { tooLarge += 1; continue }
-            carried += encoded
-            recordings.append(RecordingCard(
-                text: asset.text,
-                durationSeconds: asset.durationSeconds,
-                promptId: asset.promptId,
-                fileExtension: asset.fileExtension,
-                data: data.base64EncodedString()))
+        // Originals first, always. The budget is spent on the irreplaceable
+        // things before the ones that can be made again, and the backup's
+        // "is this copy worse than the one already up there?" check reads the
+        // original count — so a kept clip must never crowd a recording out.
+        for asset in plan.originals + plan.extras {
+            // One file's bytes and one file's base64 exist at a time inside
+            // here. Without the pool the Foundation temporaries sit until the
+            // whole loop ends, so every recording is resident at once.
+            autoreleasepool {
+                guard let data = try? Data(contentsOf: asset.url) else { unreadable += 1; return }
+                let encoded = Int(Double(data.count) * base64Overhead)
+                guard carried + encoded <= ceiling else { tooLarge += 1; return }
+                carried += encoded
+                if asset.source == .original { carriedOriginals += 1 }
+                recordings.append(RecordingCard(
+                    text: asset.text,
+                    durationSeconds: asset.durationSeconds,
+                    promptId: asset.promptId,
+                    fileExtension: asset.fileExtension,
+                    data: data.base64EncodedString(),
+                    source: asset.source.rawValue,
+                    intent: asset.intent,
+                    contentKind: asset.contentKind,
+                    provenance: asset.provenance,
+                    modelId: asset.modelId,
+                    createdAt: asset.createdAt))
+            }
         }
 
         let payload = Payload(
@@ -236,6 +407,7 @@ enum Archive {
         try data.write(to: file, options: .atomic)
 
         return ExportResult(url: file, carried: recordings.count,
+                            carriedOriginals: carriedOriginals,
                             tooLarge: tooLarge, unreadable: unreadable)
     }
 
@@ -383,8 +555,7 @@ enum Archive {
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
 
         let data = try Data(contentsOf: url)
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        let decoder = Self.archiveDecoder()
 
         guard let payload = try? decoder.decode(Payload.self, from: data) else {
             throw Failure.notAnArchive
@@ -401,6 +572,7 @@ enum Archive {
         person.voiceRequiresVerification = card.voiceRequiresVerification
         person.consentConfirmedAt = card.consentConfirmedAt
         person.tuning = card.tuning
+        person.cloudKey = card.cloudKey
         person.voiceIsShared = true
         library.add(person)
 
@@ -425,15 +597,29 @@ enum Archive {
         var restored = 0
         for recording in payload.recordings ?? [] {
             guard let bytes = Data(base64Encoded: recording.data) else { continue }
+            // Absent means a real recording. Hard-coding `.original` here is
+            // what made a restored archive claim the clips it carried were
+            // recordings of her — the one label in this app that must never be
+            // wrong about which is which.
+            let source = recording.kind
             // One unreadable recording must not cost the family the other nine.
-            if library.storeAudio(data: bytes,
+            if var stored = library.storeAudio(data: bytes,
                                   for: person,
-                                  source: .original,
-                                  text: recording.text,
-                                  duration: recording.durationSeconds,
+                                  source: source,
+                                  text: recording.spoken,
+                                  duration: recording.seconds,
+                                  modelId: recording.model,
+                                  provenance: recording.authorship,
+                                  intent: recording.experience.flatMap(Intent.init(rawValue:)),
+                                  content: recording.words.flatMap(ContentProvenance.init(rawValue:)),
                                   isSaved: true,
-                                  promptId: recording.promptId,
-                                  fileExtension: Self.safeExtension(recording.fileExtension)) != nil {
+                                  promptId: recording.prompt,
+                                  fileExtension: Self.safeExtension(recording.suffix)) {
+                // storeAudio stamps "now", the same way addLetter did.
+                if let made = recording.made {
+                    stored.createdAt = made
+                    library.update(stored)
+                }
                 restored += 1
             }
         }

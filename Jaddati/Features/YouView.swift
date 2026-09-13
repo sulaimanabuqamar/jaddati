@@ -147,6 +147,9 @@ struct YouView: View {
                         runCloud {
                             let done = try await cloud.restore(into: library)
                             var lines = [L("Brought back.") + " " + Counts.number(done.brought)]
+                            if done.already > 0 {
+                                lines.append(L("Some were already here and were left alone."))
+                            }
                             if done.failed > 0 {
                                 lines.append(L("Some could not be read and were left in Drive."))
                             }

@@ -28,6 +28,7 @@ so a failure names the behaviour that broke rather than a line number.
 | `test-new.mjs` | A first run from nothing — the consent gate and the empty states. |
 | `test-letters.mjs` | Sealing words for a date, and opening them when the day comes. |
 | `test-handoff.mjs` | The archive file: what travels, what is left behind, what is said about it. |
+| `test-clips.mjs` | What a backup carries that a shared file does not, and the two shapes the two platforms write. |
 | `test-code.mjs` | The six-character handoff: the alphabet, the expiry, the identical answer for missing and expired. |
 | `test-capture.mjs` | Recording into the app, and the microphone being let go afterwards. |
 | `test-cloud.mjs` | Google sign-in: PKCE, state, the code spent once, the scope limited to the private app folder. |
