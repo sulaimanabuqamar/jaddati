@@ -526,6 +526,7 @@ let arabicStrings: [String: String] = [
     "This month's voice credits are used up. Saved memories still play.": "نفد رصيد هذا الشهر. المقاطع المحفوظة ما زالت تُشغَّل.",
     "You already have a recreated voice. Remove that person, or the voice on their Setup screen, before making another.": "لديك بالفعل صوت مُعاد إنشاؤه. احذف ذلك الشخص، أو الصوت من شاشة الإعداد، قبل إنشاء صوت آخر.",
     "Making new audio also needs this. Playing what is already here does not.": "إنشاء صوت جديد يحتاج إلى هذا أيضًا. أما تشغيل ما هو محفوظ فلا.",
+    "Sign in with Google to make new audio.": "سجّل الدخول بجوجل لإنشاء صوت جديد.",
     "Sign in with Google to make new audio. The button is in Backup, on the You tab.": "سجّل الدخول بجوجل لإنشاء صوت جديد. الزر في قسم النسخ الاحتياطي داخل تبويب «أنت».",
     "Sign in with Google to take this voice back off the voice service. The button is in Backup, on the You tab.": "سجّل الدخول بجوجل لحذف هذا الصوت من خدمة الصوت. الزر في قسم النسخ الاحتياطي داخل تبويب «أنت».",
     "Saved memories could not be read on this phone, so nothing new can be made until that is sorted out.": "تعذّرت قراءة الذكريات المحفوظة على هذا الهاتف، فلا يمكن إنشاء شيء جديد حتى تُحلّ المشكلة.",

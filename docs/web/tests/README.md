@@ -47,6 +47,7 @@ so a failure names the behaviour that broke rather than a line number.
 | `test-capture.mjs` | Recording into the app, and the microphone being let go afterwards. |
 | `test-cloud.mjs` | Google sign-in: PKCE, state, the code spent once, the scope limited to the private app folder. |
 | `test-backup.mjs` | That a backup carries the clips somebody made and not only the recordings they started from. |
+| `test-signin.mjs` | The gate that stands between somebody and new audio: that it is said before a recording is chosen, and that the way through is a button on that screen rather than directions to another one. |
 | `test-merge.mjs` | Restoring onto somebody who is already here: what a second press of the button adds, and everything it must not add twice or overwrite. |
 | `test-speech.mjs` | What happens to the words between typing them and hearing them: a blank line becoming a pause, harakat added to bare Arabic, and the guard that refuses a model which answered the sentence instead of marking it. |
 | `test-pdf.mjs` | Importing a PDF with nothing fetched off this origin, and the two kinds it refuses rather than reads wrongly. |

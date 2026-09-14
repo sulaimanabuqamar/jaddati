@@ -1,22 +1,55 @@
 // Compose, shelf, reader, archive, player — and the one screen the whole
 // product rests on, where a voice is created.
 
-import { L, isAr, isArabicText, dirOf, Counts } from "./strings.js?v=c784a9be10";
+import { L, isAr, isArabicText, dirOf, Counts } from "./strings.js?v=b2ea1f7589";
 import {
-  store, Consent, ConsentMissing, Config, Voice, Companion,
+  store, Consent, ConsentMissing, Config, Voice, VoiceError, Cloud, Companion,
   Intent, INTENTS, TUNING, sameTuning, presetName,
   AFFIRMATIONS, STORIES, makeBook, ImportError, isDemoVoice, blobURL, DEMO_PREFIX,
   FamilyAnswer, Translator, NotInNotesError, CAPTURE_PROMPTS,
-} from "./core.js?v=c784a9be10";
+} from "./core.js?v=b2ea1f7589";
 import {
   h, clear, bidi, icon, appBar, headline, eyebrow, sectionLabel, subtext,
   panel, panelS, errorNote, emptyHint, avatar, breadcrumb, sourceBadge,
   contentBadge, badgesFor, audioRow, player, confirmDialog, sheet, toast,
   Recorder, durationOf, demoDuration, track,
-} from "./ui.js?v=c784a9be10";
-import { nav, push, pop, popTo, render, replace } from "./nav.js?v=c784a9be10";
+} from "./ui.js?v=b2ea1f7589";
+import { nav, push, pop, popTo, render, replace } from "./nav.js?v=b2ea1f7589";
 
 const trimmedOf = s => (s || "").trim();
+
+/** Does this browser still owe us a sign-in before it can make anything? */
+const needsSignIn = () => Config.usesRelayVoice && !Config.isDemo && !Cloud.isSignedIn;
+
+/** The refusal, with the way out attached.
+ *
+ *  Sending someone to another tab is the wrong answer at the moment they are
+ *  refused: they are standing in a sheet with a recording chosen and both
+ *  consents given, and leaving loses all of it. So the sign-in is offered
+ *  here, and the sentence drops the directions it no longer needs.
+ */
+function problemNote(e, retry) {
+  if (e instanceof VoiceError && e.kind === "signIn") {
+    return errorNote(L("Sign in with Google to make new audio."),
+                     () => { Cloud.beginSignIn().catch(() => {}); },
+                     L("Sign in with Google"));
+  }
+  const consent = e instanceof ConsentMissing;
+  return errorNote(consent ? Config.unavailableMessage
+                           : (e?.message || L("Something went wrong. Try again.")),
+                   consent ? null : retry);
+}
+
+/** Said BEFORE the work rather than after it.
+ *
+ *  Signing in leaves the page and comes back, so whatever was chosen in a
+ *  sheet is gone by the time it returns. Asking first is the only version of
+ *  this that costs nothing. */
+const signInFirst = () => needsSignIn()
+  ? errorNote(L("Sign in with Google to make new audio."),
+              () => { Cloud.beginSignIn().catch(() => {}); },
+              L("Sign in with Google"))
+  : null;
 
 /** Ready to speak. Stricter than "a voice id exists": a voice can exist and
  *  still be unusable, and claiming otherwise produces a profile that says
@@ -163,8 +196,7 @@ export function openAddVoice(personId) {
         toast(made.requiresVerification ? L("Voice is being prepared") : L("Recreated voice ready"));
       } catch (e) {
         working = false; sync();
-        errorSlot.append(errorNote(e instanceof ConsentMissing ? Config.unavailableMessage
-          : (e?.message || L("The voice could not be created. Try again."))));
+        errorSlot.append(problemNote(e));
       }
     }
     submit.addEventListener("click", create);
@@ -177,6 +209,10 @@ export function openAddVoice(personId) {
         headline(picked ? L("A voice deserves\ncareful permission.") : L("Begin with\na recording."), 33),
 
         !Config.isConfigured ? errorNote(Config.unavailableMessage) : null,
+        // Above the recording picker, not below the consents: by the time the
+        // button is pressed a file has been chosen and two switches thrown,
+        // and signing in throws all of that away.
+        signInFirst(),
 
         replacing ? panel(h("div", { class: "stack gap-xs" },
           h("div", { class: "label" }, L("This person already has a voice")),
@@ -375,9 +411,7 @@ export function createScreen({ personId, intent }) {
     } catch (e) {
       generating = false; sync();
       const consent = e instanceof ConsentMissing;
-      errorSlot.append(errorNote(
-        consent ? Config.unavailableMessage : (e?.message || L("Something went wrong. Try again.")),
-        consent ? null : () => { clear(errorSlot); speak(); }));
+      errorSlot.append(problemNote(e, () => { clear(errorSlot); speak(); }));
     }
   }
   submit.addEventListener("click", speak);
@@ -449,6 +483,7 @@ export function createScreen({ personId, intent }) {
       headline(Intent.headline(intent)),
       subtext(Intent.standfirst(intent)),
       !Config.isConfigured ? errorNote(Config.unavailableMessage) : null,
+      signInFirst(),
       memoryList(),
       intent === "storyFromMemories" ? shelf() : null,
       intent === "comfort" ? comfortPicker(person, pick) : null,

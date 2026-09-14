@@ -5,7 +5,7 @@
 // This table is generated from Jaddati/Design/Strings.swift — do not hand-edit.
 // Regenerate with docs/web/build-strings.py after changing the app's strings.
 
-import { prefs } from "./prefs.js?v=c784a9be10";
+import { prefs } from "./prefs.js?v=b2ea1f7589";
 
 export const AR = {
  "A bedtime story": "قصة قبل النوم",
@@ -429,6 +429,7 @@ export const AR = {
  "Show all clips": "عرض كل المقاطع",
  "Sign in to Google first.": "سجّل الدخول بجوجل أولًا.",
  "Sign in with Google": "تسجيل الدخول بجوجل",
+ "Sign in with Google to make new audio.": "سجّل الدخول بجوجل لإنشاء صوت جديد.",
  "Sign in with Google to make new audio. The button is in Backup, on the You tab.": "سجّل الدخول بجوجل لإنشاء صوت جديد. الزر في قسم النسخ الاحتياطي داخل تبويب «أنت».",
  "Sign in with Google to take this voice back off the voice service. The button is in Backup, on the You tab.": "سجّل الدخول بجوجل لحذف هذا الصوت من خدمة الصوت. الزر في قسم النسخ الاحتياطي داخل تبويب «أنت».",
  "Sign out of Google": "تسجيل الخروج من جوجل",

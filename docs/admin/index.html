@@ -24,20 +24,10 @@
   --r-card: 20px; --r-control: 15px; --touch: 44px;
   color-scheme: light;
 }
-/* The app itself has no prefers-color-scheme query anywhere, on purpose: it
-   carries its own light/dark switch and honours what the person chose. This
-   page has no such switch, so following the system is the only way it can be
-   read at night — and the tokens are the app's real dark ones, not a generic
-   inversion. The ground stays WARM. */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #14100E;  --ink: #F2EAE1;  --ink-soft: #A89B92;  --hairline: #332A25;
-    --wine: #7A3D5B;   --wine-ink: #C67A99;  --wine-light: #2E1C26;
-    --sage: #6E9C87;   --danger: #D9736F;
-    --card: #1E1815;   --sunk: #241D19;
-    color-scheme: dark;
-  }
-}
+/* Light, always. The app carries its own light/dark switch and honours what
+   the person chose; this page has none, so following the system meant it
+   could come up dark on a laptop set dark while the app open beside it was
+   not — two windows of the same product disagreeing. */
 
 * { box-sizing: border-box; }
 body {

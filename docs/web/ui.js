@@ -1,8 +1,8 @@
 // The pieces every screen is built from. Ported from Design/Components.swift
 // and Design/Theme.swift so the two versions stay the same app.
 
-import { L, isAr, isArabicText, dirOf, Counts, toggleLang } from "./strings.js?v=c784a9be10";
-import { store, blobURL, ContentProvenance, Config } from "./core.js?v=c784a9be10";
+import { L, isAr, isArabicText, dirOf, Counts, toggleLang } from "./strings.js?v=b2ea1f7589";
+import { store, blobURL, ContentProvenance, Config } from "./core.js?v=b2ea1f7589";
 
 // ── DOM ─────────────────────────────────────────────────────────────────
 
@@ -172,11 +172,19 @@ export const caption = text => h("p", { class: "caption", style: { margin: 0 } }
 export const panel = (...kids) => h("div", { class: "panel" }, ...kids);
 export const panelS = (...kids) => h("div", { class: "panel panel--s" }, ...kids);
 
-export function errorNote(message, onRetry) {
+export function errorNote(message, onAction, actionLabel) {
   return h("div", { class: "errornote" }, icon("warn"),
     h("div", { class: "errornote__body" },
       h("span", { style: { whiteSpace: "pre-line" } }, message),
-      onRetry && h("button", { class: "wine-text", style: { fontWeight: "600", fontSize: "13px", textAlign: "start" }, onClick: onRetry }, L("Try again")),
+      // Named, because the action is not always a retry. A refusal that can
+      // only say "go to another screen" is a dead end, and this is where the
+      // way out gets to live instead.
+      onAction && h("button", {
+        class: "wine-text",
+        style: { fontWeight: "600", fontSize: "13px", textAlign: "start",
+                 minHeight: "var(--touch)", alignSelf: "flex-start" },
+        onClick: onAction,
+      }, actionLabel || L("Try again")),
     ));
 }
 
