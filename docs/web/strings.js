@@ -5,7 +5,7 @@
 // This table is generated from Jaddati/Design/Strings.swift — do not hand-edit.
 // Regenerate with docs/web/build-strings.py after changing the app's strings.
 
-import { prefs } from "./prefs.js?v=8c06d25e9d";
+import { prefs } from "./prefs.js?v=c784a9be10";
 
 export const AR = {
  "A bedtime story": "قصة قبل النوم",
@@ -53,6 +53,7 @@ export const AR = {
  "Add their voice": "إضافة صوت",
  "Add their voice again to create a new one.": "أضف صوتهم مرة أخرى لإنشاء صوت جديد.",
  "Add words to continue.": "أدخل كلمات لإنشاء مقطع صوتي.",
+ "Added to people who were already here.": "أُضيفت إلى أشخاص موجودين هنا بالفعل.",
  "All": "الكل",
  "All experiences": "كل التجارب",
  "All kinds": "كل الأنواع",

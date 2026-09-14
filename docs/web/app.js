@@ -3,25 +3,25 @@
 // and Saved and Books are scoped to one person because a pile of clips with no
 // name on it is not an archive.
 
-import { L, isAr, isArabicText, dirOf, Counts, state as lang, setLang, toggleLang } from "./strings.js?v=8c06d25e9d";
+import { L, isAr, isArabicText, dirOf, Counts, state as lang, setLang, toggleLang } from "./strings.js?v=c784a9be10";
 import {
   store, Consent, ConsentMissing, Config, Voice, Companion, VoiceError, CompanionError,
   Intent, INTENTS, ContentProvenance, TUNING, sameTuning, presetName,
   AFFIRMATIONS, STORIES, makeBook, ImportError, isDemoVoice, uuid, blobURL,
   STOCK_VOICE_URL, STOCK_LLM_URL, Archive, ArchiveError, Cloud, CloudError,
-} from "./core.js?v=8c06d25e9d";
+} from "./core.js?v=c784a9be10";
 import {
   h, clear, bidi, icon, appBar, globeButton, headline, eyebrow, sectionLabel,
   subtext, caption, panel, panelS, errorNote, emptyHint, avatar, breadcrumb,
   sourceBadge, contentBadge, badgesFor, audioRow, player, confirmDialog, sheet,
   toast, Recorder, durationOf, demoDuration, track, unmountAll,
-} from "./ui.js?v=8c06d25e9d";
-import { nav, remember, setRenderer, render, push, pop, popTo, goTab } from "./nav.js?v=8c06d25e9d";
-import { appearance } from "./prefs.js?v=8c06d25e9d";
+} from "./ui.js?v=c784a9be10";
+import { nav, remember, setRenderer, render, push, pop, popTo, goTab } from "./nav.js?v=c784a9be10";
+import { appearance } from "./prefs.js?v=c784a9be10";
 import {
   createScreen, booksScreen, readerScreen, memoriesScreen, playerScreen, openAddVoice,
   personHasVoice, lettersScreen, captureScreen,
-} from "./screens.js?v=8c06d25e9d";
+} from "./screens.js?v=c784a9be10";
 
 const root = document.getElementById("app");
 
@@ -614,8 +614,14 @@ function cloudSection() {
             return said;
           }),
           run(L("Bring everything back"), async () => {
-            const { brought, failed, already } = await Cloud.restore();
+            const { brought, failed, already, updated, added } = await Cloud.restore();
             const lines = [L("Brought back.") + " " + Counts.number(brought)];
+            // Said before the "left alone" line, because this is the one that
+            // answers "where are the clips I made on my phone?" — and until
+            // the restore learned to merge, there was no sentence for it at
+            // all: everyone already here was reported as left alone, whether
+            // or not their backup had anything new in it.
+            if (updated) lines.push(L("Added to people who were already here.") + " " + Counts.number(added));
             if (already) lines.push(L("Some were already here and were left alone."));
             if (failed) lines.push(L("Some could not be read and were left in Drive."));
             const said = lines.join(" ");

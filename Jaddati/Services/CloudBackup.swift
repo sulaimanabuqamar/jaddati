@@ -273,7 +273,16 @@ final class CloudBackup: NSObject, ObservableObject {
     // MARK: The backup
 
     struct BackedUp { let sent: Int; let skipped: Int; let atRisk: Int }
-    struct BroughtBack { let brought: Int; let failed: Int; let already: Int }
+    struct BroughtBack {
+        let brought: Int
+        let failed: Int
+        /// Already here, and their backup had nothing this phone did not.
+        let already: Int
+        /// Already here, and their backup DID. `added` is how many recordings,
+        /// notes and letters that came to.
+        var updated = 0
+        var added = 0
+    }
 
     /// The file name carries the key, which is how a second device recognises
     /// someone it already has. Takes the key rather than the local id: those
@@ -362,35 +371,46 @@ final class CloudBackup: NSObject, ObservableObject {
         working = true
         defer { working = false }
 
-        var brought = 0, failed = 0, already = 0
+        var brought = 0, failed = 0, already = 0, updated = 0, added = 0
         for (name, id) in try await listing() where name.hasPrefix("person-") {
-            // Someone already here under this key is the same person, and
-            // importing her again put a second copy on the People tab — every
-            // single time the button was pressed. Compared without case,
-            // because the phone writes an uppercase UUID and the browser a
-            // lowercase one for what is otherwise the same value.
+            // Someone already here under this key is the same person, so her
+            // file is opened INTO her rather than standing a second copy of
+            // her on the People tab. Compared without case, because the phone
+            // writes an uppercase UUID and the browser a lowercase one for
+            // what is otherwise the same value.
+            //
+            // It used to be skipped instead, which meant a clip made on one
+            // device and backed up could never reach another that already had
+            // her: the button reported "already here" and looked no further.
             let key = Self.key(inFileNamed: name)
-            if library.people.contains(where: {
+            let mine = library.people.first(where: {
                 ($0.cloudKey ?? $0.id.uuidString).caseInsensitiveCompare(key) == .orderedSame
-            }) { already += 1; continue }
+            })
             do {
                 let data = try await download(id: id)
                 let scratch = FileManager.default.temporaryDirectory
                     .appendingPathComponent("restore-\(UUID().uuidString).jaddati.json")
                 try data.write(to: scratch, options: .atomic)
                 defer { try? FileManager.default.removeItem(at: scratch) }
-                let arrived = try Archive.importArchive(from: scratch, into: library)
+                let arrived = try Archive.importArchive(from: scratch, into: library,
+                                                        mergeInto: mine)
                 // Remember where she came from, or the next backup writes a
                 // second file for the person just restored.
                 var stamped = arrived.person
                 stamped.cloudKey = key
                 library.update(stamped)
-                brought += 1
+                if mine != nil {
+                    let gained = arrived.restored + arrived.addedNotes + arrived.addedLetters
+                    if gained > 0 { updated += 1; added += gained } else { already += 1 }
+                } else {
+                    brought += 1
+                }
             } catch {
                 failed += 1
             }
         }
-        return BroughtBack(brought: brought, failed: failed, already: already)
+        return BroughtBack(brought: brought, failed: failed, already: already,
+                           updated: updated, added: added)
     }
 
     private struct FileList: Decodable {

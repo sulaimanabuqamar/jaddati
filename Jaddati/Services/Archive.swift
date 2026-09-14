@@ -535,6 +535,13 @@ enum Archive {
         /// year later that the recordings never came.
         let carried: Int
         let restored: Int
+        /// Notes and letters this run added. Only ever less than `notes` and
+        /// `letters` above when merging into someone already here: those two
+        /// are what the FILE was carrying, which stopped being the same thing
+        /// the moment a second restore could arrive on top of a first.
+        var addedNotes = 0
+        var addedLetters = 0
+        var merged = false
 
         var lost: Int { max(carried - restored, 0) }
 
@@ -547,7 +554,18 @@ enum Archive {
     /// The other side. She arrives with fresh local ids but keeps the voice
     /// identifier, which is the part that makes her speak here.
     @discardableResult
-    static func importArchive(from url: URL, into library: Library) throws -> ImportResult {
+    /// Read an archive into the library.
+    ///
+    /// `mergeInto` is someone already on this phone, and what follows adds to
+    /// her rather than standing a second copy of her beside the first. Without
+    /// it a restore could only ever bring back people who were MISSING: once
+    /// she was here her file was skipped whole, and nothing inside it could
+    /// ever arrive however many times the button was pressed. A clip made on a
+    /// phone and backed up could not reach a second device that already had
+    /// her without deleting her there first, which is not a thing to ask of
+    /// somebody restoring a dead relative.
+    static func importArchive(from url: URL, into library: Library,
+                              mergeInto existing: Person? = nil) throws -> ImportResult {
         // A file handed over by the system files app is security-scoped, and
         // reading it without asking first fails with a permissions error that
         // looks exactly like a corrupt archive.
@@ -564,26 +582,79 @@ enum Archive {
         guard !payload.person.name.isEmpty else { throw Failure.empty }
 
         let card = payload.person
-        var person = Person(name: card.name)
-        person.fullName = card.fullName
-        person.relationship = card.relationship
-        person.voiceId = card.voiceId
-        person.voiceCreatedAt = card.voiceCreatedAt
-        person.voiceRequiresVerification = card.voiceRequiresVerification
-        person.consentConfirmedAt = card.consentConfirmedAt
-        person.tuning = card.tuning
-        person.cloudKey = card.cloudKey
-        person.voiceIsShared = true
-        library.add(person)
+        var person: Person
+        if var mine = existing {
+            // Blanks only. She may have been renamed on this phone since the
+            // backup was written, and a file is not the authority on what this
+            // device calls her — but a field this device never had is a gap
+            // the file can fill.
+            if (mine.voiceId ?? "").isEmpty, let arrived = card.voiceId, !arrived.isEmpty {
+                mine.voiceId = arrived
+                // The voice was made somewhere else. Without this, deleting her
+                // here would delete it at the service for the phone that
+                // recorded and paid for it.
+                mine.voiceIsShared = true
+                mine.voiceCreatedAt = mine.voiceCreatedAt ?? card.voiceCreatedAt
+                mine.consentConfirmedAt = mine.consentConfirmedAt ?? card.consentConfirmedAt
+            }
+            if mine.fullName.isEmpty { mine.fullName = card.fullName }
+            if mine.relationship.isEmpty { mine.relationship = card.relationship }
+            if (mine.cloudKey ?? "").isEmpty { mine.cloudKey = card.cloudKey }
+            library.update(mine)
+            person = mine
+        } else {
+            person = Person(name: card.name)
+            person.fullName = card.fullName
+            person.relationship = card.relationship
+            person.voiceId = card.voiceId
+            person.voiceCreatedAt = card.voiceCreatedAt
+            person.voiceRequiresVerification = card.voiceRequiresVerification
+            person.consentConfirmedAt = card.consentConfirmedAt
+            person.tuning = card.tuning
+            person.cloudKey = card.cloudKey
+            person.voiceIsShared = true
+            library.add(person)
+        }
+
+        // What she already has, so a second restore adds what is new rather
+        // than a second copy of everything. There are no ids to match on — an
+        // archive carries none, deliberately, because ids are local to a
+        // device — so identity is the thing itself: when it was made and what
+        // it says. Two clips made in the same second with the same words are
+        // one clip.
+        //
+        // Built for a brand-new person too, where every set is empty and
+        // nothing below behaves differently. One path, so the merge cannot rot
+        // while the ordinary restore keeps working.
+        //
+        // Seconds, not the raw date: the browser writes milliseconds and this
+        // side does not, and the same clip must not look like two.
+        func moment(_ date: Date?) -> String {
+            guard let date else { return "-" }
+            return String(Int(date.timeIntervalSince1970.rounded()))
+        }
+        var noteKeys = Set(library.memories(for: person).map { moment($0.createdAt) + "|" + $0.text })
+        var letterKeys = Set(library.letters(for: person).map { moment($0.deliverAt) + "|" + $0.text })
+        var audioKeys = Set(library.archive(for: person).map {
+            $0.source.rawValue + "|" + moment($0.createdAt) + "|" + $0.text
+        })
+        var addedNotes = 0, addedLetters = 0
 
         for note in payload.notes ?? [] {
+            let key = moment(note.createdAt) + "|" + note.text
+            if noteKeys.contains(key) { continue }
+            noteKeys.insert(key)
             var arrived = FamilyNote(personId: person.id, text: note.text)
             arrived.addedBy = note.addedBy
             arrived.createdAt = note.createdAt
             arrived.kind = note.kind
             library.add(arrived)
+            addedNotes += 1
         }
         for letter in payload.letters ?? [] {
+            let key = moment(letter.deliverAt) + "|" + letter.text
+            if letterKeys.contains(key) { continue }
+            letterKeys.insert(key)
             // Constructed here rather than through addLetter, which stamps
             // createdAt with "now". A letter that crossed to a second phone was
             // claiming it had been sealed on the day it arrived — a date then
@@ -592,16 +663,22 @@ enum Archive {
                                  occasion: letter.occasion, deliverAt: letter.deliverAt)
             arrived.createdAt = letter.createdAt
             library.add(arrived)
+            addedLetters += 1
         }
 
         var restored = 0
         for recording in payload.recordings ?? [] {
-            guard let bytes = Data(base64Encoded: recording.data) else { continue }
             // Absent means a real recording. Hard-coding `.original` here is
             // what made a restored archive claim the clips it carried were
             // recordings of her — the one label in this app that must never be
             // wrong about which is which.
             let source = recording.kind
+            // Checked before the base64 is turned into bytes: decoding a clip
+            // this phone already holds is megabytes of work done to throw away.
+            let key = source.rawValue + "|" + moment(recording.made) + "|" + recording.spoken
+            if audioKeys.contains(key) { continue }
+            audioKeys.insert(key)
+            guard let bytes = Data(base64Encoded: recording.data) else { continue }
             // One unreadable recording must not cost the family the other nine.
             if var stored = library.storeAudio(data: bytes,
                                   for: person,
@@ -624,11 +701,15 @@ enum Archive {
             }
         }
 
-        return ImportResult(person: person,
-                            notes: (payload.notes ?? []).count,
-                            letters: (payload.letters ?? []).count,
-                            carried: (payload.recordings ?? []).count,
-                            restored: restored)
+        var result = ImportResult(person: person,
+                                  notes: (payload.notes ?? []).count,
+                                  letters: (payload.letters ?? []).count,
+                                  carried: (payload.recordings ?? []).count,
+                                  restored: restored)
+        result.addedNotes = addedNotes
+        result.addedLetters = addedLetters
+        result.merged = existing != nil
+        return result
     }
 
     /// An extension out of an untrusted file is interpolated into a filename.

@@ -5,9 +5,9 @@
 // is where those live — IndexedDB for the audio blobs, because a browser has no
 // application-support directory, and localStorage for the index.
 
-import { L, Counts, isArabicText, state as lang } from "./strings.js?v=8c06d25e9d";
-import { prefs } from "./prefs.js?v=8c06d25e9d";
-import { refusal } from "./blocked-words.js?v=8c06d25e9d";
+import { L, Counts, isArabicText, state as lang } from "./strings.js?v=c784a9be10";
+import { prefs } from "./prefs.js?v=c784a9be10";
+import { refusal } from "./blocked-words.js?v=c784a9be10";
 
 export const uuid = () =>
   (crypto.randomUUID ? crypto.randomUUID()
@@ -2119,37 +2119,54 @@ export const Cloud = {
   /// arrives by — same validation, same refusals, same fresh local ids.
   async restore() {
     const existing = await this._existing();
-    let brought = 0, failed = 0, already = 0;
+    let brought = 0, failed = 0, already = 0, updated = 0, added = 0;
 
     for (const [name, id] of existing) {
       if (!name.startsWith("person-")) continue;
       // The file name carries the key. Someone already here under that key is
-      // the same person, and importing again would stand a second copy of her
-      // next to the first — every time the button was pressed.
+      // the same person — so her file is opened INTO her, rather than standing
+      // a second copy of her next to the first.
+      //
+      // It used to be skipped instead, which meant a clip made on the phone
+      // and backed up could never reach a laptop that already had her: the
+      // button reported "already here" and looked no further, however many
+      // times it was pressed. Deleting her first was the only way through, and
+      // that is not a thing to ask of somebody restoring a dead relative.
       const key = name.slice("person-".length).replace(/\.jaddati\.json$/, "");
-      if (store.people.some(p => (p.cloudKey || p.id) === key)) { already++; continue; }
+      // Compared without case, the way the phone has always compared it: the
+      // phone writes an uppercase UUID into the filename and the browser a
+      // lowercase one for what is otherwise the same value. Matching exactly
+      // meant someone who arrived here by handoff code, and so carries the
+      // phone's key in the phone's spelling, could be stood up a second time.
+      const same = a => String(a).toLowerCase() === String(key).toLowerCase();
+      const mine = store.people.find(p => same(p.cloudKey || p.id)) || null;
       try {
         const r = await this._drive(DRIVE_FILES + "/" + id + "?alt=media");
-        const arrived = await Archive.import(await r.text());
+        const arrived = await Archive.import(await r.text(), { into: mine });
         // `saved` is whether the index write actually reached durable storage.
         // Counting the import as a success without it told people she was back
         // when a reload would show she had never arrived.
         if (arrived && arrived.saved === false) {
-          // Archive.import has already pushed her into the store. Leaving her
-          // there showed a person on the People tab who is not on disk and
-          // disappears at the next reload — and the message said the file
-          // could not be read, when in fact the phone could not save it.
-          this._forgetLocally(arrived.person);
+          // Only for someone this run created. _forgetLocally removes a person
+          // AND everything of hers, so calling it after a merge would answer a
+          // failed write by deleting the recordings that were already safely
+          // here — the one outcome this whole file exists to prevent.
+          if (!mine) this._forgetLocally(arrived.person);
           failed++;
           continue;
         }
         // Remember where she came from, so backing up again writes over the
         // same file rather than beside it.
         if (arrived && arrived.person) await store.setCloudKey(arrived.person, key);
-        brought++;
+        if (mine) {
+          const gained = arrived.restored + arrived.addedNotes + arrived.addedLetters;
+          if (gained > 0) { updated++; added += gained; } else { already++; }
+        } else {
+          brought++;
+        }
       } catch { failed++; }
     }
-    return { brought, failed, already };
+    return { brought, failed, already, updated, added };
   },
 };
 
@@ -2341,7 +2358,18 @@ export const Archive = {
     return this.import(await r.text());
   },
 
-  async import(text) {
+  /**
+   * Read an archive into the library.
+   *
+   * `into` is someone already on this device, and what follows adds to her
+   * rather than standing a second copy of her beside the first. Without it a
+   * restore could only ever bring back people who were MISSING: once she was
+   * here, the file was skipped whole and nothing inside it could ever arrive,
+   * however many times the button was pressed. Backing up a new clip on the
+   * phone and bringing it back on a laptop that already had her was therefore
+   * impossible without deleting her first.
+   */
+  async import(text, { into = null } = {}) {
     let file;
     try { file = JSON.parse(text); }
     catch { throw new ArchiveError(L("That file is not a Jaddati archive.")); }
@@ -2356,9 +2384,9 @@ export const Archive = {
       throw new ArchiveError(L("That archive has no one in it."));
     }
 
-    const personId = uuid();
+    const personId = into ? into.id : uuid();
     const voiceId = typeof file.person.voiceId === "string" ? file.person.voiceId : null;
-    const person = {
+    const person = into || {
       ...file.person,
       name: String(file.person.name),
       fullName: typeof file.person.fullName === "string" ? file.person.fullName : "",
@@ -2383,7 +2411,24 @@ export const Archive = {
       // "voice ready" until a generation failed.
       voiceIsShared: true,
     };
-    store.people.push(person);
+    if (into) {
+      // Blanks only. She may have been renamed here since the backup was
+      // written, and a file is not the authority on what this device calls
+      // her — but a field this device never had is a gap the file can fill.
+      if (!person.voiceId && voiceId) {
+        person.voiceId = voiceId;
+        // The voice was made somewhere else. Without this, deleting her here
+        // would delete it at the service for the phone that recorded it.
+        person.voiceIsShared = true;
+        person.voiceCreatedAt = person.voiceCreatedAt || file.person.voiceCreatedAt || null;
+        person.consentConfirmedAt = person.consentConfirmedAt || file.person.consentConfirmedAt || null;
+      }
+      if (!person.fullName && typeof file.person.fullName === "string") person.fullName = file.person.fullName;
+      if (!person.relationship && typeof file.person.relationship === "string") person.relationship = file.person.relationship;
+      if (!person.cloudKey && typeof file.person.cloudKey === "string") person.cloudKey = file.person.cloudKey;
+    } else {
+      store.people.push(person);
+    }
 
     // Everything below is shaped, not trusted. A file this app wrote is
     // well-formed; a file that reached a phone through four apps and a laptop
@@ -2396,15 +2441,34 @@ export const Archive = {
     };
     const list = v => (Array.isArray(v) ? v : []);
 
+    // What she already has, so a second restore adds what is new rather than
+    // a second copy of everything. There are no ids to match on — an archive
+    // carries none, deliberately, because ids are local to a device — so
+    // identity is the thing itself: when it was made and what it says. Two
+    // clips made in the same second with the same words are one clip.
+    //
+    // Built for a brand-new person too, where every set is empty and nothing
+    // below behaves differently. One path, so the merge cannot rot while the
+    // ordinary restore keeps working.
+    const noteKeys = new Set(store.memories(personId).map(n => when(n.createdAt) + "|" + (n.text || "")));
+    const letterKeys = new Set(store.lettersFor(personId).map(l => when(l.deliverAt) + "|" + (l.text || "")));
+    const audioKeys = new Set(store.archive(personId)
+      .map(a => (a.source || "original") + "|" + when(a.createdAt) + "|" + (a.text || "")));
+
+    let addedNotes = 0, addedLetters = 0;
     for (const n of list(file.notes)) {
       const body = str(n?.text).trim();
       if (!body) continue;
+      const createdAt = when(n?.createdAt) || new Date().toISOString();
+      if (noteKeys.has(createdAt + "|" + body)) continue;
+      noteKeys.add(createdAt + "|" + body);
       store.notes.push({
         id: uuid(), personId, text: body,
         addedBy: str(n?.addedBy),
-        createdAt: when(n?.createdAt) || new Date().toISOString(),
+        createdAt,
         kind: n?.kind === "affirmation" ? "affirmation" : undefined,
       });
+      addedNotes++;
     }
     for (const l of list(file.letters)) {
       const body = str(l?.text).trim();
@@ -2412,6 +2476,8 @@ export const Archive = {
       // A letter with no words or no date is not a letter, and carrying it
       // through would crash the screen that lists it.
       if (!body || !deliverAt) continue;
+      if (letterKeys.has(deliverAt + "|" + body)) continue;
+      letterKeys.add(deliverAt + "|" + body);
       store.letters.push({
         id: uuid(), personId, text: body,
         occasion: str(l?.occasion),
@@ -2419,12 +2485,12 @@ export const Archive = {
         createdAt: when(l?.createdAt) || new Date().toISOString(),
         openedAt: null, assetId: null,
       });
+      addedLetters++;
     }
 
     let restored = 0;
     for (const rec of list(file.recordings)) {
       try {
-        const blob = fromBase64(rec.data, rec.type);
         // Flat fields first — that is what the PHONE writes, and what this
         // now writes too. `rec.asset` is the older shape from this platform.
         // Reading only the nested one is what made every recording arriving
@@ -2436,9 +2502,19 @@ export const Archive = {
         // written for sharing says nothing, and so does every older backup.
         const source = (rec.source || nested.source) === "generated"
           ? "generated" : "original";
+        const made = when(rec.createdAt ?? nested.createdAt);
+        const said = str(rec.text ?? nested.text);
+
+        // Checked before the base64 is turned into bytes: decoding a clip this
+        // device already holds is megabytes of work done to throw away.
+        const already = source + "|" + made + "|" + said;
+        if (audioKeys.has(already)) continue;
+        audioKeys.add(already);
+
+        const blob = fromBase64(rec.data, rec.type);
         const stored = await store.storeAudio(blob, {
           personId, source,
-          text: str(rec.text ?? nested.text),
+          text: said,
           duration: Number(rec.durationSeconds ?? nested.durationSeconds) || 0,
           isSaved: true,
           modelId: rec.modelId ?? nested.modelId ?? null,
@@ -2450,8 +2526,9 @@ export const Archive = {
         });
         if (stored) {
           // storeAudio stamps "now". A clip that crossed to a second device
-          // was claiming it was made on the day it arrived.
-          const made = when(rec.createdAt ?? nested.createdAt);
+          // was claiming it was made on the day it arrived — and the identity
+          // check above reads this same day, so without it a clip would arrive
+          // again on every restore.
           if (made) { stored.createdAt = made; store.updateAsset(stored); }
           restored++;
         }
@@ -2468,6 +2545,11 @@ export const Archive = {
       letters: store.lettersFor(personId).length,
       recordingsOffered: list(file.recordings).length,
       restored,
+      // What this run actually ADDED, which is what the screen has to say. The
+      // two counts above are totals for the person and were already the wrong
+      // thing to report after a merge.
+      addedNotes, addedLetters,
+      merged: !!into,
       saved,
     };
   },

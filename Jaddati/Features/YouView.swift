@@ -147,6 +147,17 @@ struct YouView: View {
                         runCloud {
                             let done = try await cloud.restore(into: library)
                             var lines = [L("Brought back.") + " " + Counts.number(done.brought)]
+                            // Said before the "left alone" line, because this
+                            // is the one that answers "where are the clips I
+                            // made on my other device?" — and until the restore
+                            // learned to merge there was no sentence for it at
+                            // all: everyone already here was reported as left
+                            // alone, whether or not their backup had anything
+                            // new in it.
+                            if done.updated > 0 {
+                                lines.append(L("Added to people who were already here.")
+                                             + " " + Counts.number(done.added))
+                            }
                             if done.already > 0 {
                                 lines.append(L("Some were already here and were left alone."))
                             }
