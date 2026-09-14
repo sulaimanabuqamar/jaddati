@@ -5,37 +5,159 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>Jaddati — Who has signed in</title>
-<link rel="stylesheet" href="../_style.css">
 <style>
-  /* Only what the shared sheet has no answer for. */
-  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-  input[type=password] {
-    flex: 1 1 240px; min-width: 0; padding: 12px 14px; font: inherit; font-size: 15px;
-    color: #302725; background: #FFFDFA; border: 1px solid #E4DCD3; border-radius: 12px;
+/* The app's own palette, lifted from docs/web/app.css rather than matched by
+   eye, and carried HERE rather than pulled from ../_style.css. Two reasons:
+   this page should look like the app and not like the policy pages, and a
+   page that depends on a file beginning with an underscore is a page GitHub
+   Pages serves unstyled until .nojekyll lands.
+
+   The mark is inlined for the same reason — an <img> at ../_mark.svg is one
+   more underscore file to lose. */
+:root {
+  --paper: #F9F5EF;  --ink: #302725;  --ink-soft: #766861;  --hairline: #E4DCD3;
+  --wine: #592C43;   --wine-ink: #592C43;  --wine-light: #F0E5EB;
+  --sage: #426858;   --danger: #963E3B;
+  --card: #FEFAF5;   --sunk: #F1EBE3;
+  --serif: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+  --sys: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --r-card: 20px; --r-control: 15px; --touch: 44px;
+  color-scheme: light;
+}
+/* The app itself has no prefers-color-scheme query anywhere, on purpose: it
+   carries its own light/dark switch and honours what the person chose. This
+   page has no such switch, so following the system is the only way it can be
+   read at night — and the tokens are the app's real dark ones, not a generic
+   inversion. The ground stays WARM. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #14100E;  --ink: #F2EAE1;  --ink-soft: #A89B92;  --hairline: #332A25;
+    --wine: #7A3D5B;   --wine-ink: #C67A99;  --wine-light: #2E1C26;
+    --sage: #6E9C87;   --danger: #D9736F;
+    --card: #1E1815;   --sunk: #241D19;
+    color-scheme: dark;
   }
-  input[type=password]:focus { outline: 2px solid #592C43; outline-offset: 1px; }
-  button {
-    padding: 12px 20px; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
-    color: #FEFAF5; background: #592C43; border: 1px solid #592C43; border-radius: 12px;
-    min-height: 44px;
-  }
-  button.quiet { color: #592C43; background: transparent; font-weight: 400; }
-  button[disabled] { opacity: 0.5; cursor: default; }
-  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 12px; margin: 22px 0 6px; }
-  .tile { background: #FEFAF5; border: 1px solid #E4DCD3; border-radius: 16px; padding: 14px 16px; }
-  .tile b { display: block; font-family: Georgia, serif; font-weight: 400; font-size: 27px; line-height: 1.15; color: #302725; }
-  .tile span { font-size: 12px; letter-spacing: 0.07em; text-transform: uppercase; color: #766861; }
-  td.num, th.num { text-align: end; font-variant-numeric: tabular-nums; }
-  .low { color: #9C4221; font-weight: 600; }
-  .live { width: 8px; height: 8px; border-radius: 50%; background: #6B8E6B; display: inline-block; margin-inline-end: 7px; }
-  .quietline { font-size: 13px; color: #766861; margin: 10px 0 0; }
-  .problem { color: #9C4221; }
-  .hidden { display: none; }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 0 20px;
+  background: var(--paper); color: var(--ink);
+  font-family: var(--sys); font-size: 16px; line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 760px; margin: 0 auto; padding-block: 44px 72px; }
+
+.mark { width: 42px; height: 42px; display: block; }
+.mark path { stroke: var(--wine-ink); }
+.name {
+  font-family: var(--serif); font-size: 12px; letter-spacing: 0.26em;
+  color: var(--wine-ink); margin-top: 14px;
+}
+h1 {
+  font-family: var(--serif); font-weight: 400; font-size: 34px; line-height: 1.15;
+  margin: 6px 0 8px; letter-spacing: -0.01em;
+}
+.sub { color: var(--ink-soft); font-size: 15px; margin: 0 0 30px; max-width: 54ch; }
+h2 {
+  font-family: var(--serif); font-weight: 400; font-size: 21px;
+  margin: 0 0 10px;
+}
+p { margin: 0 0 12px; }
+.small { font-size: 13px; color: var(--ink-soft); }
+
+.card {
+  background: var(--card); border: 1px solid var(--hairline);
+  border-radius: var(--r-card); padding: 22px 24px; margin: 0 0 22px;
+}
+
+/* ── the gate ──────────────────────────────────────────────────────── */
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+input[type=password] {
+  flex: 1 1 240px; min-width: 0; height: var(--touch);
+  padding: 0 16px; font: inherit; font-size: 15px;
+  color: var(--ink); background: var(--sunk);
+  border: 1px solid var(--hairline); border-radius: var(--r-control);
+}
+input[type=password]::placeholder { color: var(--ink-soft); }
+input[type=password]:focus-visible { outline: 2px solid var(--wine-ink); outline-offset: 1px; }
+
+button {
+  height: var(--touch); padding: 0 22px; font: inherit; font-size: 15px;
+  font-weight: 600; cursor: pointer; border-radius: var(--r-control);
+  color: #FEFAF5; background: var(--wine); border: 1px solid var(--wine);
+}
+button:active { transform: translateY(1px); }
+button.quiet {
+  color: var(--wine-ink); background: transparent;
+  border-color: var(--hairline); font-weight: 400;
+}
+button[disabled] { opacity: .5; cursor: default; }
+
+/* ── the tiles ─────────────────────────────────────────────────────── */
+.tiles {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px; margin: 0 0 12px;
+}
+.tile {
+  background: var(--card); border: 1px solid var(--hairline);
+  border-radius: var(--r-card); padding: 16px 18px;
+}
+.tile b {
+  display: block; font-family: var(--serif); font-weight: 400;
+  font-size: 30px; line-height: 1.1; color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.tile span {
+  display: block; margin-top: 6px; font-size: 11px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--ink-soft);
+}
+.stamp { font-size: 13px; color: var(--ink-soft); margin: 0 0 24px; }
+.live {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--sage);
+  display: inline-block; margin-inline-end: 8px; vertical-align: middle;
+}
+
+/* ── the roll ──────────────────────────────────────────────────────── */
+.sheet { padding: 6px 4px 4px; }
+.tablewrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th {
+  text-align: start; padding: 0 14px 10px; font-size: 11px; font-weight: 600;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft);
+  white-space: nowrap;
+}
+td {
+  text-align: start; padding: 14px; border-top: 1px solid var(--hairline);
+  vertical-align: baseline;
+}
+td:first-child { font-weight: 600; }
+td.when { color: var(--ink-soft); white-space: nowrap; }
+td.num, th.num { text-align: end; font-variant-numeric: tabular-nums; }
+.low { color: var(--danger); font-weight: 600; }
+.empty { padding: 18px 14px; color: var(--ink-soft); font-size: 14px; }
+/* On a phone the column worth seeing is what is LEFT, and it was the one
+   pushed off the edge — you had to scroll sideways to reach the number you
+   opened the page for. First seen is the least useful of the five while
+   standing in a room watching a queue, so it is the one that goes. */
+@media (max-width: 640px) { .opt { display: none; } }
+
+/* Space BELOW as well as above: the two buttons were sitting flush against
+   the card underneath them, which read as one block rather than as an action
+   and then a separate note. */
+.actions { margin: 18px 0 26px; }
+footer {
+  margin-top: 44px; padding-top: 20px; border-top: 1px solid var(--hairline);
+  font-size: 13px; color: var(--ink-soft);
+}
+footer a { color: var(--wine-ink); margin-inline-end: 18px; }
+.problem { color: var(--danger); }
+.hidden { display: none; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <img class="mark" src="../_mark.svg" alt="">
+  <svg class="mark" viewBox="0 0 100 100" fill="none" stroke="#592C43" stroke-width="5" stroke-linejoin="round" aria-hidden="true"><g transform="translate(50,50)"><g><path d="M0 -8 A22 22 0 0 1 0 -46 A22 22 0 0 1 0 -8 Z"/></g><g transform="rotate(60)"><path d="M0 -8 A22 22 0 0 1 0 -46 A22 22 0 0 1 0 -8 Z"/></g><g transform="rotate(120)"><path d="M0 -8 A22 22 0 0 1 0 -46 A22 22 0 0 1 0 -8 Z"/></g><g transform="rotate(180)"><path d="M0 -8 A22 22 0 0 1 0 -46 A22 22 0 0 1 0 -8 Z"/></g><g transform="rotate(240)"><path d="M0 -8 A22 22 0 0 1 0 -46 A22 22 0 0 1 0 -8 Z"/></g><g transform="rotate(300)"><path d="M0 -8 A22 22 0 0 1 0 -46 A22 22 0 0 1 0 -8 Z"/></g></g></svg>
   <div class="name">JADDATI</div>
   <h1>Who has signed in</h1>
   <p class="sub">Everyone who has signed in with Google to make new audio, and what is left of their allowance this month.</p>
@@ -45,13 +167,13 @@
        forgets it: the page is public, and the only thing keeping the roll
        private is the relay's own check. -->
   <form id="gate" class="card">
-    <h3>Admin token</h3>
+    <h2>Admin token</h2>
     <div class="row">
       <input id="token" type="password" autocomplete="current-password" placeholder="The ADMIN_TOKEN set on the relay" required>
       <button type="submit">Show the roll</button>
     </div>
-    <p class="quietline">Kept in this tab only, for as long as it stays open.</p>
-    <p id="problem" class="quietline problem"></p>
+    <p class="small" style="margin:12px 0 0">Kept in this tab only, for as long as it stays open.</p>
+    <p id="problem" class="small problem" style="margin:6px 0 0"></p>
   </form>
 
   <div id="roll" class="hidden">
@@ -61,32 +183,34 @@
       <div class="tile"><b id="t-made">—</b><span>Clips made</span></div>
       <div class="tile"><b id="t-month">—</b><span>Month</span></div>
     </div>
-    <p class="quietline"><span class="live"></span><span id="t-when">…</span> · <span id="t-allow"></span></p>
+    <p class="stamp"><span class="live"></span><span id="t-when">…</span> · <span id="t-allow"></span></p>
 
-    <div class="tablewrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Account</th><th>First seen</th><th>Last seen</th>
-            <th class="num">Clips</th><th class="num">Left this month</th>
-          </tr>
-        </thead>
-        <tbody id="rows"></tbody>
-      </table>
+    <div class="card sheet">
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Account</th><th class="opt">First seen</th><th>Last seen</th>
+              <th class="num">Clips</th><th class="num">Left this month</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <p id="empty" class="empty hidden">Nobody has signed in yet.</p>
     </div>
-    <p id="empty" class="quietline hidden">Nobody has signed in yet.</p>
 
-    <div class="row" style="margin-top:18px">
+    <div class="row actions">
       <button id="again" class="quiet" type="button">Refresh now</button>
       <button id="forget" class="quiet" type="button">Forget the token</button>
     </div>
   </div>
 
   <div class="card">
-    <h3>What this page can and cannot see</h3>
+    <h2>What this page can and cannot see</h2>
     <p>The relay keeps one row per Google account that has signed in: the address, when it was first and last seen, how many clips it has made, and how many characters that came to. That is the whole record.</p>
     <p>It holds <b>nothing about what anyone said</b> — no text, no audio, no titles, no names of the people in the app. Those never leave the phone or the browser they were typed on, and the relay never had them to keep.</p>
-    <p>A voice slot is released when the account gives it up, or when somebody new needs one and this account's is the one nobody has used for longest.</p>
+    <p style="margin-bottom:0">A voice slot is released when the account gives it up, or when somebody new needs one and this account's is the one nobody has used for longest.</p>
   </div>
 
   <footer>
@@ -149,8 +273,8 @@ function draw(data) {
       return td;
     };
     tr.append(cell(a.email || a.sub || "—"));
-    tr.append(cell(when(a.firstSeen)));
-    tr.append(cell(when(a.lastSeen)));
+    tr.append(cell(when(a.firstSeen), "when opt"));
+    tr.append(cell(when(a.lastSeen), "when"));
     tr.append(cell(count(a.generations), "num"));
     const left = cell(count(a.leftThisMonth), "num");
     if (Number(a.leftThisMonth) <= 0) { left.classList.add("low"); left.textContent = "none left"; }
