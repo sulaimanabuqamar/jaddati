@@ -1102,6 +1102,61 @@ async function withHarakat(text) {
   }
 }
 
+/** Does this refusal mean the voice itself is no longer at the provider? */
+function voiceHasGone(status, said) {
+  const lowered = String(said || "").toLowerCase();
+  return status === 404
+      || lowered.includes("voice_not_found")
+      || lowered.includes("voice not found")
+      || lowered.includes("does not exist")
+      || lowered.includes("could not find");
+}
+
+/**
+ * Build the voice again from the recording this browser still holds, and hand
+ * back its new id.
+ *
+ * A recreated voice is a SLOT at the voice service, not a possession, and slots
+ * get passed on when several families are using one account. The recording it
+ * was made from never left this browser, so the voice can always be made again
+ * — which means nobody needs to be told that slots exist, or sent to press a
+ * "Re-create voice" button to learn our bookkeeping.
+ *
+ * Returns null whenever it cannot be done quietly: a different failure, a voice
+ * belonging to nobody here, no original left, or the rebuild itself refused. In
+ * every one of those the caller reports the provider's own answer, which is the
+ * honest thing when there is nothing to fall back on.
+ */
+async function rebuiltVoiceId(voiceId, status, said) {
+  if (!voiceHasGone(status, said)) return null;
+
+  const person = store.people.find(p => p.voiceId === voiceId);
+  if (!person) return null;
+
+  const original = store.assetsFor(person.id, "original")
+    .find(a => !a.demo && store.fileExists(a));
+  if (!original) return null;
+
+  const blob = await Blobs.get(original.filename).catch(() => null);
+  if (!blob) return null;
+
+  let made;
+  try {
+    made = await Voice.createVoice(person.name || "Jaddati", blob);
+  } catch {
+    return null;
+  }
+
+  const current = store.person(person.id) || person;
+  store.updatePerson({
+    ...current,
+    voiceId: made.id,
+    voiceCreatedAt: new Date().toISOString(),
+    voiceRequiresVerification: made.requiresVerification,
+  });
+  return made.id;
+}
+
 export const Voice = {
   async createVoice(name, blob) {
     if (Config.isDemo) {
@@ -1136,7 +1191,7 @@ export const Voice = {
     return { id: json.voice_id, requiresVerification: json.requires_verification === true };
   },
 
-  async synthesize(text, voiceId, modelId, tuning) {
+  async synthesize(text, voiceId, modelId, tuning, allowRebuild = true) {
     const trimmed = (text || "").trim();
 
     // Before the demo check, not after: the browser's own voice still says the
@@ -1182,7 +1237,17 @@ export const Voice = {
       throw new VoiceError("offline", L("No internet connection."));
     });
 
-    if (!r.ok) throw new VoiceError("provider", voiceMessage(r.status, detailOf(await r.text())));
+    if (!r.ok) {
+      const said = await r.text();
+      // The voice has been handed on. Build it again and say the sentence —
+      // once only, so a provider that refuses twice is reported rather than
+      // retried forever.
+      if (allowRebuild) {
+        const rebuilt = await rebuiltVoiceId(voiceId, r.status, said);
+        if (rebuilt) return Voice.synthesize(text, rebuilt, modelId, tuning, false);
+      }
+      throw new VoiceError("provider", voiceMessage(r.status, detailOf(said)));
+    }
     const blob = await r.blob();
     if (blob.size < 500) throw new VoiceError("bad", L("The voice service replied in a shape the app did not understand."));
     return { blob };
