@@ -27,6 +27,9 @@ struct PersonView: View {
     @State private var photoPick: PhotosPickerItem?
     @State private var checkingAvailability = false
     @State private var availabilityNote: String?
+    /// The push behind "Say something". A destination NavigationLink used to do
+    /// this and SwiftUI rendered it permanently disabled — see the button.
+    @State private var saying: Person?
 
     private var person: Person? { library.person(withId: personId) }
 
@@ -79,6 +82,9 @@ struct PersonView: View {
         .navigationBarHidden(true)
         .sheet(isPresented: $addingVoice) {
             if let person { AddVoiceView(personId: person.id) }
+        }
+        .navigationDestination(item: $saying) { who in
+            CreateView(personId: who.id, intent: .saySomething)
         }
         .onChange(of: photoPick) { _, item in
             guard let item, let person else { return }
@@ -199,12 +205,17 @@ struct PersonView: View {
                 .buttonStyle(.plain)
                 .padding(.top, 6)
             } else {
-                NavigationLink {
-                    CreateView(personId: person.id, intent: .saySomething)
-                } label: {
-                    Text(L("Say something"))
-                }
-                .buttonStyle(PrimaryButtonStyle())
+                // A Button, not a NavigationLink. This was the ONLY place in
+                // the app where PrimaryButtonStyle sat on a NavigationLink —
+                // the other fifteen are all Buttons — and it was the only
+                // button that drew itself greyed out and swallowed every tap.
+                // SwiftUI disables a destination link it has decided it will
+                // not push and reports nothing, so the style read isEnabled
+                // false and did as it was told. The push now goes through
+                // navigationDestination, the way Letters, Books and Create
+                // already push.
+                Button(L("Say something")) { saying = person }
+                    .buttonStyle(PrimaryButtonStyle())
                 actionNote(L("Type the words. Hear them in their voice."))
             }
         }
