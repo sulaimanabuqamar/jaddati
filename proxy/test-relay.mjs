@@ -223,6 +223,56 @@ const say = (kv, token, text, voice = "v-1") =>
       "and the roll says how many voice slots are in use against the cap");
 }
 
+// ── the provider is full even though our own counter says it is not ─────
+//
+// The counter drifts: voices made before any of this existed, voices made by
+// hand in the dashboard, an add that succeeded while the put after it failed.
+// Every time it drifts low the relay forwards a request the account cannot
+// serve, and somebody demonstrating the app is told to go and upgrade a
+// subscription they do not own. Nobody should ever see that sentence.
+{
+  const kv = makeKV({ "voices:live": "0" });        // we think the account is empty
+  const real = [];                                  // the provider knows it is full
+  for (let i = 1; i <= 10; i++) {
+    real.push({ voice_id: "old-" + i, category: "cloned", created_at_unix: 1000 + i });
+  }
+
+  const plain = globalThis.fetch;
+  let adds = 0;
+  const deleted = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const href = String(url);
+    if (href.includes("/v1/voices/add")) {
+      adds += 1;
+      if (adds === 1) {
+        return new Response(JSON.stringify({
+          detail: { message: "You have reached your maximum amount of custom voices (10 / 10)." },
+        }), { status: 400 });
+      }
+      return Response.json({ voice_id: "v-new" });
+    }
+    if (href.endsWith("/v1/voices")) return Response.json({ voices: real });
+    if (/\/v1\/voices\/[^/]+$/.test(href) && init.method === "DELETE") {
+      deleted.push(href.split("/").pop());
+      return new Response(null, { status: 204 });
+    }
+    return plain(url, init);
+  };
+
+  const made = await call(kv, "/v1/voices/add", { token: "tok-amal" });
+  globalThis.fetch = plain;
+
+  log(made.status === 200, "a full account frees a slot and the voice is still made",
+      String(made.status));
+  log(adds === 2, "the add was tried exactly once more, not in a loop", adds + " attempts");
+  log(deleted.length === 1 && deleted[0] === "old-1",
+      "and what it gave back was the oldest voice nobody here is holding",
+      deleted.join(",") || "nothing");
+  log(kv.store.get("voices:live") === "10",
+      "the drifted counter is repaired from the provider's own list",
+      kv.store.get("voices:live"));
+}
+
 console.log(problems.length
   ? `\n${problems.length} failed:\n  ` + problems.join("\n  ")
   : "\nall relay checks passed");

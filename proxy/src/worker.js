@@ -247,6 +247,83 @@ async function evictOldestVoice(env) {
   return true;
 }
 
+/**
+ * Does this refusal mean the provider's account is full?
+ *
+ * Our own counter is not the authority on that and never was. It drifts — a
+ * voice made before this code existed, one made by hand in the dashboard, a
+ * put that failed after the add had already succeeded — and every time it
+ * drifts low we hand somebody a refusal that reads like their fault, in front
+ * of whoever they were showing the app to.
+ */
+function saysAccountIsFull(body) {
+  const lowered = String(body || "").toLowerCase();
+  return lowered.includes("voice_limit")
+      || lowered.includes("voice limit")
+      || lowered.includes("maximum amount of custom voices");
+}
+
+/**
+ * Free a slot using the PROVIDER's list rather than ours, and repair the
+ * counter while we are holding the truth.
+ *
+ * Orphans first: a voice the provider has and we have no record of is one
+ * nobody here is holding, so it is the safest thing in the account to remove.
+ * Only when there are none does this touch a voice we know about, and then the
+ * one that has gone longest without being spoken with.
+ */
+async function freeRealSlot(env) {
+  let listed;
+  try {
+    const answer = await fetch(`${ELEVEN}/v1/voices`, {
+      headers: { "xi-api-key": env.ELEVENLABS_API_KEY },
+    });
+    if (!answer.ok) return false;
+    listed = (await answer.json()).voices;
+  } catch {
+    return false;
+  }
+  if (!Array.isArray(listed)) return false;
+
+  const ours = listed.filter((v) => v && v.category !== "premade" && v.voice_id);
+  if (!ours.length) return false;
+
+  const candidates = [];
+  for (const voice of ours) {
+    let record = null;
+    try { record = JSON.parse(await env.JADDATI.get(`v:${voice.voice_id}`)); } catch { record = null; }
+    candidates.push({
+      id: voice.voice_id,
+      tracked: !!record,
+      account: record ? (record.account || "") : "",
+      // An untracked voice sorts ahead of every tracked one, and within each
+      // group the oldest goes first.
+      age: record ? num(record.lastUsed, num(record.created, 0))
+                  : num(voice.created_at_unix, 0) * 1000,
+    });
+  }
+  candidates.sort((a, b) => (a.tracked === b.tracked ? a.age - b.age : (a.tracked ? 1 : -1)));
+
+  const doomed = candidates[0];
+  try {
+    const gone = await fetch(`${ELEVEN}/v1/voices/${doomed.id}`, {
+      method: "DELETE",
+      headers: { "xi-api-key": env.ELEVENLABS_API_KEY },
+    });
+    if (!gone.ok && gone.status !== 404) return false;
+  } catch {
+    return false;
+  }
+
+  await env.JADDATI.delete(`v:${doomed.id}`);
+  if (doomed.account) await env.JADDATI.delete(`voice:acct:${doomed.account}`);
+  // The provider's count, minus the one just removed. This is the only place
+  // the counter is ever set from something other than its own previous value,
+  // and it is why a drifted counter heals instead of compounding.
+  await env.JADDATI.put("voices:live", String(Math.max(ours.length - 1, 0)));
+  return true;
+}
+
 /** Touch a voice so eviction knows it is in use. */
 async function touchVoice(env, voiceId) {
   const key = `v:${voiceId}`;
@@ -308,22 +385,36 @@ async function createVoice(request, env) {
     // Make room rather than turning someone away. The person who has not
     // spoken for longest loses their voice; the six people using the app
     // right now do not.
-    if (!(await evictOldestVoice(env))) {
+    // Our record first, the provider's list second. The second is the one
+    // that saves the day when our record is the thing that is wrong.
+    if (!(await evictOldestVoice(env)) && !(await freeRealSlot(env))) {
       return json(429, "voice limit reached: no slots are free right now");
     }
     live = num(await env.JADDATI.get("voices:live"), 0);
   }
 
-  const upstream = await fetch(`${ELEVEN}/v1/voices/add`, {
+  // Read ONCE. A request body is a stream and the retry below needs it again.
+  const payload = await request.arrayBuffer();
+  const contentType = request.headers.get("content-type") || "";
+  const add = () => fetch(`${ELEVEN}/v1/voices/add`, {
     method: "POST",
-    headers: {
-      "xi-api-key": env.ELEVENLABS_API_KEY,
-      "content-type": request.headers.get("content-type") || "",
-    },
-    body: await request.arrayBuffer(),
+    headers: { "xi-api-key": env.ELEVENLABS_API_KEY, "content-type": contentType },
+    body: payload,
   });
 
-  const body = await upstream.text();
+  let upstream = await add();
+  let body = await upstream.text();
+
+  // The provider has the final say on how full the account is. If it says
+  // full, give a real slot back and try once more — once, not in a loop: if
+  // making room did not help, there genuinely is none, and saying so is better
+  // than deleting voices until something works.
+  if (!upstream.ok && saysAccountIsFull(body) && await freeRealSlot(env)) {
+    upstream = await add();
+    body = await upstream.text();
+    live = num(await env.JADDATI.get("voices:live"), 0);
+  }
+
   if (!upstream.ok) return new Response(body, { status: upstream.status });
 
   // Record it so the nightly sweep can hand the slot back.
