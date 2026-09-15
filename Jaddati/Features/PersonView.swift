@@ -27,9 +27,17 @@ struct PersonView: View {
     @State private var photoPick: PhotosPickerItem?
     @State private var checkingAvailability = false
     @State private var availabilityNote: String?
-    /// The push behind "Say something". A destination NavigationLink used to do
-    /// this and SwiftUI rendered it permanently disabled — see the button.
-    @State private var saying: Person?
+    /// Every way out of this screen, and the one currently opening.
+    ///
+    /// All six were NavigationLinks. On some phones SwiftUI decides it will
+    /// not push a destination link — and a link it will not push it renders
+    /// DISABLED and silent, with nothing in the project asking for that. The
+    /// primary action greyed out, the gear dead, the three cards dead, and no
+    /// `.disabled(` anywhere to explain it. A screen whose every control is
+    /// inert is not a thing to discover in front of a room, so the links are
+    /// Buttons now and the pushing happens in one place, below.
+    private enum Door: Hashable { case say, setup, capture, saved, books, letters }
+    @State private var going: Door?
 
     private var person: Person? { library.person(withId: personId) }
 
@@ -83,8 +91,17 @@ struct PersonView: View {
         .sheet(isPresented: $addingVoice) {
             if let person { AddVoiceView(personId: person.id) }
         }
-        .navigationDestination(item: $saying) { who in
-            CreateView(personId: who.id, intent: .saySomething)
+        .navigationDestination(item: $going) { door in
+            if let who = person {
+                switch door {
+                case .say:     CreateView(personId: who.id, intent: .saySomething)
+                case .setup:   SetupView(personId: who.id)
+                case .capture: CaptureView(personId: who.id)
+                case .saved:   MemoriesView(personId: who.id)
+                case .books:   BooksView(personId: who.id)
+                case .letters: LettersView(personId: who.id)
+                }
+            }
         }
         .onChange(of: photoPick) { _, item in
             guard let item, let person else { return }
@@ -141,8 +158,8 @@ struct PersonView: View {
     private var gear: AnyView? {
         guard let person else { return nil }
         return AnyView(
-            NavigationLink {
-                SetupView(personId: person.id)
+            Button {
+                going = .setup
             } label: {
                 Image(systemName: "gearshape")
                     .font(.system(size: 17))
@@ -150,6 +167,7 @@ struct PersonView: View {
                     .frame(width: Theme.Metric.touchTarget, height: Theme.Metric.touchTarget)
                     .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             .accessibilityLabel(L("Setup"))
         )
     }
@@ -190,8 +208,8 @@ struct PersonView: View {
                 // Recording someone still alive is the one other thing worth
                 // offering here, and it matters MOST before a voice exists —
                 // which is exactly when it used to sit furthest down the page.
-                NavigationLink {
-                    CaptureView(personId: person.id)
+                Button {
+                    going = .capture
                 } label: {
                     HStack(spacing: 7) {
                         Image(systemName: "mic").font(.system(size: 13))
@@ -214,7 +232,7 @@ struct PersonView: View {
                 // false and did as it was told. The push now goes through
                 // navigationDestination, the way Letters, Books and Create
                 // already push.
-                Button(L("Say something")) { saying = person }
+                Button(L("Say something")) { going = .say }
                     .buttonStyle(PrimaryButtonStyle())
                 actionNote(L("Type the words. Hear them in their voice."))
             }
@@ -244,25 +262,25 @@ struct PersonView: View {
             card(icon: "tray",
                  title: L("Saved"),
                  note: kept > 0 ? Counts.savedClips(kept) : L("Nothing saved yet"),
-                 badge: 0) { AnyView(MemoriesView(personId: person.id)) }
+                 badge: 0, door: .saved)
 
             card(icon: "book",
                  title: L("Books"),
                  note: bookCount > 0 ? Counts.books(bookCount) : L("Bring them a text"),
-                 badge: 0) { AnyView(BooksView(personId: person.id)) }
+                 badge: 0, door: .books)
 
             card(icon: due > 0 ? "lock.open" : "lock",
                  title: L("Letters"),
                  note: due > 0 ? L("Waiting for you")
                      : sealedCount > 0 ? Counts.sealed(sealedCount) : L("For a day you choose"),
-                 badge: due) { AnyView(LettersView(personId: person.id)) }
+                 badge: due, door: .letters)
         }
         .padding(.top, 26)
     }
 
     private func card(icon: String, title: String, note: String, badge: Int,
-                      destination: @escaping () -> AnyView) -> some View {
-        NavigationLink { destination() } label: {
+                      door: Door) -> some View {
+        Button { going = door } label: {
             VStack(alignment: .leading, spacing: 5) {
                 Image(systemName: icon)
                     .font(.system(size: 18))

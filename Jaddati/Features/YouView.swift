@@ -20,6 +20,13 @@ struct YouView: View {
     @State private var showingPrivacy = false
     @State private var cloudNote: String?
     @State private var cloudProblem: String?
+    /// A Button and a destination, not a NavigationLink. SwiftUI will decide,
+    /// on some phones and not others, that it is not going to push a
+    /// destination link inside a stack that also pushes by value — and a link
+    /// it will not push it draws DISABLED and swallows the tap, with nothing
+    /// in the project asking for that. Every push in this app is explicit now.
+    private enum Door: Hashable { case language }
+    @State private var going: Door?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -36,8 +43,8 @@ struct YouView: View {
 
                     // A screen of its own, not a row that flips the language
                     // the instant it is touched.
-                    NavigationLink {
-                        LanguageView()
+                    Button {
+                        going = .language
                     } label: {
                         FeatureRow(icon: "globe",
                                    title: L("Language"),
@@ -88,6 +95,11 @@ struct YouView: View {
             }
         }
         .background(Theme.Palette.paper)
+        .navigationDestination(item: $going) { door in
+            switch door {
+            case .language: LanguageView()
+            }
+        }
         .sheet(isPresented: $showingPrivacy) { PrivacyScreen(consent: consent) }
     }
 

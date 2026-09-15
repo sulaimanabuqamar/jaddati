@@ -24,6 +24,12 @@ struct SetupView: View {
     @State private var handoffCode: String?
     @State private var sendingCode = false
     @State private var codeProblem: String?
+    /// A Button and a destination, not a NavigationLink. SwiftUI will decide,
+    /// on some phones and not others, that it is not going to push a
+    /// destination link inside a stack that also pushes by value — and a link
+    /// it will not push it draws DISABLED and swallows the tap, with nothing
+    /// in the project asking for that. Every push in this app is explicit now.
+    @State private var capturing: UUID?
 
     private var person: Person? { library.person(withId: personId) }
 
@@ -76,6 +82,9 @@ struct SetupView: View {
         }
         .background(Theme.Palette.paper)
         .navigationBarHidden(true)
+        .navigationDestination(item: $capturing) { id in
+            CaptureView(personId: id)
+        }
         .sheet(isPresented: $addingVoice) {
             if let person { AddVoiceView(personId: person.id) }
         }
@@ -261,8 +270,8 @@ struct SetupView: View {
     private func capture(_ person: Person) -> some View {
         VStack(spacing: 0) {
             Theme.Palette.hairline.frame(height: 1)
-            NavigationLink {
-                CaptureView(personId: person.id)
+            Button {
+                capturing = person.id
             } label: {
                 FeatureRow(icon: "mic",
                            title: L("Recorded before it is needed"),

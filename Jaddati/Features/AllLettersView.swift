@@ -8,6 +8,13 @@ import SwiftUI
 /// level down inside whichever person you happened to open is how a sealed
 /// letter quietly never arrives.
 struct AllLettersView: View {
+    /// A Button and a destination, not a NavigationLink. SwiftUI will decide,
+    /// on some phones and not others, that it is not going to push a
+    /// destination link inside a stack that also pushes by value — and a link
+    /// it will not push it draws DISABLED and swallows the tap, with nothing
+    /// in the project asking for that. Every push in this app is explicit now.
+    @State private var opening: UUID?
+
     @EnvironmentObject private var library: Library
     @ObservedObject private var localization = Localization.shared
 
@@ -63,12 +70,15 @@ struct AllLettersView: View {
             }
         }
         .background(Theme.Palette.paper)
+        .navigationDestination(item: $opening) { id in
+            LettersView(personId: id)
+        }
     }
 
     @ViewBuilder
     private func row(_ entry: Entry, isDue: Bool) -> some View {
-        NavigationLink {
-            LettersView(personId: entry.person.id)
+        Button {
+            opening = entry.person.id
         } label: {
             HStack(spacing: 14) {
                 PersonAvatar(name: entry.person.name,
