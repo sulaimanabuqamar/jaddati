@@ -46,6 +46,24 @@ extension VoiceService {
     /// Most providers cannot do this, and the offline test mode has no slots
     /// to give back. Saying so is the honest default.
     func freeOneVoiceSlot(keeping: Set<String>) async throws -> Bool { false }
+
+    /// Create a voice, making room first if the account is full.
+    ///
+    /// Two screens need this — the one where a family adds a voice, and the
+    /// one where a voice that was handed on has to be rebuilt before the next
+    /// sentence can be said — and neither of them should have to know that
+    /// slots exist. One retry, never a loop.
+    func createVoiceMakingRoom(name: String, sampleURL: URL,
+                               keeping: Set<String>) async throws -> CreatedVoice {
+        do {
+            return try await createVoice(name: name, sampleURL: sampleURL)
+        } catch VoiceServiceError.voiceLimitReached {
+            guard try await freeOneVoiceSlot(keeping: keeping) else {
+                throw VoiceServiceError.voiceLimitReached
+            }
+            return try await createVoice(name: name, sampleURL: sampleURL)
+        }
+    }
 }
 
 /// Failures the user might actually see, each with wording that says what to do.

@@ -550,26 +550,6 @@ struct AddVoiceView: View {
         }
     }
 
-    /// Create the voice — and if the account is full, give a slot back and try
-    /// once more rather than telling the person to go and tidy a dashboard.
-    ///
-    /// One retry, never a loop: if making room did not help, the answer really
-    /// is that there is no room, and saying so once is better than deleting
-    /// voices until something works.
-    private static func createMakingRoom(service: VoiceService,
-                                         name: String,
-                                         sampleURL: URL,
-                                         keeping: Set<String>) async throws -> CreatedVoice {
-        do {
-            return try await service.createVoice(name: name, sampleURL: sampleURL)
-        } catch VoiceServiceError.voiceLimitReached {
-            guard try await service.freeOneVoiceSlot(keeping: keeping) else {
-                throw VoiceServiceError.voiceLimitReached
-            }
-            return try await service.createVoice(name: name, sampleURL: sampleURL)
-        }
-    }
-
     @MainActor
     private func createVoice() async {
         guard let person, let sampleURL = pickedURL, canSubmit else { return }
@@ -580,10 +560,10 @@ struct AddVoiceView: View {
         let service: VoiceService = AppConfig.voiceService()
         let held = Set(library.people.compactMap(\.voiceId))
         do {
-            let voice = try await Self.createMakingRoom(service: service,
-                                                        name: ElevenLabsClient.madeHerePrefix + person.name,
-                                                        sampleURL: sampleURL,
-                                                        keeping: held)
+            let voice = try await service.createVoiceMakingRoom(
+                name: ElevenLabsClient.madeHerePrefix + person.name,
+                sampleURL: sampleURL,
+                keeping: held)
             // They pressed Stop while this was in flight. The sheet is gone;
             // do not write a voice onto the profile behind their back.
             if Task.isCancelled { return }

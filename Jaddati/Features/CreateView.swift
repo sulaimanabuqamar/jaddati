@@ -695,6 +695,56 @@ struct CreateView: View {
         data.starts(with: Array("RIFF".utf8)) ? "wav" : "mp3"
     }
 
+    /// Say it — and if the voice is no longer at the provider, build it again
+    /// from the recording this phone still holds, then say it.
+    ///
+    /// A recreated voice is a SLOT at the provider, not a possession, and slots
+    /// get handed on when several families share one account. The original
+    /// recording never leaves the phone, so the voice can always be made again.
+    /// Asking the family to press "Re-create voice" to discover that was making
+    /// them learn our bookkeeping. Now nobody has to know a slot exists.
+    ///
+    /// If this phone has no original left, the old error stands — the button to
+    /// rebuild by hand is still under it, and inventing a voice from nothing is
+    /// not something to attempt quietly.
+    @MainActor
+    private func speakRebuildingIfGone(service: VoiceService, person: Person,
+                                       voiceId: String, words: String,
+                                       model: String) async throws -> Data {
+        do {
+            return try await service.synthesize(text: words, voiceId: voiceId,
+                                                modelId: model, tuning: draftTuning)
+        } catch VoiceServiceError.voiceUnavailable(let detail) {
+            guard let sample = originalRecording(for: person) else {
+                throw VoiceServiceError.voiceUnavailable(detail)
+            }
+            let remade = try await service.createVoiceMakingRoom(
+                name: ElevenLabsClient.madeHerePrefix + person.name,
+                sampleURL: sample,
+                keeping: Set(library.people.compactMap(\.voiceId)))
+
+            var updated = person
+            updated.voiceId = remade.id
+            updated.voiceCreatedAt = Date()
+            updated.voiceRequiresVerification = remade.requiresVerification
+            library.update(updated)
+
+            return try await service.synthesize(text: words, voiceId: remade.id,
+                                                modelId: model, tuning: draftTuning)
+        }
+    }
+
+    /// The newest original this phone holds for them, if the file is really
+    /// there. `assets(for:source:)` sorts newest first.
+    @MainActor
+    private func originalRecording(for person: Person) -> URL? {
+        for asset in library.assets(for: person, source: .original) {
+            let url = library.url(for: asset)
+            if FileManager.default.fileExists(atPath: url.path) { return url }
+        }
+        return nil
+    }
+
     @MainActor
     private func speak() async {
         guard let person, let voiceId = person.voiceId, canSpeak else { return }
@@ -736,10 +786,11 @@ struct CreateView: View {
         guard !words.isEmpty else { isGenerating = false; return }
 
         do {
-            let data = try await service.synthesize(text: words,
-                                                    voiceId: voiceId,
-                                                    modelId: model,
-                                                    tuning: draftTuning)
+            let data = try await speakRebuildingIfGone(service: service,
+                                                       person: person,
+                                                       voiceId: voiceId,
+                                                       words: words,
+                                                       model: model)
             let duration = (try? AVAudioPlayer(data: data))?.duration ?? 0
             let asset = library.storeAudio(data: data,
                                            for: person,
