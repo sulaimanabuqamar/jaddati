@@ -480,6 +480,8 @@ let arabicStrings: [String: String] = [
     "Tell me a story": "احكِ لي قصة",
     "FAMILY SHELF": "رفّ العائلة",
     "USD": "دولار",
+    "Send it": "أرسلها",
+    "Only this letter travels, still sealed. It opens on their phone on the day.": "تُرسَل هذه الرسالة وحدها، وتبقى مختومة. تُفتح على هاتفهم في يومها.",
     "Estimated remaining cost": "التكلفة المتبقية التقديرية",
     "Untitled book": "كتاب بلا عنوان",
     "Book removed": "حُذف الكتاب",

@@ -438,13 +438,45 @@ enum Archive {
 
     @MainActor
     static func send(person: Person, library: Library) async throws -> CodeResult {
+        try await upload(Self.plan(person: person, library: library))
+    }
+
+    /// The same handoff, narrowed to ONE sealed letter.
+    ///
+    /// A seal that can only ever open on the phone that wrote it is a letter to
+    /// yourself, and that is not what a letter is for. This sends the letter to
+    /// somebody else — and the person it is to be read in, because a letter
+    /// with nobody to speak it cannot be opened at the other end — and nothing
+    /// else. No recordings, no notes, no other letters.
+    ///
+    /// The receiving phone needs no new code at all: its merge already drops
+    /// letters into somebody already there and skips the ones it has. Which is
+    /// also why this is small enough to send over a code where a whole handoff
+    /// sometimes is not — a letter is a few hundred characters, not megabytes
+    /// of audio.
+    @MainActor
+    static func sendLetter(_ letter: Letter, of person: Person,
+                           library: Library) async throws -> CodeResult {
+        var outline = Self.plan(person: person, library: library)
+        outline.notes = []
+        outline.originals = []
+        outline.extras = []
+        outline.letters = [LetterCard(text: letter.text,
+                                      occasion: letter.occasion,
+                                      deliverAt: letter.deliverAt,
+                                      createdAt: letter.createdAt)]
+        return try await upload(outline)
+    }
+
+    /// The upload half, shared by the whole-person handoff and the one letter.
+    @MainActor
+    private static func upload(_ outline: ExportPlan) async throws -> CodeResult {
         guard Consent.networkAllowed else { throw ConsentMissing() }
 
-        // Read the library here, on the main actor, then hand the plain values
-        // to another thread to do the megabytes of work. Done inline this froze
-        // the screen for the whole export — long enough that "Preparing…" never
-        // got drawn, so the app looked dead rather than busy.
-        let outline = Self.plan(person: person, library: library)
+        // The library was read on the main actor by whoever built the outline;
+        // the plain values go to another thread to do the megabytes of work.
+        // Done inline this froze the screen for the whole export — long enough
+        // that "Preparing…" never got drawn, so the app looked dead, not busy.
         let (exported, body) = try await Task.detached(priority: .userInitiated) {
             () async throws -> (ExportResult, Data) in
             let built = try Archive.build(outline, ceiling: Archive.relayMaxBytes)

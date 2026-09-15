@@ -27,6 +27,13 @@ struct LettersView: View {
     /// a @State write is not visible to a second tap that lands in the same
     /// run loop pass, and the second generation would be billed.
     @State private var opening: Set<UUID> = []
+    /// Sending ONE sealed letter to somebody else's phone. Held per letter, so
+    /// the code appears under the letter it belongs to rather than at the
+    /// bottom of a screen that may be showing six of them.
+    @State private var sendingLetter: UUID?
+    @State private var letterCodeFor: UUID?
+    @State private var letterCode: String?
+    @State private var letterCodeProblem: String?
 
     private var person: Person? { library.people.first { $0.id == personId } }
     private var trimmed: String { draft.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -248,13 +255,84 @@ struct LettersView: View {
                         Text(Counts.characters(letter.text.count, limit: limit) + " · " + L("Sealed until the day"))
                             .font(Theme.Font.caption)
                             .foregroundStyle(Theme.Palette.inkSoft)
-                        Button(L("Remove")) { pendingRemoval = letter }
+                        HStack(spacing: 18) {
+                            Button(L("Remove")) { pendingRemoval = letter }
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Theme.Palette.wineInk)
+                                .frame(minHeight: Theme.Metric.touchTarget, alignment: .leading)
+                            // A seal that can only open on the phone that wrote
+                            // it is a letter to yourself.
+                            Button(sendingLetter == letter.id ? L("Preparing…") : L("Send it")) {
+                                Task { await sendSeal(letter, of: person) }
+                            }
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(Theme.Palette.wineInk)
                             .frame(minHeight: Theme.Metric.touchTarget, alignment: .leading)
+                            .disabled(sendingLetter != nil)
+                            Spacer(minLength: 0)
+                        }
+                        if letterCodeFor == letter.id {
+                            if let letterCode { sealCode(letterCode) }
+                            if let letterCodeProblem { ErrorNote(message: letterCodeProblem) }
+                        }
                     }
                 }
             }
+        }
+    }
+
+    /// The code, under the letter it carries. Deliberately the same words as
+    /// the handoff on Setup — one thing to learn, not two.
+    private func sealCode(_ code: String) -> some View {
+        VStack(spacing: 6) {
+            Text(L("Read them this:"))
+                .font(Theme.Font.caption)
+                .foregroundStyle(Theme.Palette.inkSoft)
+            Text(code)
+                .font(Theme.Font.displayMedium(32))
+                .kerning(7)
+                .foregroundStyle(Theme.Palette.wineInk)
+                // Latin characters whichever language the app is in, so this
+                // must not mirror with the rest of the screen.
+                .environment(\.layoutDirection, .leftToRight)
+            Text(L("They open Jaddati, choose Bring someone from another phone, and type it."))
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.Palette.inkSoft)
+                .multilineTextAlignment(.center)
+            Text(L("Only this letter travels, still sealed. It opens on their phone on the day."))
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.Palette.inkSoft)
+                .multilineTextAlignment(.center)
+            Text(L("The code works for a day."))
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.Palette.inkSoft)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .padding(.horizontal, 12)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Metric.cardRadius)
+                .fill(Theme.Palette.sunk)
+                .overlay(RoundedRectangle(cornerRadius: Theme.Metric.cardRadius)
+                    .stroke(Theme.Palette.hairline, lineWidth: 1))
+        )
+        .padding(.top, 4)
+    }
+
+    @MainActor
+    private func sendSeal(_ letter: Letter, of person: Person) async {
+        sendingLetter = letter.id
+        letterCodeFor = letter.id
+        letterCode = nil
+        letterCodeProblem = nil
+        defer { sendingLetter = nil }
+        do {
+            letterCode = try await Archive.sendLetter(letter, of: person, library: library).code
+        } catch is ConsentMissing {
+            letterCodeProblem = AppConfig.unavailableMessage
+        } catch {
+            letterCodeProblem = (error as? LocalizedError)?.errorDescription
+                ?? L("The code could not be created. Try again.")
         }
     }
 
