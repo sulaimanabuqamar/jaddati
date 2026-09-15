@@ -424,14 +424,15 @@ struct PlayerArt: View {
     }
 }
 
-/// An example figure, marked as one. The design shows prices so the interface
-/// can be reviewed; it labels every one of them illustrative, and so does this.
+/// An example figure, marked as one.
+///
+/// Credits, not dollars. Nothing here takes a payment, so a price in money was
+/// answering a question nobody had asked and inviting one nobody wanted; what
+/// actually runs out — on a free tier especially — is credits, and roughly one
+/// credit is one character at the provider. The reader one tap away has quoted
+/// credits all along, so this now agrees with it.
 struct ExampleQuote: View {
     let characters: Int
-
-    /// Roughly one credit per character at the provider. Shown as an example
-    /// only — it is not a quote, and nothing here takes a payment.
-    private var usd: Double { Double(characters) * 0.00011 }
 
     var body: some View {
         HStack {
@@ -439,10 +440,10 @@ struct ExampleQuote: View {
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.Palette.inkSoft)
             Spacer()
-            Text(String(format: "$%.2f", max(usd, 0.01)))
+            Text(Counts.number(characters))
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Theme.Palette.ink)
-            Text(L("USD"))
+            Text(L("credits"))
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(Theme.Palette.inkSoft)
         }

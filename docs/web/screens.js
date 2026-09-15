@@ -338,14 +338,12 @@ export function createScreen({ personId, intent }) {
     saveLine.classList.toggle("hidden", !(intent === "comfort" && person && t && !already));
     const kept = person && store.memories(person.id).some(n => trimmedOf(n.text) === t);
     saveMemory.classList.toggle("hidden", !(intent === "storyFromMemories" && person && t && !kept));
-    // No dollar sign in Arabic: the label beside this already says دولار, and
-    // both together read as "$0.01 dollar".
-    quote.textContent = (isAr() ? "" : "$") + Math.max(t.length * 0.00011, 0.01).toFixed(2);
+    quote.textContent = Counts.number(t.length);
   }
   area.addEventListener("input", sync);
 
   const quote = h("span", { style: { fontSize: "14px", fontWeight: "600" } },
-                  (isAr() ? "" : "$") + "0.01");
+                  Counts.number(0));
 
   /**
    * What actually gets spoken.
@@ -497,7 +495,7 @@ export function createScreen({ personId, intent }) {
 
       h("div", { class: "row between", style: { padding: "12px 0", borderTop: "1px solid var(--hairline)" } },
         h("span", { class: "small" }, L("This clip · example quote")),
-        h("span", { class: "row", style: { gap: "4px" } }, quote, h("span", { class: "small" }, L("USD")))),
+        h("span", { class: "row", style: { gap: "4px" } }, quote, h("span", { class: "small" }, L("credits")))),
 
       errorSlot, submit, saveLine, saveMemory, reason,
 

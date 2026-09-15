@@ -610,6 +610,13 @@ struct BookReaderView: View {
                                            isSaved: false,
                                            fileExtension: CreateView.audioExtension(for: data))
             isAnswering = false
+            // The question has been answered, so the box has to be empty for
+            // the next one. Dictation APPENDS to whatever is already there —
+            // right while a question is still being composed, wrong the moment
+            // it has been asked — and it was leaving the second question stuck
+            // on the end of the first. Cleared on success only: a question that
+            // failed is still in the box for the retry button under it.
+            question = ""
             if let asset {
                 answerAsset = asset
                 answerIds.append(asset.id)
