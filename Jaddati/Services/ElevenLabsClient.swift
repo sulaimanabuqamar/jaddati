@@ -244,6 +244,57 @@ struct ElevenLabsClient: VoiceService {
         }
     }
 
+    // MARK: Making room
+
+    /// Every voice this app creates is named this way, and nothing else in the
+    /// account is. It is how the automatic clean-up below knows which voices
+    /// are ours to remove and which belong to somebody else's work.
+    static let madeHerePrefix = "Jaddati \u{2014} "
+
+    /// See `VoiceService.freeOneVoiceSlot`. Oldest first, ours only, and never
+    /// one this phone is still using.
+    func freeOneVoiceSlot(keeping: Set<String>) async throws -> Bool {
+        guard Consent.networkAllowed else { throw ConsentMissing() }
+        guard !key.isEmpty else { return false }
+
+        var request = URLRequest(url: base.appendingPathComponent("v1/voices"))
+        request.httpMethod = "GET"
+        request.setValue(key, forHTTPHeaderField: "xi-api-key")
+        if AppConfig.sendsVoiceDeviceHeader {
+            request.setValue(AppConfig.deviceId, forHTTPHeaderField: "X-Jaddati-Device")
+        }
+        let account = try await accountToken(Self.signInToGenerate)
+        sign(&request, with: account)
+
+        let (data, response) = try await perform(request)
+        guard let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode) else { return false }
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let listed = root["voices"] as? [[String: Any]] else { return false }
+
+        var oldest: (id: String, made: Double)?
+        for voice in listed {
+            guard let id = voice["voice_id"] as? String else { continue }
+            // A voice somebody on this phone is still using is not spare
+            // capacity, however old it is.
+            if keeping.contains(id) { continue }
+            // The stock voices come with the account and hold no slot. Deleting
+            // one would be both useless and rude.
+            if (voice["category"] as? String) == "premade" { continue }
+            guard ((voice["name"] as? String) ?? "").hasPrefix(Self.madeHerePrefix) else { continue }
+            let made = (voice["created_at_unix"] as? Double) ?? 0
+            if let current = oldest {
+                if made < current.made { oldest = (id, made) }
+            } else {
+                oldest = (id, made)
+            }
+        }
+        guard let doomed = oldest?.id else { return false }
+
+        try await deleteVoice(voiceId: doomed)
+        return true
+    }
+
     // MARK: Plumbing
 
     private func perform(_ request: URLRequest) async throws -> (Data, URLResponse) {

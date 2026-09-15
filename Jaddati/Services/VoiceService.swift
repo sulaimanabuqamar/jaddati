@@ -26,6 +26,26 @@ protocol VoiceService {
     /// their mind had no way to act on it. A voice that is already gone counts
     /// as success: the point is that it is not there any more.
     func deleteVoice(voiceId: String) async throws
+
+    /// Hand ONE voice slot back at the provider, without asking anybody.
+    ///
+    /// The provider account has a fixed number of custom-voice slots, and
+    /// until now nothing ever gave one back: every trial run left a voice
+    /// behind, and eventually the app told the person standing in front of it
+    /// to go and tidy up a dashboard they have never seen. That is the same as
+    /// the app not working. The relay does this for the web build; a phone on
+    /// its own key had no equivalent.
+    ///
+    /// `keeping` is every voice this phone still needs, and is never touched.
+    /// Returns false when there was nothing safe to remove — the caller then
+    /// reports the refusal rather than deleting something that matters.
+    func freeOneVoiceSlot(keeping: Set<String>) async throws -> Bool
+}
+
+extension VoiceService {
+    /// Most providers cannot do this, and the offline test mode has no slots
+    /// to give back. Saying so is the honest default.
+    func freeOneVoiceSlot(keeping: Set<String>) async throws -> Bool { false }
 }
 
 /// Failures the user might actually see, each with wording that says what to do.
