@@ -159,6 +159,17 @@ async function accountFor(request, env) {
   // one-minute floor.
   await env.JADDATI.put(key, JSON.stringify(account),
                         { expirationTtl: Math.max(60, Math.min(seconds, 3600)) });
+  // Written HERE, not only where speech is billed. The roll is titled "who has
+  // signed in" and until now it recorded who had GENERATED: somebody who
+  // signed in, made a voice and stopped was invisible on it, which made the
+  // page quietly untrue about the one thing it claims to show. Spending
+  // nothing, so no counter moves — this only says the account exists and when
+  // it was last seen.
+  //
+  // Only on the verification path, never on a cache hit: a KV write on every
+  // request would cost more than the answer is worth, and anyone who goes on
+  // to generate updates the same row a moment later anyway.
+  await noteAccount(env, account, 0);
   return account;
 }
 

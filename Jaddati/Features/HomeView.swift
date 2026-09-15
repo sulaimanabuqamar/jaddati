@@ -136,6 +136,17 @@ struct HomeView: View {
                       title: L("No people yet"),
                       message: L("Start with a name. Add a recording when you are ready."))
             addButton
+            // The way IN has to exist on an empty phone. This sat in the else
+            // branch, so somebody whose grandmother lives on a relative's
+            // phone had to invent a person of their own before the app would
+            // offer to receive her — the one case where the handoff matters
+            // most is the one where it was hidden.
+            bringInButton.padding(.top, 4)
+            if let importProblem {
+                // Without this the empty state had nowhere to report a failed
+                // code, so a wrong one did nothing at all.
+                ErrorNote(message: importProblem).padding(.top, 8)
+            }
         } else {
             SectionLabel(text: L("People you keep here"))
                 .padding(.top, 26)

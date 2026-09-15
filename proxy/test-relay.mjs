@@ -95,6 +95,30 @@ const say = (kv, token, text, voice = "v-1") =>
   log(kv.store.has("acct:amal"), "and the account is written to the roll");
 }
 
+// ── signing in is enough to appear on the roll ──────────────────────────
+// The page is called "who has signed in". It used to record only the accounts
+// that had GENERATED, so somebody who signed in and made a voice — or signed
+// in and stopped — was missing from the one page that claims to list them.
+{
+  const kv = makeKV({ "voices:live": "0" });
+  await call(kv, "/v1/voices/add", { token: "tok-carol" });
+  const row = JSON.parse(kv.store.get("acct:carol") || "null");
+  log(!!row, "making a voice puts the account on the roll, without speaking");
+  log(!!row && row.generations === 0 && row.characters === 0,
+      "and nothing is counted against it yet",
+      row && `${row.generations} clips, ${row.characters} characters`);
+  log(!!row && !!row.firstSeen && !!row.lastSeen, "with when it was first and last seen");
+}
+
+// Even a refusal leaves them on the roll: they signed in, which is what the
+// page is about.
+{
+  const kv = makeKV();
+  const r = await say(kv, "tok-bilal", "fuck this");
+  log(r.status === 400, "a refused word is still a 400", String(r.status));
+  log(kv.store.has("acct:bilal"), "and the person who typed it is still on the roll");
+}
+
 // ── the token is verified once, not once per sentence ───────────────────
 {
   const kv = makeKV();
