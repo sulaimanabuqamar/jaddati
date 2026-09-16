@@ -813,6 +813,32 @@ function setupScreen({ personId }) {
   const originals = store.assetsFor(person.id, "original");
   const hasVoice = personHasVoice(person);
 
+  // Renaming. The name and the relationship were typed once, on the way in,
+  // before anybody had heard the voice — and a name written in a hurry is the
+  // one you then look at every day, at the top of her screen and on her card.
+  // The phone got this first; a browser that cannot fix a typo is the same app
+  // being worse.
+  const nameField = h("input", { type: "text", placeholder: "جدّتي", value: person.name || "" });
+  const relField = h("input", { type: "text", placeholder: L("Grandmother"),
+                                value: person.relationship || "" });
+  const saveIdentity = h("button", { class: "btn-quiet", disabled: true, onClick: () => {
+    const named = nameField.value.trim();
+    if (!named) return;
+    store.updatePerson({ ...store.person(person.id), name: named,
+                         relationship: relField.value.trim() });
+    render();
+  } }, L("Save"));
+  // Live only when something actually changed, and never with an empty name —
+  // a person with no name is a row you cannot find again.
+  const syncIdentity = () => {
+    const named = nameField.value.trim();
+    saveIdentity.disabled = !named
+      || (named === (person.name || "")
+          && relField.value.trim() === (person.relationship || ""));
+  };
+  nameField.addEventListener("input", syncIdentity);
+  relField.addEventListener("input", syncIdentity);
+
   const row = (ic, title, note, onClick) =>
     h("button", { class: "feature-row", onClick },
       h("span", { class: "feature-row__icon" }, icon(ic)),
@@ -824,6 +850,13 @@ function setupScreen({ personId }) {
   return h("div", { class: "screen" },
     appBar(L("Setup"), { onBack: pop }),
     h("div", { class: "scroll" },
+      h("div", { class: "mt-16" }, sectionLabel(L("Who they are"))),
+      subtext(L("A name written in a hurry is the one you look at every day. It can be changed here.")),
+      h("label", { class: "field" }, h("div", { class: "field__title" }, L("Name")), nameField),
+      h("label", { class: "field" }, h("div", { class: "field__title" }, L("Relationship")), relField),
+      saveIdentity,
+
+      h("div", { class: "quiet-divider" }),
       h("div", { class: "mt-16" }, sectionLabel(L("Their voice"))),
       row("waveform", hasVoice ? L("Replace their voice") : L("Add their voice"),
         L("About a minute. One voice. A quiet room."), () => openAddVoice(person.id)),
