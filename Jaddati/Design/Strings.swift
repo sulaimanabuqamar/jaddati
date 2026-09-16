@@ -127,7 +127,7 @@ let arabicStrings: [String: String] = [
     "Name": "الاسم", "Relationship": "صلة القرابة",
     "Who they are": "مَن هم",
     "Save": "حفظ",
-    "The voice service keeps a limited number of voices, so this one was let go to make room. Nothing on this phone was lost — it can be made again from the recording you already have.": "تحتفظ خدمة الصوت بعدد محدود من الأصوات، ولذلك أُفسح مكان هذا الصوت. لم يُفقد شيء من هذا الهاتف — يمكن إنشاؤه من جديد من التسجيل الموجود لديك.",
+    "The voice service keeps a limited number of voices, so this one was let go to make room. Nothing here was lost — it can be made again from the recording you already have.": "تحتفظ خدمة الصوت بعدد محدود من الأصوات، ولذلك أُفسح مكان هذا الصوت. لم يُفقد شيء من هذا الهاتف — يمكن إنشاؤه من جديد من التسجيل الموجود لديك.",
     "Make it again": "أنشئه من جديد",
     "A name written in a hurry is the one you look at every day. It can be changed here.": "الاسم الذي كُتب على عجل هو ما تراه كل يوم، ويمكن تغييره من هنا.",
     "Grandmother": "الجدة", "Grandfather": "الجد", "Mother": "الأم", "Father": "الأب", "Friend": "صديق",

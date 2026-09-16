@@ -114,7 +114,7 @@ enum VoiceServiceError: LocalizedError, Equatable {
             // named an identifier nobody has ever seen, under a red triangle,
             // and read as "your grandmother's voice is gone" — which it is not.
             // The recording it was made from never left the phone.
-            return L("The voice service keeps a limited number of voices, so this one was let go to make room. Nothing on this phone was lost — it can be made again from the recording you already have.")
+            return L("The voice service keeps a limited number of voices, so this one was let go to make room. Nothing here was lost — it can be made again from the recording you already have.")
         case .unauthorised:
             return L("The voice service rejected the key on this build.")
         case .outOfCredits:

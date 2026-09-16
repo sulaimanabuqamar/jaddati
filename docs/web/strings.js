@@ -537,7 +537,7 @@ export const AR = {
  "The voice service is busy right now. Wait a few seconds and try again.": "خدمة الصوت مشغولة الآن. انتظر بضع ثوانٍ وحاول مجددًا.",
  "The voice service is busy. Wait a moment and try again.": "خدمة الصوت مشغولة. انتظر قليلًا ثم حاول مجددًا.",
  "The voice service is not set up on this build.": "خدمة الصوت غير مُعدّة في هذه النسخة.",
- "The voice service keeps a limited number of voices, so this one was let go to make room. Nothing on this phone was lost — it can be made again from the recording you already have.": "تحتفظ خدمة الصوت بعدد محدود من الأصوات، ولذلك أُفسح مكان هذا الصوت. لم يُفقد شيء من هذا الهاتف — يمكن إنشاؤه من جديد من التسجيل الموجود لديك.",
+ "The voice service keeps a limited number of voices, so this one was let go to make room. Nothing here was lost — it can be made again from the recording you already have.": "تحتفظ خدمة الصوت بعدد محدود من الأصوات، ولذلك أُفسح مكان هذا الصوت. لم يُفقد شيء من هذا الهاتف — يمكن إنشاؤه من جديد من التسجيل الموجود لديك.",
  "The voice service rejected the key on this build.": "رفضت خدمة الصوت المفتاح المستخدم في هذه النسخة.",
  "The voice service replied in a shape the app did not understand.": "ردّت خدمة الصوت بصيغة لم يفهمها التطبيق.",
  "The voice service reported a problem.": "أبلغت خدمة الصوت عن مشكلة.",

@@ -10,7 +10,7 @@ import {
 } from "./core.js?v=b2ea1f7589";
 import {
   h, clear, bidi, icon, appBar, headline, eyebrow, sectionLabel, subtext,
-  panel, panelS, errorNote, emptyHint, avatar, breadcrumb, sourceBadge,
+  panel, panelS, errorNote, calmNote, emptyHint, avatar, breadcrumb, sourceBadge,
   contentBadge, badgesFor, audioRow, player, confirmDialog, sheet, toast,
   Recorder, durationOf, demoDuration, track,
 } from "./ui.js?v=b2ea1f7589";
@@ -33,6 +33,11 @@ function problemNote(e, retry) {
     return errorNote(L("Sign in with Google to make new audio."),
                      () => { Cloud.beginSignIn().catch(() => {}); },
                      L("Sign in with Google"));
+  }
+  // A voice handed on is not an emergency, and a red panel says it is. The
+  // mirror of the phone's CalmNote — same sentence, same wine, same cycle.
+  if (e instanceof VoiceError && e.kind === "voiceGone") {
+    return calmNote(e.message, retry || null, L("Make it again"));
   }
   const consent = e instanceof ConsentMissing;
   return errorNote(consent ? Config.unavailableMessage

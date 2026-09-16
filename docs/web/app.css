@@ -484,6 +484,13 @@ a { color: var(--wine-ink); }
 .errornote svg { width: 15px; height: 15px; flex: none; color: var(--danger); margin-top: 2px; }
 .errornote__body { flex: 1; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 
+.calmnote {
+  display: flex; gap: var(--s); align-items: flex-start;
+  padding: var(--s); border-radius: var(--r-control);
+  background: var(--wine-light);
+}
+.calmnote svg { width: 15px; height: 15px; flex: none; color: var(--wine-ink); margin-top: 2px; }
+
 .empty { display: flex; flex-direction: column; align-items: center; gap: var(--s);
   padding: var(--l) 0; text-align: center; }
 .empty svg { width: 30px; height: 30px; color: var(--amber); }

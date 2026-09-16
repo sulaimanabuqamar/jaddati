@@ -62,6 +62,9 @@ const PATHS = {
   mic: "M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3ZM5 11a7 7 0 0 0 14 0M12 18v3",
   trash: "M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13M10 11v6M14 11v6",
   warn: "M12 3 2 20h20L12 3Zm0 6v6m0 3h.01",
+  // Not every thing the app has to say is a warning. This is the one that
+  // means "it comes back", and it belongs on the notes that are not failures.
+  cycle: "M20 12a8 8 0 0 1-13.7 5.7M4 12a8 8 0 0 1 13.7-5.7M7 14.6H3.6V18M17 9.4h3.4V6",
   waveform: "M4 11v2M8 7v10M12 4v16M16 8v8M20 11v2",
   lock: "M6 11h12v9H6zM9 11V8a3 3 0 0 1 6 0v3",
   unlock: "M6 11h12v9H6zM9 11V8a3 3 0 0 1 5.6-1.5",
@@ -179,6 +182,26 @@ export function errorNote(message, onAction, actionLabel) {
       // Named, because the action is not always a retry. A refusal that can
       // only say "go to another screen" is a dead end, and this is where the
       // way out gets to live instead.
+      onAction && h("button", {
+        class: "wine-text",
+        style: { fontWeight: "600", fontSize: "13px", textAlign: "start",
+                 minHeight: "var(--touch)", alignSelf: "flex-start" },
+        onClick: onAction,
+      }, actionLabel || L("Try again")),
+    ));
+}
+
+/** The mirror of CalmNote on the phone: the same shape as an error note,
+ *  without the alarm.
+ *
+ *  A voice whose slot was handed on is the ordinary end of a busy afternoon,
+ *  and the recording it was made from is still here. Said in red under a
+ *  warning triangle it reads as loss, and the person reading it has just been
+ *  told their grandmother's voice is gone. */
+export function calmNote(message, onAction, actionLabel) {
+  return h("div", { class: "calmnote" }, icon("cycle"),
+    h("div", { class: "errornote__body" },
+      h("span", { style: { whiteSpace: "pre-line" } }, message),
       onAction && h("button", {
         class: "wine-text",
         style: { fontWeight: "600", fontSize: "13px", textAlign: "start",

@@ -987,6 +987,13 @@ async function accountHeader(refusal) {
 function voiceMessage(status, detail) {
   const said = (detail || "").toLowerCase();
 
+  // Not a failure, and not the provider's sentence with a voice id in it. The
+  // service keeps a limited number of voices and hands one on when it fills
+  // up; the recording it was made from never left this browser.
+  if (voiceHasGone(status, said)) {
+    return L("The voice service keeps a limited number of voices, so this one was let go to make room. Nothing here was lost — it can be made again from the recording you already have.");
+  }
+
   // The relay counts against an account now, so its 401 means nobody is signed
   // in — not that a key was refused. The old answer sent people off to check a
   // credential they had never been asked for, which is the one screen that
@@ -1246,7 +1253,8 @@ export const Voice = {
         const rebuilt = await rebuiltVoiceId(voiceId, r.status, said);
         if (rebuilt) return Voice.synthesize(text, rebuilt, modelId, tuning, false);
       }
-      throw new VoiceError("provider", voiceMessage(r.status, detailOf(said)));
+      throw new VoiceError(voiceHasGone(r.status, said) ? "voiceGone" : "provider",
+                           voiceMessage(r.status, detailOf(said)));
     }
     const blob = await r.blob();
     if (blob.size < 500) throw new VoiceError("bad", L("The voice service replied in a shape the app did not understand."));
