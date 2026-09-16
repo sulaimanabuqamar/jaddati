@@ -30,6 +30,13 @@ struct SetupView: View {
     /// it will not push it draws DISABLED and swallows the tap, with nothing
     /// in the project asking for that. Every push in this app is explicit now.
     @State private var capturing: UUID?
+    /// Renaming. Seeded once from the person rather than bound straight to the
+    /// library: a binding that writes on every keystroke re-renders the whole
+    /// screen under the keyboard, and the first backspace of an empty name
+    /// would be saved as an empty name.
+    @State private var editedName = ""
+    @State private var editedRelationship = ""
+    @State private var identityLoaded = false
 
     private var person: Person? { library.person(withId: personId) }
 
@@ -40,6 +47,8 @@ struct SetupView: View {
             if let person {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
+                        identity(person)
+
                         SectionLabel(text: L("Their voice")).padding(.top, 16)
 
                         Button { addingVoice = true } label: {
@@ -265,6 +274,57 @@ struct SetupView: View {
             archiveNote = error.localizedDescription
         }
         preparingArchive = false
+    }
+
+    /// The name and the relationship, changeable.
+    ///
+    /// They were typed once, on the way in, before anybody had heard the voice
+    /// — and a name written in a hurry is the one you then look at every day.
+    /// Everything else about a person could be corrected here and this could
+    /// not, which made the one thing on screen at all times the one thing
+    /// nobody could fix.
+    private func identity(_ person: Person) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionLabel(text: L("Who they are")).padding(.top, 16)
+            Text(L("A name written in a hurry is the one you look at every day. It can be changed here."))
+                .font(Theme.Font.caption)
+                .foregroundStyle(Theme.Palette.inkSoft)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 2)
+            Field(title: L("Name"), text: $editedName, placeholder: "جدّتي")
+            Field(title: L("Relationship"), text: $editedRelationship,
+                  placeholder: L("Grandmother"))
+            Button(L("Save")) { saveIdentity(person) }
+                .buttonStyle(QuietButtonStyle())
+                .disabled(!identityChanged(person))
+        }
+        .onAppear {
+            // Once. Seeding on every render would overwrite what is being
+            // typed the moment anything else on this screen changes.
+            guard !identityLoaded else { return }
+            editedName = person.name
+            editedRelationship = person.relationship
+            identityLoaded = true
+        }
+    }
+
+    /// Save is live only when there is something to save, and never when the
+    /// name has been emptied — a person with no name is a row you cannot find
+    /// again.
+    private func identityChanged(_ person: Person) -> Bool {
+        let name = editedName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return false }
+        return name != person.name
+            || editedRelationship.trimmingCharacters(in: .whitespacesAndNewlines) != person.relationship
+    }
+
+    private func saveIdentity(_ person: Person) {
+        let name = editedName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        var updated = person
+        updated.name = name
+        updated.relationship = editedRelationship.trimmingCharacters(in: .whitespacesAndNewlines)
+        library.update(updated)
     }
 
     private func capture(_ person: Person) -> some View {
