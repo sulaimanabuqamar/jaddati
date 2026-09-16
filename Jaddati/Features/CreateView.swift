@@ -225,7 +225,14 @@ struct CreateView: View {
     @ViewBuilder private var actionSection: some View {
         if let errorText {
             VStack(alignment: .leading, spacing: Theme.Space.xs) {
-                if errorAllowsRetry {
+                // A voice whose slot was handed on is not a failure, and the
+                // red panel plus a separate button read as two problems rather
+                // than one ordinary thing with one thing to do about it.
+                if isRecoverableByRecreatingVoice {
+                    CalmNote(message: errorText, actionLabel: L("Make it again")) {
+                        addingVoice = true
+                    }
+                } else if errorAllowsRetry {
                     ErrorNote(message: errorText) {
                         self.errorText = nil
                         self.failure = nil
@@ -233,10 +240,6 @@ struct CreateView: View {
                     }
                 } else {
                     ErrorNote(message: errorText)
-                }
-                if isRecoverableByRecreatingVoice {
-                    Button(L("Re-create voice")) { addingVoice = true }
-                        .buttonStyle(QuietButtonStyle())
                 }
             }
         }

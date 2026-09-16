@@ -460,6 +460,43 @@ struct EmptyHint: View {
 
 /// Inline error. Never a modal alert for recoverable failures — the user keeps
 /// their typed text and can retry in place.
+/// The same shape as ErrorNote, without the alarm.
+///
+/// Some things the app has to say are not failures — a voice whose slot was
+/// handed on is the ordinary end of a busy afternoon, and the recording it was
+/// made from is still here. Said in red under a warning triangle it reads as
+/// loss, and the person holding the phone has just been told their
+/// grandmother's voice is gone. Wine, not danger; a cycle, not a triangle.
+struct CalmNote: View {
+    let message: String
+    var actionLabel: String
+    var action: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: Theme.Space.s) {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .foregroundStyle(Theme.Palette.wineInk)
+                .font(.system(size: 14))
+            VStack(alignment: .leading, spacing: 6) {
+                Text(message)
+                    .font(Theme.Font.caption)
+                    .foregroundStyle(Theme.Palette.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button(actionLabel, action: action)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.Palette.wineInk)
+                    .frame(minHeight: Theme.Metric.touchTarget, alignment: .leading)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(Theme.Space.s)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                .fill(Theme.Palette.wineLight)
+        )
+    }
+}
+
 struct ErrorNote: View {
     let message: String
     var retry: (() -> Void)? = nil

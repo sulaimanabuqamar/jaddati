@@ -109,10 +109,12 @@ enum VoiceServiceError: LocalizedError, Equatable {
             return why.isEmpty
                 ? head + " " + L("Try a longer, clearer one.")
                 : head + " " + why
-        case .voiceUnavailable(let detail):
-            let head = L("That voice is not available at the voice service.")
-            return (detail.isEmpty ? head : head + " (\(detail))")
-                + " " + L("Add their voice again to create a new one.")
+        case .voiceUnavailable:
+            // Neither the provider's sentence nor the voice id. The raw version
+            // named an identifier nobody has ever seen, under a red triangle,
+            // and read as "your grandmother's voice is gone" — which it is not.
+            // The recording it was made from never left the phone.
+            return L("The voice service keeps a limited number of voices, so this one was let go to make room. Nothing on this phone was lost — it can be made again from the recording you already have.")
         case .unauthorised:
             return L("The voice service rejected the key on this build.")
         case .outOfCredits:
