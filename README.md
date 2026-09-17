@@ -2,6 +2,8 @@
 
 *A familiar voice, whenever you need it.*
 
+[![Jaddati — a short film about what the app will not do](docs/assets/jaddati-launch.jpg)](docs/assets/jaddati-launch.mp4)
+
 Jaddati preserves the voice of someone who has died. You add a recording you
 have the right to use, and the app can then speak new words in that voice —
 words you type, a steadying line when you need one, or a story. Original
