@@ -33,3 +33,9 @@ __pycache__/
 # so stale git locks and tmp objects get renamed in here instead. Safe to
 # delete by hand, and `git gc` will tidy the rest.
 _to_delete/
+
+# Launch video working directory. Holds the Hyperframes project, the render,
+# and a copy of Georgia.ttf taken from the system for a deterministic render —
+# a licensed font that must not be committed. The published video and poster
+# live in docs/assets/ instead.
+brag-output/
